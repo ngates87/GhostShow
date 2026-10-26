@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "id": "generic/rgbwauv",
+  "manufacturer": "Generic",
+  "model": "RGBWA+UV",
+  "type": "Color Changer",
+  "category": "Color",
+  "modes": [
+    {
+      "name": "6 channel",
+      "channels": [
+        { "name": "Red", "function": "Red" },
+        { "name": "Green", "function": "Green" },
+        { "name": "Blue", "function": "Blue" },
+        { "name": "White", "function": "White" },
+        { "name": "Amber", "function": "Amber" },
+        { "name": "UV", "function": "UV" }
+      ]
+    },
+    {
+      "name": "8 channel (dimmer, strobe first)",
+      "channels": [
+        { "name": "Dimmer", "function": "Intensity" },
+        { "name": "Strobe", "function": "Strobe" },
+        { "name": "Red", "function": "Red" },
+        { "name": "Green", "function": "Green" },
+        { "name": "Blue", "function": "Blue" },
+        { "name": "White", "function": "White" },
+        { "name": "Amber", "function": "Amber" },
+        { "name": "UV", "function": "UV" }
+      ]
+    }
+  ]
+}

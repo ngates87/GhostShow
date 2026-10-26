@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "generic/dimmer-pack-4",
+  "manufacturer": "Generic",
+  "model": "4-channel dimmer pack",
+  "type": "Dimmer",
+  "category": "Dimmer",
+  "modes": [
+    {
+      "name": "4 channel",
+      "channels": [
+        { "name": "Dimmer 1", "function": "Intensity" },
+        { "name": "Dimmer 2", "function": "Generic" },
+        { "name": "Dimmer 3", "function": "Generic" },
+        { "name": "Dimmer 4", "function": "Generic" }
+      ]
+    }
+  ]
+}

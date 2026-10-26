@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "generic/relay-4",
+  "manufacturer": "Generic",
+  "model": "4-channel relay / switch pack",
+  "type": "Relay",
+  "category": "Relay",
+  // Each channel switches a prop, animatronic or outlet. Most packs switch on above 50% (128) and off below.
+  "modes": [
+    {
+      "name": "4 channel",
+      "channels": [
+        { "name": "Relay 1", "function": "Generic" },
+        { "name": "Relay 2", "function": "Generic" },
+        { "name": "Relay 3", "function": "Generic" },
+        { "name": "Relay 4", "function": "Generic" }
+      ]
+    }
+  ]
+}

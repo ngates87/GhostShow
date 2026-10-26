@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "id": "generic/rgb",
+  "manufacturer": "Generic",
+  "model": "RGB",
+  "type": "Color Changer",
+  "category": "Color",
+  "modes": [
+    {
+      "name": "3 channel",
+      "channels": [
+        { "name": "Red", "function": "Red" },
+        { "name": "Green", "function": "Green" },
+        { "name": "Blue", "function": "Blue" }
+      ]
+    },
+    {
+      "name": "4 channel (dimmer first)",
+      "channels": [
+        { "name": "Dimmer", "function": "Intensity" },
+        { "name": "Red", "function": "Red" },
+        { "name": "Green", "function": "Green" },
+        { "name": "Blue", "function": "Blue" }
+      ]
+    }
+  ]
+}

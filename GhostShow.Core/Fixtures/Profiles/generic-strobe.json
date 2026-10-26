@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "generic/strobe",
+  "manufacturer": "Generic",
+  "model": "Strobe",
+  "type": "Strobe",
+  "category": "Strobe",
+  "modes": [
+    {
+      "name": "2 channel",
+      "channels": [
+        { "name": "Intensity", "function": "Intensity" },
+        { "name": "Rate", "function": "Strobe" }
+      ]
+    }
+  ]
+}

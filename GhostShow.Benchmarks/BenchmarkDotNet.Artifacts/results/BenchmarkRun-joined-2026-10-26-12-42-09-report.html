@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+<meta charset='utf-8' />
+<title>BenchmarkRun-joined-2026-10-26-12-42-09</title>
+
+<style type="text/css">
+	table { border-collapse: collapse; display: block; width: 100%; overflow: auto; }
+	td, th { padding: 6px 13px; border: 1px solid #ddd; text-align: right; }
+	tr { background-color: #fff; border-top: 1px solid #ccc; }
+	tr:nth-child(even) { background: #f8f8f8; }
+</style>
+</head>
+<body>
+<pre><code>
+BenchmarkDotNet v0.15.8, Linux Pop!_OS 24.04 LTS
+12th Gen Intel Core i7-12700H 0.40GHz, 1 CPU, 20 logical and 14 physical cores
+.NET SDK 10.0.113
+  [Host]     : .NET 10.0.13 (10.0.13, 10.0.1326.50504), X64 RyuJIT x86-64-v3
+  DefaultJob : .NET 10.0.13 (10.0.13, 10.0.1326.50504), X64 RyuJIT x86-64-v3
+</code></pre>
+<pre><code></code></pre>
+
+<table>
+<thead><tr><th>Type         </th><th>Method                                            </th><th>FixtureCount</th><th>Mean  </th><th>Error</th><th>StdDev</th><th>Gen0</th><th>Gen1</th><th>Allocated</th>
+</tr>
+</thead><tbody><tr><td>FramePathBenchmarks</td><td>&#39;Engine → frame snapshot (output thread, per frame)&#39;</td><td>?</td><td>29.57 ns</td><td>0.006 ns</td><td>0.006 ns</td><td>-</td><td>-</td><td>-</td>
+</tr><tr><td>FramePathBenchmarks</td><td>&#39;Frame → Enttec Pro packet&#39;</td><td>?</td><td>14.42 ns</td><td>0.222 ns</td><td>0.208 ns</td><td>-</td><td>-</td><td>-</td>
+</tr><tr><td>FramePathBenchmarks</td><td>&#39;Frame → Art-Net packet&#39;</td><td>?</td><td>15.49 ns</td><td>0.333 ns</td><td>0.356 ns</td><td>-</td><td>-</td><td>-</td>
+</tr><tr><td>FramePathBenchmarks</td><td>&#39;SetChannel command (raw fader)&#39;</td><td>?</td><td>17.14 ns</td><td>0.004 ns</td><td>0.003 ns</td><td>-</td><td>-</td><td>-</td>
+</tr><tr><td>FramePathBenchmarks</td><td>&#39;SetFixtureControl command (fixture fader, 100 patched)&#39;</td><td>?</td><td>26.41 ns</td><td>0.176 ns</td><td>0.165 ns</td><td>-</td><td>-</td><td>-</td>
+</tr><tr><td>PatchBenchmarks</td><td>&#39;Validate and patch fixtures&#39;</td><td>10</td><td>1,764.55 ns</td><td>12.364 ns</td><td>11.565 ns</td><td>0.4425</td><td>0.0038</td><td>5568 B</td>
+</tr><tr><td>PatchBenchmarks</td><td>&#39;Validate and patch fixtures&#39;</td><td>100</td><td>16,597.76 ns</td><td>128.786 ns</td><td>120.467 ns</td><td>3.6926</td><td>0.2441</td><td>46577 B</td>
+</tr></tbody></table>
+</body>
+</html>

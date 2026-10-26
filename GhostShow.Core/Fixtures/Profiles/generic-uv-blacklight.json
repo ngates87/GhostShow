@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "generic/uv-blacklight",
+  "manufacturer": "Generic",
+  "model": "UV blacklight (LED)",
+  "type": "Blacklight",
+  "category": "Blacklight",
+  "modes": [
+    {
+      "name": "1 channel",
+      "channels": [
+        { "name": "UV", "function": "UV" }
+      ]
+    },
+    {
+      "name": "2 channel (UV, strobe)",
+      "channels": [
+        { "name": "UV", "function": "UV" },
+        { "name": "Strobe", "function": "Strobe" }
+      ]
+    }
+  ]
+}

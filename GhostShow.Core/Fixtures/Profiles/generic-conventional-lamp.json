@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "generic/conventional-lamp",
+  "manufacturer": "Generic",
+  "model": "Incandescent / halogen lamp",
+  "type": "Conventional",
+  "category": "Conventional",
+  // A non-LED light (PAR can, flood, plain bulb) plugged into one channel of a dimmer pack.
+  "modes": [
+    {
+      "name": "1 channel (on a dimmer)",
+      "channels": [
+        { "name": "Intensity", "function": "Intensity" }
+      ]
+    }
+  ]
+}

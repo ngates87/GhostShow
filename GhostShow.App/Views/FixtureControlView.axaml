@@ -1,0 +1,49 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:GhostShow.App.ViewModels"
+             xmlns:fx="using:GhostShow.Core.Fixtures"
+             xmlns:views="using:GhostShow.App.Views"
+             x:Class="GhostShow.App.Views.FixtureControlView"
+             x:DataType="vm:FixtureControlViewModel">
+  <Grid ColumnDefinitions="260,16,*" Margin="0,12">
+    <DockPanel>
+      <TextBlock DockPanel.Dock="Top" Text="Patched fixtures" Classes="heading" Margin="0,0,0,8" />
+      <ListBox ItemsSource="{Binding Fixtures}" SelectedItem="{Binding SelectedFixture}">
+        <ListBox.ItemTemplate>
+          <DataTemplate x:DataType="fx:PatchedFixture">
+            <StackPanel>
+              <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
+              <TextBlock Opacity="0.75">
+                <Run Text="U" /><Run Text="{Binding Universe}" /><Run Text=" · " /><Run Text="{Binding StartAddress}" /><Run Text="-" /><Run Text="{Binding EndAddress}" />
+              </TextBlock>
+            </StackPanel>
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+    </DockPanel>
+
+    <DockPanel Grid.Column="2">
+      <StackPanel DockPanel.Dock="Top" Spacing="8" Margin="0,0,0,8">
+        <TextBlock Text="{Binding Heading}" Classes="heading" TextWrapping="Wrap" />
+        <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding SelectedFixture, Converter={x:Static ObjectConverters.IsNotNull}}">
+          <Button Content="All logical controls full" Command="{Binding FullWhiteCommand}" />
+          <Button Content="Zero this fixture" Command="{Binding ZeroFixtureCommand}" />
+        </StackPanel>
+      </StackPanel>
+      <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Spacing="10">
+          <TextBlock Text="Controls" Opacity="0.7" IsVisible="{Binding Controls.Count}" />
+          <ItemsControl ItemsSource="{Binding Controls}">
+            <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate><DataTemplate x:DataType="vm:FaderViewModel"><views:FaderView /></DataTemplate></ItemsControl.ItemTemplate>
+          </ItemsControl>
+          <TextBlock Text="All channels" Opacity="0.7" IsVisible="{Binding Channels.Count}" />
+          <ItemsControl ItemsSource="{Binding Channels}">
+            <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate><DataTemplate x:DataType="vm:FaderViewModel"><views:FaderView /></DataTemplate></ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </StackPanel>
+      </ScrollViewer>
+    </DockPanel>
+  </Grid>
+</UserControl>

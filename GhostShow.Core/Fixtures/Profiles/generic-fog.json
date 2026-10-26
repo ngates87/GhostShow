@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "id": "generic/fog",
+  "manufacturer": "Generic",
+  "model": "Fog machine",
+  "type": "Hazer",
+  "category": "Fog",
+  "modes": [
+    {
+      "name": "1 channel",
+      "channels": [
+        { "name": "Fog output", "function": "Effect" }
+      ]
+    }
+  ]
+}

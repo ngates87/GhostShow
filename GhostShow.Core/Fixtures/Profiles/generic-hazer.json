@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "generic/hazer",
+  "manufacturer": "Generic",
+  "model": "Hazer",
+  "type": "Hazer",
+  "category": "Haze",
+  "modes": [
+    {
+      "name": "2 channel (output, fan)",
+      "channels": [
+        { "name": "Haze output", "function": "Effect" },
+        { "name": "Fan", "function": "Speed" }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,48 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:GhostShow.App.ViewModels"
+             xmlns:diag="using:GhostShow.Core.Diagnostics"
+             x:Class="GhostShow.App.Views.DiagnosticsView"
+             x:DataType="vm:DiagnosticsViewModel">
+  <DockPanel Margin="0,12">
+    <StackPanel DockPanel.Dock="Top" Spacing="12" Margin="0,0,0,12">
+      <StackPanel Spacing="4">
+        <TextBlock Text="Outputs" Classes="heading" />
+        <Grid ColumnDefinitions="70,2*,100,80,190,90,2*" Opacity="0.7">
+          <TextBlock Text="Universe" /><TextBlock Grid.Column="1" Text="Device" /><TextBlock Grid.Column="2" Text="Status" />
+          <TextBlock Grid.Column="3" Text="Rate" /><TextBlock Grid.Column="4" Text="Interval p50 / p95 / max" />
+          <TextBlock Grid.Column="5" Text="Frames" /><TextBlock Grid.Column="6" Text="Last error" />
+        </Grid>
+        <ItemsControl ItemsSource="{Binding Outputs}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:OutputTimingRow">
+              <Grid ColumnDefinitions="70,2*,100,80,190,90,2*" Margin="0,2">
+                <TextBlock Text="{Binding Universe}" /><TextBlock Grid.Column="1" Text="{Binding Device}" TextTrimming="CharacterEllipsis" />
+                <TextBlock Grid.Column="2" Text="{Binding Status}" /><TextBlock Grid.Column="3" Text="{Binding Rate}" />
+                <TextBlock Grid.Column="4" Text="{Binding Intervals}" /><TextBlock Grid.Column="5" Text="{Binding Frames}" />
+                <TextBlock Grid.Column="6" Text="{Binding LastError}" TextWrapping="Wrap" />
+              </Grid>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </StackPanel>
+      <StackPanel Spacing="4">
+        <TextBlock Text="Application" Classes="heading" />
+        <TextBlock Text="{Binding UiResponsiveness}" />
+        <TextBlock Text="{Binding Memory}" />
+      </StackPanel>
+      <TextBlock Text="Recent events" Classes="heading" />
+    </StackPanel>
+    <ListBox ItemsSource="{Binding LogEntries}">
+      <ListBox.ItemTemplate>
+        <DataTemplate x:DataType="diag:LogEntry">
+          <Grid ColumnDefinitions="80,90,*">
+            <TextBlock Text="{Binding Time, StringFormat='{}{0:HH:mm:ss}'}" Opacity="0.7" />
+            <TextBlock Grid.Column="1" Text="{Binding Level}" />
+            <TextBlock Grid.Column="2" Text="{Binding Message}" TextWrapping="Wrap" />
+          </Grid>
+        </DataTemplate>
+      </ListBox.ItemTemplate>
+    </ListBox>
+  </DockPanel>
+</UserControl>

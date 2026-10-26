@@ -1,0 +1,118 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:GhostShow.App.ViewModels"
+             xmlns:fx="using:GhostShow.Core.Fixtures"
+             x:Class="GhostShow.App.Views.FixtureSetupView"
+             x:DataType="vm:FixtureSetupViewModel">
+  <Grid ColumnDefinitions="280,16,*" Margin="0,12">
+
+    <!-- Fixture list -->
+    <DockPanel>
+      <StackPanel DockPanel.Dock="Top" Spacing="6" Margin="0,0,0,8">
+        <TextBlock Text="Fixtures" Classes="heading" />
+        <StackPanel Orientation="Horizontal" Spacing="6">
+          <Button Content="Add" Command="{Binding AddCommand}" ToolTip.Tip="Adds a fixture like the selected one at the next free address" />
+          <Button Content="Remove" Command="{Binding RemoveCommand}" CommandParameter="{Binding Selected}"
+                  IsEnabled="{Binding Selected, Converter={x:Static ObjectConverters.IsNotNull}}" />
+        </StackPanel>
+      </StackPanel>
+      <ListBox ItemsSource="{Binding Fixtures}" SelectedItem="{Binding Selected}">
+        <ListBox.ItemTemplate>
+          <DataTemplate x:DataType="vm:FixtureEditorViewModel">
+            <StackPanel Opacity="{Binding Enabled, Converter={x:Static vm:Converters.EnabledOpacity}}">
+              <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
+              <TextBlock Text="{Binding AddressLabel}" Opacity="0.75" />
+              <TextBlock Text="{Binding Issue}" TextWrapping="Wrap" FontSize="12"
+                         Classes.fault="{Binding HasError}" Classes.warning="{Binding !HasError}"
+                         IsVisible="{Binding Issue, Converter={x:Static ObjectConverters.IsNotNull}}" />
+            </StackPanel>
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+    </DockPanel>
+
+    <DockPanel Grid.Column="2">
+      <!-- Editor for the selected fixture -->
+      <StackPanel DockPanel.Dock="Top" Spacing="10" Margin="0,0,0,12"
+                  DataContext="{Binding Selected}" x:DataType="vm:FixtureEditorViewModel"
+                  IsVisible="{Binding $self.DataContext, Converter={x:Static ObjectConverters.IsNotNull}}">
+        <Grid ColumnDefinitions="2*,12,*,12,Auto,12,Auto,12,2*" RowDefinitions="Auto,Auto">
+          <TextBlock Text="Name" Opacity="0.7" />
+          <TextBlock Grid.Column="2" Text="Group (optional)" Opacity="0.7" />
+          <TextBlock Grid.Column="4" Text="Universe" Opacity="0.7" />
+          <TextBlock Grid.Column="6" Text="Start address" Opacity="0.7" />
+          <TextBlock Grid.Column="8" Text="Mode" Opacity="0.7" />
+          <TextBox Grid.Row="1" Text="{Binding Name}" />
+          <TextBox Grid.Row="1" Grid.Column="2" Text="{Binding Group}" PlaceholderText="e.g. Graveyard" />
+          <NumericUpDown Grid.Row="1" Grid.Column="4" Width="120" Minimum="0" Maximum="32767" Increment="1" FormatString="0" Value="{Binding Universe}" />
+          <NumericUpDown Grid.Row="1" Grid.Column="6" Width="120" Minimum="1" Maximum="512" Increment="1" FormatString="0" Value="{Binding StartAddress}" />
+          <ComboBox Grid.Row="1" Grid.Column="8" ItemsSource="{Binding ModeNames}" SelectedItem="{Binding ModeName}" HorizontalAlignment="Stretch" />
+        </Grid>
+        <WrapPanel>
+          <TextBlock Text="Profile:" Opacity="0.7" Margin="0,0,6,0" VerticalAlignment="Center" />
+          <TextBlock Text="{Binding ProfileLabel}" FontWeight="SemiBold" Margin="0,0,24,0" VerticalAlignment="Center" />
+          <CheckBox Content="Enabled (disabled fixtures stay in the show but aren't output)" IsChecked="{Binding Enabled}" />
+        </WrapPanel>
+        <TextBlock Text="{Binding Issue}" TextWrapping="Wrap" Classes.fault="{Binding HasError}" Classes.warning="{Binding !HasError}"
+                   IsVisible="{Binding Issue, Converter={x:Static ObjectConverters.IsNotNull}}" />
+      </StackPanel>
+
+      <Grid ColumnDefinitions="*,16,320">
+        <!-- Profile browser: groups, then the profiles in a group -->
+        <DockPanel DataContext="{Binding Browser}" x:DataType="vm:ProfileBrowserViewModel"
+                   IsEnabled="{Binding $parent[UserControl].((vm:FixtureSetupViewModel)DataContext).Selected, Converter={x:Static ObjectConverters.IsNotNull}}">
+          <StackPanel DockPanel.Dock="Top" Spacing="8" Margin="0,0,0,8">
+            <DockPanel>
+              <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                <ToggleButton Content="By manufacturer" IsChecked="{Binding ByManufacturer}" CornerRadius="4,0,0,4" />
+                <ToggleButton Content="By type" IsChecked="{Binding ByType}" CornerRadius="0,4,4,0" />
+              </StackPanel>
+              <TextBlock Text="Fixture profile" Classes="heading" VerticalAlignment="Center" />
+            </DockPanel>
+            <TextBox Text="{Binding Search}" PlaceholderText="Search all profiles: manufacturer, model or type" />
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Button Content="◀ Back" Command="{Binding BackCommand}" IsVisible="{Binding IsInsideGroup}" Padding="8,2" />
+              <TextBlock Text="{Binding Breadcrumb}" VerticalAlignment="Center" Opacity="0.8" />
+            </StackPanel>
+          </StackPanel>
+          <ScrollViewer>
+            <ItemsControl ItemsSource="{Binding Tiles}">
+              <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:ProfileTile">
+                  <Button Classes="tile" Classes.current="{Binding IsCurrent}"
+                          Command="{Binding $parent[ItemsControl].((vm:ProfileBrowserViewModel)DataContext).OpenCommand}"
+                          CommandParameter="{Binding}" ToolTip.Tip="{Binding Title}">
+                    <StackPanel Spacing="2">
+                      <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis" />
+                      <TextBlock Text="{Binding Detail}" FontSize="11" Opacity="0.7" TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                  </Button>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </ScrollViewer>
+        </DockPanel>
+
+        <!-- Patch problems -->
+        <DockPanel Grid.Column="2">
+          <StackPanel DockPanel.Dock="Top" Spacing="4" Margin="0,0,0,6">
+            <TextBlock Text="Patch problems" Classes="heading" />
+            <TextBlock Text="{Binding IssueSummary}" TextWrapping="Wrap" />
+            <TextBlock Text="{Binding LibrarySummary}" Opacity="0.7" FontSize="12" TextWrapping="Wrap" />
+          </StackPanel>
+          <ListBox ItemsSource="{Binding Issues}">
+            <ListBox.ItemTemplate>
+              <DataTemplate x:DataType="fx:PatchIssue">
+                <Button Classes="link" Command="{Binding $parent[ListBox].((vm:FixtureSetupViewModel)DataContext).SelectIssueCommand}"
+                        CommandParameter="{Binding}">
+                  <TextBlock Text="{Binding}" TextWrapping="Wrap" />
+                </Button>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+        </DockPanel>
+      </Grid>
+    </DockPanel>
+  </Grid>
+</UserControl>

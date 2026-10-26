@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "generic/bubble",
+  "manufacturer": "Generic",
+  "model": "Bubble machine",
+  "type": "Effect",
+  "category": "Bubble",
+  "modes": [
+    {
+      "name": "1 channel",
+      "channels": [
+        { "name": "Bubbles", "function": "Effect" }
+      ]
+    },
+    {
+      "name": "2 channel (wand motor, fan)",
+      "channels": [
+        { "name": "Wand motor", "function": "Effect" },
+        { "name": "Fan", "function": "Speed" }
+      ]
+    }
+  ]
+}

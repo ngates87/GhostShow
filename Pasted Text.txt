@@ -1,0 +1,3 @@
+/home/nagates/Downloads/GhostShow-step2/GhostShow/GhostShow.Cli
+/home/nagates/Downloads/GhostShow-step2/GhostShow/GhostShow.Core
+/home/nagates/Downloads/GhostShow-step2/GhostShow/README.md

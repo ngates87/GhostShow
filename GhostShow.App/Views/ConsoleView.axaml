@@ -1,0 +1,60 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:GhostShow.App.ViewModels"
+             x:Class="GhostShow.App.Views.ConsoleView"
+             x:DataType="vm:MainViewModel">
+  <ScrollViewer>
+    <StackPanel Spacing="16" Margin="0,12" MaxWidth="900" HorizontalAlignment="Left">
+      <StackPanel Spacing="2">
+        <TextBlock Text="Show" Classes="heading" />
+        <TextBlock Text="{Binding Title}" FontSize="16" />
+        <TextBlock Text="{Binding ShowFile}" Opacity="0.7" />
+        <TextBlock Text="{Binding Fixtures.IssueSummary}" />
+      </StackPanel>
+
+      <StackPanel Spacing="6">
+        <TextBlock Text="Warnings" Classes="heading" />
+        <TextBlock Text="None." Opacity="0.7" IsVisible="{Binding !Warnings.Count}" />
+        <ItemsControl ItemsSource="{Binding Warnings}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="x:String">
+              <TextBlock Text="{Binding}" Foreground="OrangeRed" TextWrapping="Wrap" Margin="0,2" />
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </StackPanel>
+
+      <StackPanel Spacing="6">
+        <TextBlock Text="Outputs" Classes="heading" />
+        <ItemsControl ItemsSource="{Binding Outputs.Universes}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:UniverseRowViewModel">
+              <Grid ColumnDefinitions="220,*" Margin="0,3">
+                <StackPanel>
+                  <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
+                  <TextBlock Opacity="0.75"><Run Text="Universe " /><Run Text="{Binding Number}" /></TextBlock>
+                </StackPanel>
+                <StackPanel Grid.Column="1">
+                  <TextBlock Text="{Binding SelectedDevice}" />
+                  <TextBlock Text="{Binding Status}" Opacity="0.75" Classes.fault="{Binding IsFaulted}" TextWrapping="Wrap" />
+                </StackPanel>
+              </Grid>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </StackPanel>
+
+      <StackPanel Spacing="6">
+        <TextBlock Text="Go to" Classes="heading" />
+        <WrapPanel>
+          <Button Content="Outputs &amp; hardware" Command="{Binding GoToCommand}" CommandParameter="{x:Static vm:Page.Outputs}" Margin="0,0,8,8" />
+          <Button Content="Fixture setup" Command="{Binding GoToCommand}" CommandParameter="{x:Static vm:Page.Fixtures}" Margin="0,0,8,8" />
+          <Button Content="Fixture control" Command="{Binding GoToCommand}" CommandParameter="{x:Static vm:Page.Control}" Margin="0,0,8,8" />
+          <Button Content="Raw channels" Command="{Binding GoToCommand}" CommandParameter="{x:Static vm:Page.Channels}" Margin="0,0,8,8" />
+          <Button Content="DMX monitor" Command="{Binding GoToCommand}" CommandParameter="{x:Static vm:Page.Monitor}" Margin="0,0,8,8" />
+          <Button Content="Diagnostics" Command="{Binding GoToCommand}" CommandParameter="{x:Static vm:Page.Diagnostics}" Margin="0,0,8,8" />
+        </WrapPanel>
+      </StackPanel>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

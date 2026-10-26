@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "generic/snow",
+  "manufacturer": "Generic",
+  "model": "Snow machine",
+  "type": "Effect",
+  "category": "Snow",
+  "modes": [
+    {
+      "name": "1 channel",
+      "channels": [
+        { "name": "Snow output", "function": "Effect" }
+      ]
+    },
+    {
+      "name": "2 channel (output, fan)",
+      "channels": [
+        { "name": "Snow output", "function": "Effect" },
+        { "name": "Fan", "function": "Speed" }
+      ]
+    }
+  ]
+}

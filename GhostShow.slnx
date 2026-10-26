@@ -1,0 +1,8 @@
+<Solution>
+  <Project Path="GhostShow.App/GhostShow.App.csproj" />
+  <Project Path="GhostShow.Benchmarks/GhostShow.Benchmarks.csproj" />
+  <Project Path="GhostShow.Cli/GhostShow.Cli.csproj" />
+  <Project Path="GhostShow.Core/GhostShow.Core.csproj" />
+  <Project Path="GhostShow.Dmx/GhostShow.Dmx.csproj" />
+  <Project Path="GhostShow.Tests/GhostShow.Tests.csproj" />
+</Solution>

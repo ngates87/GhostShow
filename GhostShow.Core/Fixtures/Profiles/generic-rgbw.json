@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "id": "generic/rgbw",
+  "manufacturer": "Generic",
+  "model": "RGBW",
+  "type": "Color Changer",
+  "category": "Color",
+  "modes": [
+    {
+      "name": "4 channel",
+      "channels": [
+        { "name": "Red", "function": "Red" },
+        { "name": "Green", "function": "Green" },
+        { "name": "Blue", "function": "Blue" },
+        { "name": "White", "function": "White" }
+      ]
+    },
+    {
+      "name": "5 channel (dimmer first)",
+      "channels": [
+        { "name": "Dimmer", "function": "Intensity" },
+        { "name": "Red", "function": "Red" },
+        { "name": "Green", "function": "Green" },
+        { "name": "Blue", "function": "Blue" },
+        { "name": "White", "function": "White" }
+      ]
+    }
+  ]
+}

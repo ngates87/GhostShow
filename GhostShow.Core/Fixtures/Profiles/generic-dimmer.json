@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "id": "generic/dimmer",
+  "manufacturer": "Generic",
+  "model": "Dimmer",
+  "type": "Dimmer",
+  "category": "Dimmer",
+  "modes": [
+    {
+      "name": "1 channel",
+      "channels": [
+        { "name": "Intensity", "function": "Intensity" }
+      ]
+    }
+  ]
+}

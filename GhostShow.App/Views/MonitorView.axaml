@@ -1,0 +1,35 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:GhostShow.App.ViewModels"
+             x:Class="GhostShow.App.Views.MonitorView"
+             x:DataType="vm:MainViewModel">
+  <DockPanel Margin="0,12">
+    <StackPanel DockPanel.Dock="Top" Spacing="6" Margin="0,0,0,8">
+      <StackPanel Orientation="Horizontal" Spacing="8">
+        <TextBlock Text="DMX monitor" Classes="heading" VerticalAlignment="Center" />
+        <ComboBox ItemsSource="{Binding UniverseNumbers}" SelectedItem="{Binding ActiveUniverse}" MinWidth="80" Margin="12,0,0,0" />
+      </StackPanel>
+      <TextBlock Text="{Binding Monitor.Source}" Opacity="0.75" />
+    </StackPanel>
+    <ScrollViewer>
+      <ItemsControl ItemsSource="{Binding Monitor.Cells}">
+        <ItemsControl.ItemsPanel>
+          <ItemsPanelTemplate><UniformGrid Columns="32" /></ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:MonitorCellViewModel">
+            <Border Classes="cell" Classes.changed="{Binding RecentlyChanged}" Height="38" Margin="1">
+              <Panel>
+                <Border Background="{DynamicResource SystemControlHighlightAccentBrush}" Opacity="{Binding Level}" />
+                <StackPanel VerticalAlignment="Center">
+                  <TextBlock Text="{Binding Address}" FontSize="9" Opacity="0.6" HorizontalAlignment="Center" />
+                  <TextBlock Text="{Binding Value}" FontSize="12" FontWeight="SemiBold" HorizontalAlignment="Center" />
+                </StackPanel>
+              </Panel>
+            </Border>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </ScrollViewer>
+  </DockPanel>
+</UserControl>

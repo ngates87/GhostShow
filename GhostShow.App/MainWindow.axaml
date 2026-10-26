@@ -1,0 +1,46 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:GhostShow.App.ViewModels"
+        xmlns:views="using:GhostShow.App.Views"
+        x:Class="GhostShow.App.MainWindow"
+        x:DataType="vm:MainViewModel"
+        Title="{Binding Title, FallbackValue=GhostShow}"
+        Width="1200" Height="780" MinWidth="800" MinHeight="500">
+
+  <DockPanel>
+    <!-- Toolbar: file commands and the always-available blackout -->
+    <Border DockPanel.Dock="Top" Padding="8" BorderThickness="0,0,0,1"
+            BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}">
+      <DockPanel>
+        <Button DockPanel.Dock="Right" Content="Blackout" Command="{Binding BlackoutCommand}" HotKey="Ctrl+B"
+                ToolTip.Tip="Set every channel of every universe to 0 (Ctrl+B)"
+                Background="DarkRed" Foreground="White" FontWeight="SemiBold" Padding="16,6" />
+        <StackPanel Orientation="Horizontal" Spacing="6">
+          <Button Content="New" Command="{Binding NewCommand}" />
+          <Button Content="Open…" Command="{Binding OpenCommand}" HotKey="Ctrl+O" />
+          <Button Content="Save" Command="{Binding SaveCommand}" HotKey="Ctrl+S" />
+          <Button Content="Save As…" Command="{Binding SaveAsCommand}" />
+        </StackPanel>
+      </DockPanel>
+    </Border>
+
+    <!-- Status bar -->
+    <Border DockPanel.Dock="Bottom" Padding="8,4" BorderThickness="0,1,0,0"
+            BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}">
+      <DockPanel>
+        <TextBlock DockPanel.Dock="Right" Text="{Binding LibraryStatus}" Opacity="0.7" />
+        <TextBlock Text="{Binding StatusMessage}" TextTrimming="CharacterEllipsis" />
+      </DockPanel>
+    </Border>
+
+    <TabControl SelectedIndex="{Binding SelectedPage}" Margin="8,0,8,0">
+      <TabItem Header="Console"><views:ConsoleView /></TabItem>
+      <TabItem Header="Outputs"><views:OutputsView DataContext="{Binding Outputs}" /></TabItem>
+      <TabItem Header="Fixtures"><views:FixtureSetupView DataContext="{Binding Fixtures}" /></TabItem>
+      <TabItem Header="Control"><views:FixtureControlView DataContext="{Binding Control}" /></TabItem>
+      <TabItem Header="Channels"><views:ChannelsView /></TabItem>
+      <TabItem Header="Monitor"><views:MonitorView /></TabItem>
+      <TabItem Header="Diagnostics"><views:DiagnosticsView DataContext="{Binding Diagnostics}" /></TabItem>
+    </TabControl>
+  </DockPanel>
+</Window>

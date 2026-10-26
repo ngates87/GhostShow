@@ -1,0 +1,61 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:GhostShow.App.ViewModels"
+             x:Class="GhostShow.App.Views.OutputsView"
+             x:DataType="vm:OutputsViewModel">
+  <Grid ColumnDefinitions="1.5*,16,*" Margin="0,12">
+    <DockPanel>
+      <StackPanel DockPanel.Dock="Top" Spacing="6" Margin="0,0,0,8">
+        <TextBlock Text="Universes" Classes="heading" />
+        <TextBlock TextWrapping="Wrap" Opacity="0.7"
+                   Text="Universe numbers and names belong to the show. The device each one goes out on belongs to this computer, so a show opened elsewhere keeps its patch but uses that machine's hardware." />
+        <Button Content="Add universe" Command="{Binding AddUniverseCommand}" />
+      </StackPanel>
+      <ScrollViewer>
+        <ItemsControl ItemsSource="{Binding Universes}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:UniverseRowViewModel">
+              <Border Classes="card">
+                <StackPanel Spacing="6">
+                  <Grid ColumnDefinitions="Auto,8,*,8,Auto" RowDefinitions="Auto,Auto">
+                    <TextBlock Text="Number" Opacity="0.7" />
+                    <TextBlock Grid.Column="2" Text="Name" Opacity="0.7" />
+                    <NumericUpDown Grid.Row="1" Width="130" Minimum="0" Maximum="32767" Increment="1" FormatString="0"
+                                   Value="{Binding Number}" />
+                    <TextBox Grid.Row="1" Grid.Column="2" Text="{Binding Name}" />
+                    <Button Grid.Row="1" Grid.Column="4" Content="Remove"
+                            Command="{Binding $parent[ItemsControl].((vm:OutputsViewModel)DataContext).RemoveUniverseCommand}"
+                            CommandParameter="{Binding}" />
+                  </Grid>
+                  <TextBlock Text="Output device (this computer)" Opacity="0.7" />
+                  <ComboBox ItemsSource="{Binding Choices}" SelectedItem="{Binding SelectedDevice}" HorizontalAlignment="Stretch" />
+                  <TextBlock Text="{Binding Status}" Classes.fault="{Binding IsFaulted}" TextWrapping="Wrap" />
+                </StackPanel>
+              </Border>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </ScrollViewer>
+    </DockPanel>
+
+    <DockPanel Grid.Column="2">
+      <StackPanel DockPanel.Dock="Top" Spacing="6" Margin="0,0,0,8">
+        <TextBlock Text="USB DMX adapters" Classes="heading" />
+        <TextBlock TextWrapping="Wrap" Opacity="0.7"
+                   Text="Enttec DMX USB Pro and compatibles, and Open DMX adapters (Enttec Open DMX USB, most cheap FTDI-based cables). Scanning briefly sends a few bytes to each free USB serial port: don't scan during a show." />
+        <StackPanel Orientation="Horizontal" Spacing="8">
+          <Button Content="Scan for adapters" Command="{Binding DetectCommand}" />
+          <ProgressBar IsIndeterminate="True" Width="80" VerticalAlignment="Center" IsVisible="{Binding DetectCommand.IsRunning}" />
+        </StackPanel>
+        <TextBlock Text="{Binding DetectStatus}" TextWrapping="Wrap" />
+      </StackPanel>
+      <ListBox ItemsSource="{Binding Adapters}">
+        <ListBox.ItemTemplate>
+          <DataTemplate x:DataType="x:Object">
+            <TextBlock Text="{Binding}" TextWrapping="Wrap" />
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+    </DockPanel>
+  </Grid>
+</UserControl>

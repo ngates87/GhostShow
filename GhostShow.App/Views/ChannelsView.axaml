@@ -1,0 +1,33 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:GhostShow.App.ViewModels"
+             xmlns:views="using:GhostShow.App.Views"
+             x:Class="GhostShow.App.Views.ChannelsView"
+             x:DataType="vm:MainViewModel">
+  <DockPanel Margin="0,12">
+    <StackPanel DockPanel.Dock="Top" Spacing="8" Margin="0,0,0,8">
+      <TextBlock Text="Raw channels" Classes="heading" />
+      <TextBlock Opacity="0.7" TextWrapping="Wrap"
+                 Text="Sets DMX channels directly, whatever is patched there. Fixture controls write the same channels; the most recent change wins." />
+      <WrapPanel>
+        <TextBlock Text="Universe" VerticalAlignment="Center" Margin="0,0,8,0" />
+        <ComboBox ItemsSource="{Binding UniverseNumbers}" SelectedItem="{Binding ActiveUniverse}" MinWidth="80" Margin="0,0,16,4" />
+        <TextBlock Text="First channel" VerticalAlignment="Center" Margin="0,0,8,0" />
+        <NumericUpDown Width="130" Minimum="1" Maximum="{Binding Channels.MaxBankStart}" Increment="1" FormatString="0"
+                       Value="{Binding Channels.BankStart}" Margin="0,0,8,4" />
+        <Button Content="◀ Page" Command="{Binding Channels.PreviousPageCommand}" Margin="0,0,6,4" HotKey="PageUp" />
+        <Button Content="Page ▶" Command="{Binding Channels.NextPageCommand}" Margin="0,0,16,4" HotKey="PageDown" />
+        <TextBlock Text="{Binding Channels.RangeLabel}" VerticalAlignment="Center" Opacity="0.75" Margin="0,0,16,4" />
+        <Button Content="Zero page" Command="{Binding Channels.ZeroPageCommand}" Margin="0,0,6,4" />
+        <Button Content="Clear universe" Command="{Binding Channels.ClearUniverseCommand}" Margin="0,0,0,4" />
+      </WrapPanel>
+    </StackPanel>
+    <!-- Fills the remaining space; the code-behind sizes the page to however many faders fit here. -->
+    <Panel x:Name="FaderArea" ClipToBounds="True">
+      <ItemsControl x:Name="FaderItems" ItemsSource="{Binding Channels.Faders}">
+        <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate><DataTemplate x:DataType="vm:FaderViewModel"><views:FaderView /></DataTemplate></ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </Panel>
+  </DockPanel>
+</UserControl>
