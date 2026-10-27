@@ -1,4 +1,3 @@
-using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using GhostShow.Core.Fixtures;
 
@@ -15,20 +14,32 @@ public sealed partial class FixtureEditorViewModel : ObservableObject
         Model = model;
         _findProfile = findProfile;
         _changed = changed;
-        RefreshModeNames();
+        ModeChoice = CreateModeChoice();
     }
 
     public FixtureInstance Model { get; }
 
     public FixtureProfile? Profile => _findProfile(Model.ProfileId);
 
-    public ObservableCollection<string> ModeNames { get; } = new();
+    FixtureMode? Mode => Profile?.FindMode(Model.ModeName);
+
+    /// <summary>The profile's modes as buttons; null if the profile is missing. Replaced whenever the profile changes.</summary>
+    [ObservableProperty]
+    public partial ModeChoiceViewModel? ModeChoice { get; private set; }
 
     public string ProfileLabel => Profile?.ToString() ?? $"Missing profile '{Model.ProfileId}'";
 
-    public string AddressLabel => Profile?.FindMode(Model.ModeName) is { } mode
-        ? $"U{Model.Universe} · {Model.StartAddress}-{Model.StartAddress + mode.Channels.Count - 1}"
-        : $"U{Model.Universe} · {Model.StartAddress}";
+    /// <summary>e.g. "Color / RGB · 10 ch · U0 · 1-10", for the fixture list.</summary>
+    public string Summary
+    {
+        get
+        {
+            string category = Profile?.EffectiveCategory.Label() ?? "Unknown profile";
+            return Mode is { } mode
+                ? $"{category} · {mode.Channels.Count} ch · U{Model.Universe} · {Model.StartAddress}-{Model.StartAddress + mode.Channels.Count - 1}"
+                : $"{category} · U{Model.Universe} · {Model.StartAddress}";
+        }
+    }
 
     /// <summary>Error or warning text for this fixture from the last validation; null if it's fine.</summary>
     [ObservableProperty]
@@ -67,46 +78,27 @@ public sealed partial class FixtureEditorViewModel : ObservableObject
         set => Set(Model.StartAddress, (int)value, v => Model.StartAddress = v);
     }
 
-    public string? ModeName
-    {
-        get => Model.ModeName;
-        set
-        {
-            if (value is null) return;   // the ComboBox clears its selection while its items are replaced
-            Set(Model.ModeName, value, v => Model.ModeName = v);
-        }
-    }
-
-    /// <summary>Switching profile picks its first mode, since mode names differ between profiles.</summary>
-    public void SetProfile(FixtureProfile profile)
+    public void SetProfile(FixtureProfile profile, FixtureMode mode)
     {
         Model.ProfileId = profile.Id;
-        Model.ModeName = profile.Modes[0].Name;
+        Model.ModeName = mode.Name;
+        ModeChoice = CreateModeChoice();
         OnPropertyChanged(nameof(Profile));
         OnPropertyChanged(nameof(ProfileLabel));
-        RefreshModeNames();
-        OnPropertyChanged(nameof(AddressLabel));
+        OnPropertyChanged(nameof(Summary));
         _changed();
     }
 
-    /// <summary>
-    /// Adds the new mode names before removing the old ones. Clearing first would make the mode ComboBox write an
-    /// empty selection back, re-read the new mode while the list is still empty, fail to select it, and then ignore
-    /// later notifications for a value it believes is current: the box would stay blank.
-    /// </summary>
-    void RefreshModeNames()
-    {
-        var names = Profile?.Modes.Select(m => m.Name).ToList() ?? [];
-        for (int i = 0; i < names.Count; i++) ModeNames.Insert(i, names[i]);
-        while (ModeNames.Count > names.Count) ModeNames.RemoveAt(ModeNames.Count - 1);
-    }
+    ModeChoiceViewModel? CreateModeChoice() => Profile is { } profile
+        ? new ModeChoiceViewModel(profile, Model.ModeName, mode => Set(Model.ModeName, mode.Name, v => Model.ModeName = v, nameof(Model.ModeName)))
+        : null;
 
     void Set<T>(T current, T value, Action<T> assign, [System.Runtime.CompilerServices.CallerMemberName] string? property = null)
     {
         if (EqualityComparer<T>.Default.Equals(current, value)) return;
         assign(value);
         OnPropertyChanged(property);
-        OnPropertyChanged(nameof(AddressLabel));
+        OnPropertyChanged(nameof(Summary));
         _changed();
     }
 }

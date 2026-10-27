@@ -12,22 +12,30 @@ Loaded at startup in this order; a later source replaces an earlier profile with
    4-channel dimmer pack, incandescent/halogen lamp, RGB, RGBW, RGBWA+UV, UV blacklight, strobe, fog machine, hazer,
    snow machine, bubble machine, and 4- and 8-channel relay packs for props. These cover haunt staples that the QLC+
    library barely has (it has 1 snow machine, no bubble machines and no relay packs).
-2. **QLC+ fixture library**, if QLC+ is installed. QLC+ is free and open source (Apache 2.0) and ships about 1,400
+2. **QLC+ fixture library**, if QLC+ happens to be installed (optional). QLC+ is free and open source (Apache 2.0) and ships about 1,400
    definitions. Searched folders:
    - Linux: `/usr/share/qlcplus/fixtures`, `~/.qlcplus/fixtures`
    - Windows: `C:\QLC+\Fixtures`, `%USERPROFILE%\QLC+\Fixtures`
    - macOS: `/Applications/QLC+.app/Contents/Resources/Fixtures`, `~/Library/Application Support/QLC+/Fixtures`
-3. **Extra folders** listed in machine settings (`profileDirectories`).
-4. **Your own folder**: `~/.config/GhostShow/profiles` (Linux), `%APPDATA%\GhostShow\profiles` (Windows),
+3. **Open Fixture Library**, once downloaded: **Fixtures → Fixture library → Download**, or
+   `ghostshow library download`. OFL (open-fixture-library.org) is free, MIT licensed and community maintained; its
+   whole library downloads as one ~3 MB ZIP in QLC+'s `.qxf` format (`download.qlcplus_4.12.2`), which the QLC+
+   importer reads. That's about 650 fixtures, roughly 550 of which aren't in QLC+'s own library. It's stored in
+   `<config>/libraries/open-fixture-library`; updating replaces it only once the new download has unpacked
+   successfully. Nothing is downloaded unless you ask. Listed after QLC+, so it wins where both define a fixture.
+4. **Extra folders** listed in machine settings (`profileDirectories`).
+5. **Your own folder**: `~/.config/GhostShow/profiles` (Linux), `%APPDATA%\GhostShow\profiles` (Windows),
    `~/Library/Application Support/GhostShow/profiles` (macOS).
 
 Every folder may contain GhostShow `.json` profiles and QLC+ `.qxf` files, in subfolders too. A file that can't be
 read is skipped and listed under Diagnostics; it never stops the rest from loading.
 
+When two sources have the same fixture under slightly different names ("SIXPAR 200 IP" and "SIXPAR 200IP"), the
+browser lists it once, using the later source. Both IDs still resolve, so shows using either keep working.
+Manufacturer spellings that differ only in case or punctuation ("Pro-Lights" and "Prolights") share one tile.
+
 ### Other open formats
 
-- **Open Fixture Library** (MIT licensed, open-fixture-library.org) can export any of its fixtures as a QLC+ `.qxf`
-  file. Drop the export into your profile folder.
 - **GDTF** (DIN SPEC 15800) is the formal open standard. It is much richer (3D geometry, wheels, physical data) and
   is planned for a later phase.
 

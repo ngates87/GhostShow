@@ -5,8 +5,9 @@ namespace GhostShow.Core.Storage;
 
 /// <summary>
 /// Builds the fixture profile library from, in order (later sources replace earlier ones with the same ID):
-/// GhostShow's built-in profiles, QLC+'s fixture folders, folders listed in machine settings, and the user's own
-/// profile folder. Reading ~1,400 QLC+ files takes about a second, so call it off the UI thread.
+/// GhostShow's built-in profiles, QLC+'s fixture folders (if QLC+ is installed), the downloaded Open Fixture Library
+/// (if downloaded; it's newer than an installed QLC+, so it wins for fixtures both have), folders listed in machine
+/// settings, and the user's own profile folder. Reading ~1,400 QLC+ files takes about a second, so call it off the UI thread.
 /// A broken file is skipped and listed in <see cref="FixtureProfileLibrary.LoadErrors"/>; it never stops the load.
 /// </summary>
 public static class FixtureProfileLoader
@@ -18,7 +19,13 @@ public static class FixtureProfileLoader
         var profiles = new List<FixtureProfile>(LoadBuiltIn());
         var errors = new List<ProfileLoadError>();
 
-        IEnumerable<string> directories = [.. AppPaths.QlcPlusFixtureDirectories, .. settings.ProfileDirectories, paths.UserProfilesDirectory];
+        IEnumerable<string> directories =
+        [
+            .. AppPaths.QlcPlusFixtureDirectories,
+            OnlineFixtureLibrary.FixturesDirectory(paths),
+            .. settings.ProfileDirectories,
+            paths.UserProfilesDirectory,
+        ];
         foreach (var directory in directories.Where(Directory.Exists))
             LoadDirectory(directory, profiles, errors);
 

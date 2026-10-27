@@ -14,6 +14,7 @@ return args.Length == 0 ? Usage() : args[0] switch
     "ports" => Ports(),
     "detect" => await Detect(),
     "soak" => await Soak(args),
+    "library" => await Library(args),
     _ => Usage(),
 };
 
@@ -25,6 +26,7 @@ static int Usage()
         ghostshow detect                         find USB DMX adapters (Pro and Open DMX) and their serial numbers
         ghostshow run    <show.json> <scene> [output] [--silent]
                                                  play a timeline scene (prototype; frozen for Phase 1)
+        ghostshow library [download]             show the fixture library; download/update the Open Fixture Library
         ghostshow soak   [--minutes N] [--opendmx PORT | --usb PORT] [--dark] [--report FILE]
                                                  sustained-output test (default 30 min on the simulator);
                                                  --dark keeps fixtures at 0 so it's safe on a live rig
@@ -177,6 +179,39 @@ static async Task<int> Soak(string[] args)
     Console.WriteLine();
     Console.WriteLine(report);
     Console.WriteLine($"Report written to {reportPath}.");
+    return 0;
+}
+
+static async Task<int> Library(string[] args)
+{
+    var paths = AppPaths.Default;
+    if (args.Length >= 2 && args[1] == "download")
+    {
+        Console.WriteLine($"Downloading the {OnlineFixtureLibrary.SourceName} from {OnlineFixtureLibrary.DownloadUrl}…");
+        using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(2) };
+        http.DefaultRequestHeaders.UserAgent.ParseAdd("GhostShow");
+        try
+        {
+            var info = await OnlineFixtureLibrary.DownloadAsync(http, paths);
+            Console.WriteLine($"Installed {info.FixtureCount} fixtures in {OnlineFixtureLibrary.Directory(paths)}.");
+        }
+        catch (Exception ex) when (ex is HttpRequestException or InvalidDataException or IOException or TaskCanceledException)
+        {
+            Console.Error.WriteLine($"Download failed: {ex.Message} The previous library (if any) is unchanged.");
+            return 2;
+        }
+    }
+
+    var settings = (await MachineSettingsStore.LoadAsync(paths)).Settings;
+    var library = FixtureProfileLoader.Load(paths, settings);
+    var downloaded = OnlineFixtureLibrary.Installed(paths);
+    Console.WriteLine($"{library.Profiles.Count} fixture profiles; {library.LoadErrors.Count} files couldn't be read.");
+    Console.WriteLine(downloaded is null
+        ? $"{OnlineFixtureLibrary.SourceName}: not downloaded (ghostshow library download)."
+        : $"{downloaded.Source}: {downloaded.FixtureCount} fixtures, downloaded {downloaded.DownloadedAt:yyyy-MM-dd}.");
+    Console.WriteLine($"QLC+ library: {(AppPaths.QlcPlusFixtureDirectories.Any(Directory.Exists) ? "found" : "not installed")}.");
+    foreach (var group in library.Profiles.GroupBy(p => p.EffectiveCategory).OrderBy(g => g.Key))
+        Console.WriteLine($"  {group.Key.Label(),-24} {group.Count(),5}");
     return 0;
 }
 

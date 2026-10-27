@@ -26,7 +26,7 @@ Benchmarks: `dotnet run -c Release --project GhostShow.Benchmarks -- --filter '*
 |---|---|
 | Console | Show status, outputs and their health, warnings, blackout |
 | Outputs | The show's universes, and which device (simulator or USB adapter) outputs each on this computer |
-| Fixtures | Add and patch fixtures. Pick profiles from a grid by manufacturer or by fixture type, or search; address conflicts and other problems show as you type |
+| Fixtures | A heat map of the universe above the fixture list, and an address map for re-addressing (drag a fixture). **Add fixtures…** is a two-step wizard: choose the type (grid by manufacturer or type, or search), then click green openings on the map to add one per click, or quick-add several in a row, and press Done |
 | Control | Faders for a fixture's logical controls (intensity, colours) and every channel |
 | Channels | Raw faders, as many as fit the window, paged through all 512 channels |
 | Monitor | All 512 channels as actually sent to the device; changes highlighted |
@@ -40,8 +40,8 @@ Phase 1 targets **Open DMX** adapters: Enttec Open DMX USB and most cheap FTDI-b
 compatibles and Art-Net are implemented but untested on real hardware. Setup, limitations and troubleshooting:
 [docs/hardware.md](docs/hardware.md). On Linux, you need to be in the `dialout` group.
 
-Fixture profiles: built-in generics, plus the QLC+ fixture library (~1,400 fixtures) if QLC+ is installed, plus
-your own. See [docs/fixture-profiles.md](docs/fixture-profiles.md).
+Fixture profiles: built-in generics, the Open Fixture Library (~650 fixtures; download it from the Fixtures screen
+or with `ghostshow library download`), the QLC+ library (~1,400) if QLC+ happens to be installed, and your own. See [docs/fixture-profiles.md](docs/fixture-profiles.md).
 
 ## Documentation
 

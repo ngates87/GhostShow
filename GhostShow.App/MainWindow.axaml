@@ -28,7 +28,7 @@
     <Border DockPanel.Dock="Bottom" Padding="8,4" BorderThickness="0,1,0,0"
             BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}">
       <DockPanel>
-        <TextBlock DockPanel.Dock="Right" Text="{Binding LibraryStatus}" Opacity="0.7" />
+        <TextBlock DockPanel.Dock="Right" Text="{Binding Library.Summary}" Opacity="0.7" />
         <TextBlock Text="{Binding StatusMessage}" TextTrimming="CharacterEllipsis" />
       </DockPanel>
     </Border>

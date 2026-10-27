@@ -17,8 +17,16 @@ public sealed class FixtureProfileLibrary
 
     public FixtureProfileLibrary(IEnumerable<FixtureProfile> profiles, IEnumerable<ProfileLoadError>? loadErrors = null)
     {
-        foreach (var profile in profiles) _byId[profile.Id] = profile;
-        Profiles = _byId.Values
+        // The same fixture often comes from two sources under slightly different names ("SIXPAR 200 IP" and
+        // "SIXPAR 200IP"). Every ID stays findable, so shows using either keep working, but only the later source's
+        // copy is listed for browsing.
+        var listed = new Dictionary<string, FixtureProfile>();
+        foreach (var profile in profiles)
+        {
+            _byId[profile.Id] = profile;
+            listed[SameFixtureKey(profile)] = profile;
+        }
+        Profiles = listed.Values
             .OrderBy(p => p.Manufacturer, StringComparer.OrdinalIgnoreCase)
             .ThenBy(p => p.Model, StringComparer.OrdinalIgnoreCase)
             .ToArray();
@@ -27,10 +35,19 @@ public sealed class FixtureProfileLibrary
 
     public static FixtureProfileLibrary Empty { get; } = new([]);
 
-    /// <summary>Sorted by manufacturer, then model.</summary>
+    /// <summary>Sorted by manufacturer, then model; one entry per fixture even if several sources define it.</summary>
     public IReadOnlyList<FixtureProfile> Profiles { get; }
 
     public IReadOnlyList<ProfileLoadError> LoadErrors { get; }
 
     public FixtureProfile? Find(string id) => _byId.GetValueOrDefault(id);
+
+    /// <summary>
+    /// A name with case, spaces and punctuation removed, so "Pro-Lights" and "Prolights", or "KAM" and "Kam", compare
+    /// equal. Used to merge manufacturer spellings and spot the same fixture from different sources.
+    /// </summary>
+    public static string NormalizeName(string name) =>
+        string.Concat(name.Where(char.IsLetterOrDigit)).ToLowerInvariant();
+
+    static string SameFixtureKey(FixtureProfile profile) => $"{NormalizeName(profile.Manufacturer)}/{NormalizeName(profile.Model)}";
 }

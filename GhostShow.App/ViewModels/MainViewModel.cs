@@ -45,7 +45,8 @@ public sealed partial class MainViewModel : ObservableObject
         _logger = logger;
 
         Outputs = new OutputsViewModel(session, outputs, settings, SaveSettingsAsync, MarkDirty);
-        Fixtures = new FixtureSetupViewModel(session, MarkDirty);
+        Library = new ProfileLibraryViewModel(session, paths, settings, logger);
+        Fixtures = new FixtureSetupViewModel(session, Library, MarkDirty);
         Control = new FixtureControlViewModel(session, ReportError);
         Channels = new ChannelsViewModel(session.Engine, ReportError);
         Monitor = new MonitorViewModel(session.Engine, outputs.Find);
@@ -54,6 +55,7 @@ public sealed partial class MainViewModel : ObservableObject
         _tick = new DispatcherTimer(TickInterval, DispatcherPriority.Background, (_, _) => Tick());
     }
 
+    public ProfileLibraryViewModel Library { get; }
     public OutputsViewModel Outputs { get; }
     public FixtureSetupViewModel Fixtures { get; }
     public FixtureControlViewModel Control { get; }
@@ -77,8 +79,6 @@ public sealed partial class MainViewModel : ObservableObject
 
     public ObservableCollection<int> UniverseNumbers { get; } = new();
 
-    [ObservableProperty]
-    public partial string LibraryStatus { get; set; } = "Loading fixture profiles…";
 
     /// <summary>The latest command error or file problem, shown in the status bar.</summary>
     [ObservableProperty]
@@ -104,7 +104,7 @@ public sealed partial class MainViewModel : ObservableObject
         OnApplied();
         await Outputs.ApplyOutputsAsync();
         _tick.Start();
-        await LoadProfileLibraryAsync();
+        await Library.LoadAsync();
     }
 
     /// <summary>Stops output (each universe sends its blackout first) within the outputs' stop timeout.</summary>
@@ -198,17 +198,6 @@ public sealed partial class MainViewModel : ObservableObject
         {
             ReportError($"Couldn't save machine settings: {ex.Message}");
         }
-    }
-
-    async Task LoadProfileLibraryAsync()
-    {
-        var library = await Task.Run(() => FixtureProfileLoader.Load(_paths, _settings));
-        _session.UseProfiles(library);
-        Fixtures.Reload();
-        LibraryStatus = $"{library.Profiles.Count} fixture profiles" +
-                        (library.LoadErrors.Count > 0 ? $"; {library.LoadErrors.Count} files couldn't be read" : "");
-        foreach (var error in library.LoadErrors.Take(20)) _logger.LogWarning("Fixture profile {Error}", error);
-        _logger.LogInformation("Loaded {Count} fixture profiles.", library.Profiles.Count);
     }
 
     async Task AfterShowReplacedAsync()

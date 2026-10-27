@@ -69,6 +69,18 @@ public class BuiltInProfileTests
     }
 
     [Fact]
+    public void Same_fixture_from_two_sources_is_listed_once_but_both_ids_still_resolve()
+    {
+        var installed = new FixtureProfile { Id = "qlcplus/Elation/SIXPAR 200 IP", Manufacturer = "Elation", Model = "SIXPAR 200 IP", Modes = TestProfiles.Rgbw.Modes };
+        var downloaded = new FixtureProfile { Id = "qlcplus/Elation/SIXPAR 200IP", Manufacturer = "Elation", Model = "SIXPAR 200IP", Modes = TestProfiles.Rgbw.Modes };
+
+        var library = new FixtureProfileLibrary([installed, downloaded]);
+
+        Assert.Same(downloaded, Assert.Single(library.Profiles));
+        Assert.Same(installed, library.Find(installed.Id));
+    }
+
+    [Fact]
     public void Later_sources_replace_profiles_with_the_same_id()
     {
         var replacement = new FixtureProfile { Id = "TEST/RGBW", Model = "Mine", Modes = TestProfiles.Rgbw.Modes };

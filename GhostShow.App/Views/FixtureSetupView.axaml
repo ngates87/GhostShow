@@ -2,26 +2,45 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:GhostShow.App.ViewModels"
              xmlns:fx="using:GhostShow.Core.Fixtures"
+             xmlns:controls="using:GhostShow.App.Controls"
              x:Class="GhostShow.App.Views.FixtureSetupView"
              x:DataType="vm:FixtureSetupViewModel">
-  <Grid ColumnDefinitions="280,16,*" Margin="0,12">
+  <Grid ColumnDefinitions="290,16,*,16,300" Margin="0,12">
 
-    <!-- Fixture list -->
+    <!-- Left: heat map of the universe, then the fixture list -->
     <DockPanel>
+      <StackPanel DockPanel.Dock="Top" Spacing="6" Margin="0,0,0,12" DataContext="{Binding Map}" x:DataType="vm:PatchMapViewModel">
+        <DockPanel>
+          <ComboBox DockPanel.Dock="Right" ItemsSource="{Binding Universes}" SelectedItem="{Binding Universe}" MinWidth="70"
+                    ToolTip.Tip="Universe" />
+          <TextBlock Text="Patch overview" Classes="heading" VerticalAlignment="Center" />
+        </DockPanel>
+        <Border CornerRadius="4" ClipToBounds="True">
+          <controls:PatchMap x:Name="HeatMap" Compact="True" Blocks="{Binding Blocks}" SelectedId="{Binding SelectedId}" />
+        </Border>
+        <TextBlock Text="{Binding UsageShort}" FontSize="12" Opacity="0.8" TextWrapping="Wrap" />
+      </StackPanel>
+
       <StackPanel DockPanel.Dock="Top" Spacing="6" Margin="0,0,0,8">
         <TextBlock Text="Fixtures" Classes="heading" />
-        <StackPanel Orientation="Horizontal" Spacing="6">
-          <Button Content="Add" Command="{Binding AddCommand}" ToolTip.Tip="Adds a fixture like the selected one at the next free address" />
+        <Button Content="＋ Add fixtures…" Command="{Binding StartAddCommand}" Classes="accent" HorizontalAlignment="Stretch"
+                HorizontalContentAlignment="Center" IsEnabled="{Binding IsOverview}" />
+        <StackPanel Orientation="Horizontal" Spacing="6" IsEnabled="{Binding IsOverview}">
+          <Button Content="Duplicate" Command="{Binding DuplicateCommand}" ToolTip.Tip="A copy of the selected fixture at the first gap it fits"
+                  IsEnabled="{Binding Selected, Converter={x:Static ObjectConverters.IsNotNull}}" />
           <Button Content="Remove" Command="{Binding RemoveCommand}" CommandParameter="{Binding Selected}"
                   IsEnabled="{Binding Selected, Converter={x:Static ObjectConverters.IsNotNull}}" />
         </StackPanel>
       </StackPanel>
-      <ListBox ItemsSource="{Binding Fixtures}" SelectedItem="{Binding Selected}">
+      <ListBox ItemsSource="{Binding Fixtures}" SelectedItem="{Binding Selected}" IsEnabled="{Binding IsOverview}">
         <ListBox.ItemTemplate>
           <DataTemplate x:DataType="vm:FixtureEditorViewModel">
-            <StackPanel Opacity="{Binding Enabled, Converter={x:Static vm:Converters.EnabledOpacity}}">
-              <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
-              <TextBlock Text="{Binding AddressLabel}" Opacity="0.75" />
+            <StackPanel Spacing="1" Opacity="{Binding Enabled, Converter={x:Static vm:Converters.EnabledOpacity}}">
+              <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+              <TextBlock Text="{Binding ProfileLabel}" FontSize="12" TextTrimming="CharacterEllipsis" />
+              <TextBlock Text="{Binding Summary}" FontSize="12" Opacity="0.7" TextTrimming="CharacterEllipsis" />
+              <TextBlock Text="{Binding Group}" FontSize="12" Opacity="0.7" FontStyle="Italic"
+                         IsVisible="{Binding Group, Converter={x:Static ObjectConverters.IsNotNull}}" />
               <TextBlock Text="{Binding Issue}" TextWrapping="Wrap" FontSize="12"
                          Classes.fault="{Binding HasError}" Classes.warning="{Binding !HasError}"
                          IsVisible="{Binding Issue, Converter={x:Static ObjectConverters.IsNotNull}}" />
@@ -31,88 +50,225 @@
       </ListBox>
     </DockPanel>
 
-    <DockPanel Grid.Column="2">
-      <!-- Editor for the selected fixture -->
-      <StackPanel DockPanel.Dock="Top" Spacing="10" Margin="0,0,0,12"
-                  DataContext="{Binding Selected}" x:DataType="vm:FixtureEditorViewModel"
-                  IsVisible="{Binding $self.DataContext, Converter={x:Static ObjectConverters.IsNotNull}}">
-        <Grid ColumnDefinitions="2*,12,*,12,Auto,12,Auto,12,2*" RowDefinitions="Auto,Auto">
-          <TextBlock Text="Name" Opacity="0.7" />
-          <TextBlock Grid.Column="2" Text="Group (optional)" Opacity="0.7" />
-          <TextBlock Grid.Column="4" Text="Universe" Opacity="0.7" />
-          <TextBlock Grid.Column="6" Text="Start address" Opacity="0.7" />
-          <TextBlock Grid.Column="8" Text="Mode" Opacity="0.7" />
-          <TextBox Grid.Row="1" Text="{Binding Name}" />
-          <TextBox Grid.Row="1" Grid.Column="2" Text="{Binding Group}" PlaceholderText="e.g. Graveyard" />
-          <NumericUpDown Grid.Row="1" Grid.Column="4" Width="120" Minimum="0" Maximum="32767" Increment="1" FormatString="0" Value="{Binding Universe}" />
-          <NumericUpDown Grid.Row="1" Grid.Column="6" Width="120" Minimum="1" Maximum="512" Increment="1" FormatString="0" Value="{Binding StartAddress}" />
-          <ComboBox Grid.Row="1" Grid.Column="8" ItemsSource="{Binding ModeNames}" SelectedItem="{Binding ModeName}" HorizontalAlignment="Stretch" />
-        </Grid>
-        <WrapPanel>
-          <TextBlock Text="Profile:" Opacity="0.7" Margin="0,0,6,0" VerticalAlignment="Center" />
-          <TextBlock Text="{Binding ProfileLabel}" FontWeight="SemiBold" Margin="0,0,24,0" VerticalAlignment="Center" />
-          <CheckBox Content="Enabled (disabled fixtures stay in the show but aren't output)" IsChecked="{Binding Enabled}" />
-        </WrapPanel>
-        <TextBlock Text="{Binding Issue}" TextWrapping="Wrap" Classes.fault="{Binding HasError}" Classes.warning="{Binding !HasError}"
-                   IsVisible="{Binding Issue, Converter={x:Static ObjectConverters.IsNotNull}}" />
-      </StackPanel>
+    <!-- Centre: overview, or the add-fixtures wizard -->
+    <Panel Grid.Column="2">
 
-      <Grid ColumnDefinitions="*,16,320">
-        <!-- Profile browser: groups, then the profiles in a group -->
-        <DockPanel DataContext="{Binding Browser}" x:DataType="vm:ProfileBrowserViewModel"
-                   IsEnabled="{Binding $parent[UserControl].((vm:FixtureSetupViewModel)DataContext).Selected, Converter={x:Static ObjectConverters.IsNotNull}}">
-          <StackPanel DockPanel.Dock="Top" Spacing="8" Margin="0,0,0,8">
-            <DockPanel>
-              <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
-                <ToggleButton Content="By manufacturer" IsChecked="{Binding ByManufacturer}" CornerRadius="4,0,0,4" />
-                <ToggleButton Content="By type" IsChecked="{Binding ByType}" CornerRadius="0,4,4,0" />
-              </StackPanel>
-              <TextBlock Text="Fixture profile" Classes="heading" VerticalAlignment="Center" />
-            </DockPanel>
-            <TextBox Text="{Binding Search}" PlaceholderText="Search all profiles: manufacturer, model or type" />
-            <StackPanel Orientation="Horizontal" Spacing="8">
-              <Button Content="◀ Back" Command="{Binding BackCommand}" IsVisible="{Binding IsInsideGroup}" Padding="8,2" />
-              <TextBlock Text="{Binding Breadcrumb}" VerticalAlignment="Center" Opacity="0.8" />
-            </StackPanel>
-          </StackPanel>
-          <ScrollViewer>
-            <ItemsControl ItemsSource="{Binding Tiles}">
+      <!-- Overview: the selected fixture, and the address map for re-addressing -->
+      <DockPanel IsVisible="{Binding IsOverview}">
+        <StackPanel DockPanel.Dock="Top" Spacing="10" Margin="0,0,0,12"
+                    DataContext="{Binding Selected}" x:DataType="vm:FixtureEditorViewModel"
+                    IsVisible="{Binding $self.DataContext, Converter={x:Static ObjectConverters.IsNotNull}}">
+          <Grid ColumnDefinitions="2*,12,*,12,Auto,12,Auto" RowDefinitions="Auto,Auto">
+            <TextBlock Text="Name" Opacity="0.7" />
+            <TextBlock Grid.Column="2" Text="Group" Opacity="0.7" />
+            <TextBlock Grid.Column="4" Text="Universe" Opacity="0.7" />
+            <TextBlock Grid.Column="6" Text="Start address" Opacity="0.7" />
+            <TextBox Grid.Row="1" Text="{Binding Name}" />
+            <TextBox Grid.Row="1" Grid.Column="2" Text="{Binding Group}" PlaceholderText="e.g. Graveyard" />
+            <NumericUpDown Grid.Row="1" Grid.Column="4" Width="120" Minimum="0" Maximum="32767" Increment="1" FormatString="0" Value="{Binding Universe}" />
+            <NumericUpDown Grid.Row="1" Grid.Column="6" Width="120" Minimum="1" Maximum="512" Increment="1" FormatString="0" Value="{Binding StartAddress}" />
+          </Grid>
+          <WrapPanel>
+            <TextBlock Text="Type:" Opacity="0.7" Margin="0,0,6,0" VerticalAlignment="Center" />
+            <TextBlock Text="{Binding ProfileLabel}" FontWeight="SemiBold" Margin="0,0,10,0" VerticalAlignment="Center" />
+            <Button Content="Change type…" Padding="8,2" Margin="0,0,24,0"
+                    Command="{Binding $parent[UserControl].((vm:FixtureSetupViewModel)DataContext).ChangeTypeCommand}" />
+            <CheckBox Content="Enabled" IsChecked="{Binding Enabled}" ToolTip.Tip="Disabled fixtures stay in the show but aren't output" />
+          </WrapPanel>
+          <WrapPanel DataContext="{Binding ModeChoice}" x:DataType="vm:ModeChoiceViewModel"
+                     IsVisible="{Binding $self.DataContext, Converter={x:Static ObjectConverters.IsNotNull}}">
+            <TextBlock Text="Mode:" Opacity="0.7" Margin="0,0,10,0" VerticalAlignment="Center" />
+            <ItemsControl ItemsSource="{Binding Options}">
               <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
               <ItemsControl.ItemTemplate>
-                <DataTemplate x:DataType="vm:ProfileTile">
-                  <Button Classes="tile" Classes.current="{Binding IsCurrent}"
-                          Command="{Binding $parent[ItemsControl].((vm:ProfileBrowserViewModel)DataContext).OpenCommand}"
-                          CommandParameter="{Binding}" ToolTip.Tip="{Binding Title}">
-                    <StackPanel Spacing="2">
-                      <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis" />
-                      <TextBlock Text="{Binding Detail}" FontSize="11" Opacity="0.7" TextTrimming="CharacterEllipsis" />
-                    </StackPanel>
-                  </Button>
+                <DataTemplate x:DataType="vm:ModeOption">
+                  <RadioButton Content="{Binding Label}" IsChecked="{Binding IsSelected}" Margin="0,0,16,0" />
                 </DataTemplate>
               </ItemsControl.ItemTemplate>
             </ItemsControl>
+          </WrapPanel>
+          <TextBlock Text="{Binding Issue}" TextWrapping="Wrap" Classes.fault="{Binding HasError}" Classes.warning="{Binding !HasError}"
+                     IsVisible="{Binding Issue, Converter={x:Static ObjectConverters.IsNotNull}}" />
+        </StackPanel>
+
+        <Border DockPanel.Dock="Top" Classes="card" Margin="0,0,0,12"
+                IsVisible="{Binding Selected, Converter={x:Static ObjectConverters.IsNull}}">
+          <TextBlock Text="No fixture selected. Use ＋ Add fixtures… to add some, or pick one from the list or the patch overview."
+                     TextWrapping="Wrap" />
+        </Border>
+
+        <DockPanel DataContext="{Binding Map}" x:DataType="vm:PatchMapViewModel">
+          <StackPanel DockPanel.Dock="Top" Spacing="2" Margin="0,0,0,6">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <TextBlock Text="Address map" Classes="heading" VerticalAlignment="Center" />
+              <TextBlock Text="· universe" Opacity="0.7" VerticalAlignment="Center" />
+              <TextBlock Text="{Binding Universe}" Opacity="0.7" VerticalAlignment="Center" />
+              <TextBlock Text="· click a fixture to select it, drag it to re-address it" Opacity="0.6" VerticalAlignment="Center" />
+            </StackPanel>
+            <TextBlock Text="{Binding Usage}" TextWrapping="Wrap" Opacity="0.8" />
+          </StackPanel>
+          <TextBlock DockPanel.Dock="Bottom" Text="{Binding Hover}" Opacity="0.8" Margin="0,4,0,0" MinHeight="18" />
+          <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+            <controls:PatchMap x:Name="OverviewMap" Blocks="{Binding Blocks}" SelectedId="{Binding SelectedId}" />
           </ScrollViewer>
         </DockPanel>
+      </DockPanel>
 
-        <!-- Patch problems -->
-        <DockPanel Grid.Column="2">
-          <StackPanel DockPanel.Dock="Top" Spacing="4" Margin="0,0,0,6">
-            <TextBlock Text="Patch problems" Classes="heading" />
-            <TextBlock Text="{Binding IssueSummary}" TextWrapping="Wrap" />
-            <TextBlock Text="{Binding LibrarySummary}" Opacity="0.7" FontSize="12" TextWrapping="Wrap" />
-          </StackPanel>
-          <ListBox ItemsSource="{Binding Issues}">
-            <ListBox.ItemTemplate>
-              <DataTemplate x:DataType="fx:PatchIssue">
-                <Button Classes="link" Command="{Binding $parent[ListBox].((vm:FixtureSetupViewModel)DataContext).SelectIssueCommand}"
-                        CommandParameter="{Binding}">
-                  <TextBlock Text="{Binding}" TextWrapping="Wrap" />
-                </Button>
-              </DataTemplate>
-            </ListBox.ItemTemplate>
-          </ListBox>
-        </DockPanel>
-      </Grid>
+      <!-- Wizard step 1: choose the type -->
+      <DockPanel IsVisible="{Binding IsChoosingType}">
+        <Border DockPanel.Dock="Top" Classes="wizard">
+          <DockPanel>
+            <Button DockPanel.Dock="Right" Content="Cancel" Command="{Binding CancelWizardCommand}" />
+            <TextBlock Text="{Binding WizardTitle}" Classes="heading" VerticalAlignment="Center" TextWrapping="Wrap" />
+          </DockPanel>
+        </Border>
+        <DockPanel DataContext="{Binding Browser}" x:DataType="vm:ProfileBrowserViewModel">
+              <StackPanel DockPanel.Dock="Top" Spacing="8" Margin="0,0,0,8">
+                <DockPanel>
+                  <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                    <ToggleButton Content="By manufacturer" IsChecked="{Binding ByManufacturer}" CornerRadius="4,0,0,4" />
+                    <ToggleButton Content="By type" IsChecked="{Binding ByType}" CornerRadius="0,4,4,0" />
+                  </StackPanel>
+                  <TextBlock Text="Fixture profile" Classes="heading" VerticalAlignment="Center" />
+                </DockPanel>
+                <TextBox Text="{Binding Search}" PlaceholderText="Search all profiles: manufacturer, model or type" />
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <Button Content="◀ Back" Command="{Binding BackCommand}" IsVisible="{Binding IsInsideGroup}" Padding="8,2" />
+                  <TextBlock Text="{Binding Breadcrumb}" VerticalAlignment="Center" Opacity="0.8" />
+                </StackPanel>
+
+                <!-- Confirm bar: a picked profile isn't used until Apply -->
+                <Border Classes="confirm" IsVisible="{Binding HasPending}">
+                  <DockPanel>
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="12,0,0,0">
+                      <Button Content="{Binding ApplyLabel}" Command="{Binding ApplyCommand}" Classes="accent" />
+                      <Button Content="Pick another" Command="{Binding CancelCommand}" />
+                    </StackPanel>
+                    <StackPanel Spacing="6">
+                      <TextBlock Text="{Binding PendingTitle}" FontWeight="SemiBold" FontSize="15" />
+                      <TextBlock Text="{Binding PendingDetail}" Opacity="0.75" TextWrapping="Wrap" />
+                      <ItemsControl ItemsSource="{Binding Pending.Options, FallbackValue={x:Null}}">
+                        <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                          <DataTemplate x:DataType="vm:ModeOption">
+                            <RadioButton Content="{Binding Label}" IsChecked="{Binding IsSelected}" Margin="0,0,16,0" />
+                          </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                      </ItemsControl>
+                    </StackPanel>
+                  </DockPanel>
+                </Border>
+              </StackPanel>
+              <ScrollViewer>
+                <ItemsControl ItemsSource="{Binding Tiles}">
+                  <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:ProfileTile">
+                      <Button Classes="tile" Classes.current="{Binding IsCurrent}" Classes.pending="{Binding IsPending}"
+                              Command="{Binding $parent[ItemsControl].((vm:ProfileBrowserViewModel)DataContext).OpenCommand}"
+                              CommandParameter="{Binding}" ToolTip.Tip="{Binding Title}">
+                        <StackPanel Spacing="2">
+                          <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis" />
+                          <TextBlock Text="{Binding Detail}" FontSize="11" Opacity="0.7" TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+                      </Button>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </ScrollViewer>
+            </DockPanel>
+      </DockPanel>
+
+      <!-- Wizard step 2: click openings to add fixtures of the chosen type -->
+      <DockPanel IsVisible="{Binding IsPlacing}">
+        <Border DockPanel.Dock="Top" Classes="wizard">
+          <DockPanel>
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8">
+              <Button Content="◀ Change type" Command="{Binding BackToChooseTypeCommand}" />
+              <Button Content="✓ Done" Command="{Binding DoneCommand}" Classes="accent" Padding="22,6" FontWeight="SemiBold" />
+            </StackPanel>
+            <StackPanel Spacing="2">
+              <TextBlock Text="{Binding WizardTitle}" Classes="heading" TextWrapping="Wrap" />
+              <TextBlock Text="{Binding Placement.Title}" FontSize="15" />
+            </StackPanel>
+          </DockPanel>
+        </Border>
+
+        <StackPanel DockPanel.Dock="Top" Spacing="8" Margin="0,0,0,8">
+          <WrapPanel>
+            <TextBlock Text="Name new fixtures" VerticalAlignment="Center" Margin="0,0,8,6" />
+            <TextBox Text="{Binding Placement.NamePrefix}" Width="200" Margin="0,0,4,6" />
+            <TextBlock Text="1, 2, 3…" Opacity="0.6" VerticalAlignment="Center" Margin="0,0,20,6" />
+            <TextBlock Text="Universe" VerticalAlignment="Center" Margin="0,0,8,6" />
+            <ComboBox ItemsSource="{Binding Map.Universes}" SelectedItem="{Binding Map.Universe}" MinWidth="70" Margin="0,0,20,6" />
+            <TextBlock Text="Quick add" VerticalAlignment="Center" Margin="0,0,8,6" />
+            <NumericUpDown Value="{Binding Placement.Quantity}" Minimum="1" Maximum="512" Increment="1" FormatString="0" Width="110" Margin="0,0,6,6" />
+            <Button Content="in a row" Command="{Binding AddInARowCommand}" Margin="0,0,0,6"
+                    ToolTip.Tip="Places that many back to back in the first gap with room for all of them" />
+          </WrapPanel>
+
+          <WrapPanel DataContext="{Binding Map}" x:DataType="vm:PatchMapViewModel">
+            <TextBlock Text="{Binding OpeningsLabel}" VerticalAlignment="Center" Margin="0,0,8,4" />
+            <ItemsControl ItemsSource="{Binding Openings}">
+              <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="fx:AddressRange">
+                  <Button Classes="opening" Content="{Binding}" ToolTip.Tip="Add one at the start of this opening"
+                          Command="{Binding $parent[ItemsControl].((vm:PatchMapViewModel)DataContext).PlaceAtCommand}"
+                          CommandParameter="{Binding}" />
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </WrapPanel>
+
+          <TextBlock Text="{Binding Placement.Status}" TextWrapping="Wrap" />
+          <DockPanel IsVisible="{Binding Placement.Added.Count}">
+            <Button DockPanel.Dock="Right" Content="Undo last" Command="{Binding Placement.UndoLastCommand}" Padding="8,2" />
+            <TextBlock Text="Added so far:" Opacity="0.7" VerticalAlignment="Center" Margin="0,0,8,0" />
+            <ItemsControl ItemsSource="{Binding Placement.Added}" VerticalAlignment="Center">
+              <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:FixtureEditorViewModel">
+                  <Border Classes="chip"><TextBlock Text="{Binding Name}" FontSize="12" /></Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </DockPanel>
+        </StackPanel>
+
+        <TextBlock DockPanel.Dock="Bottom" Text="{Binding Map.Hover}" Opacity="0.8" Margin="0,4,0,0" MinHeight="18" />
+        <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+          <controls:PatchMap x:Name="PlacementMap" Blocks="{Binding Map.Blocks}" SelectedId="{Binding Map.SelectedId}" Footprint="{Binding Map.Footprint}" />
+        </ScrollViewer>
+      </DockPanel>
+    </Panel>
+
+    <!-- Right: patch problems and the fixture library -->
+    <DockPanel Grid.Column="4">
+      <StackPanel DockPanel.Dock="Top" Spacing="4" Margin="0,0,0,6">
+        <TextBlock Text="Patch problems" Classes="heading" />
+        <TextBlock Text="{Binding IssueSummary}" TextWrapping="Wrap" />
+      </StackPanel>
+      <!-- Fixture library: count, and download/update of the Open Fixture Library -->
+      <StackPanel DockPanel.Dock="Bottom" Spacing="6" Margin="0,10,0,0">
+        <TextBlock Text="Fixture library" Classes="heading" />
+        <TextBlock Text="{Binding Library.Summary}" TextWrapping="Wrap" />
+        <TextBlock Text="{Binding Library.DownloadStatus}" Opacity="0.75" FontSize="12" TextWrapping="Wrap" />
+        <StackPanel Orientation="Horizontal" Spacing="8">
+          <Button Content="{Binding Library.DownloadButtonText}" Command="{Binding Library.DownloadCommand}" />
+          <ProgressBar IsIndeterminate="True" Width="60" VerticalAlignment="Center" IsVisible="{Binding Library.DownloadCommand.IsRunning}" />
+        </StackPanel>
+      </StackPanel>
+      <ListBox ItemsSource="{Binding Issues}">
+        <ListBox.ItemTemplate>
+          <DataTemplate x:DataType="fx:PatchIssue">
+            <Button Classes="link" Command="{Binding $parent[ListBox].((vm:FixtureSetupViewModel)DataContext).SelectIssueCommand}"
+                    CommandParameter="{Binding}">
+              <TextBlock Text="{Binding}" TextWrapping="Wrap" />
+            </Button>
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
     </DockPanel>
   </Grid>
 </UserControl>
