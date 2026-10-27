@@ -64,14 +64,16 @@ The adapter appears as `/dev/cu.usbserial-<serial number>`; GhostShow reads the 
 The choice is saved for this computer (`machine.json`), not in the show. Status shows Connected with the live frame
 rate, or the fault and that it's retrying.
 
-Don't scan during a show: scanning briefly opens each free USB serial port and sends a few bytes in the Pro protocol.
-Ports already in use by a GhostShow output are skipped (they can't be opened), so a running adapter disappears from
-the scan list but stays assigned and running.
+Adapters are found automatically while the DMX setup screen is open: it re-reads the list of USB serial ports every
+2 seconds (without opening them) and probes only ports it hasn't seen before. Probing briefly opens the port and
+sends a Pro-protocol request; an Open DMX adapter's fixtures ignore it (no DMX break is sent). Ports in use by a
+running output are never touched: the operating system gives the output exclusive access (verified), and such
+adapters are listed as "In use: universe N". **Scan again** forgets earlier results and checks every port.
 
 ## Testing procedure
 
 1. `ghostshow detect` lists the adapter with its serial number.
-2. Visual: in the app, assign the adapter to universe 0, then on **Channels** push the fader for your fixture's
+2. Visual: in the app, assign the adapter to universe 1, then on **Channels** push the fader for your fixture's
    address (or patch it under **Fixtures** and use **Control**). The fixture should respond immediately and smoothly.
 3. Replug: unplug the adapter during output. DMX setup and the Show overview show the fault within a frame; plug it back
    (any socket) and output resumes within about 2 s.

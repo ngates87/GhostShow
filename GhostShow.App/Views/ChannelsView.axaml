@@ -11,7 +11,7 @@
                  Text="Sets DMX channels directly, whatever is patched there. Fixture controls write the same channels; the most recent change wins." />
       <WrapPanel>
         <TextBlock Text="Universe" VerticalAlignment="Center" Margin="0,0,8,0" />
-        <ComboBox ItemsSource="{Binding UniverseNumbers}" SelectedItem="{Binding ActiveUniverse}" MinWidth="80" Margin="0,0,16,4" />
+        <ComboBox ItemsSource="{Binding UniverseNumbers}" SelectedItem="{Binding ActiveUniverseChoice}" MinWidth="80" Margin="0,0,16,4" />
         <TextBlock Text="First channel" VerticalAlignment="Center" Margin="0,0,8,0" />
         <NumericUpDown Width="130" Minimum="1" Maximum="{Binding Channels.MaxBankStart}" Increment="1" FormatString="0"
                        Value="{Binding Channels.BankStart}" Margin="0,0,8,4" />

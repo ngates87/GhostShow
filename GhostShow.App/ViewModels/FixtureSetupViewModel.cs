@@ -96,6 +96,7 @@ public sealed partial class FixtureSetupViewModel : ObservableObject
 
     partial void OnStepChanged(SetupStep value)
     {
+        if (value != SetupStep.ChooseType) Browser.Stop();
         // Placing treats every existing fixture as occupied and shows openings for the new type; the overview shows
         // the selected fixture and no openings.
         if (value == SetupStep.Place)

@@ -11,7 +11,7 @@
     <DockPanel>
       <StackPanel DockPanel.Dock="Top" Spacing="6" Margin="0,0,0,12" DataContext="{Binding Map}" x:DataType="vm:PatchMapViewModel">
         <DockPanel>
-          <ComboBox DockPanel.Dock="Right" ItemsSource="{Binding Universes}" SelectedItem="{Binding Universe}" MinWidth="70"
+          <ComboBox DockPanel.Dock="Right" ItemsSource="{Binding Universes}" SelectedItem="{Binding UniverseChoice}" MinWidth="70"
                     ToolTip.Tip="Universe" />
           <TextBlock Text="Patch overview" Classes="heading" VerticalAlignment="Center" />
         </DockPanel>
@@ -65,7 +65,7 @@
             <TextBlock Grid.Column="6" Text="Start address" Opacity="0.7" />
             <TextBox Grid.Row="1" Text="{Binding Name}" />
             <TextBox Grid.Row="1" Grid.Column="2" Text="{Binding Group}" PlaceholderText="e.g. Graveyard" />
-            <NumericUpDown Grid.Row="1" Grid.Column="4" Width="120" Minimum="0" Maximum="32767" Increment="1" FormatString="0" Value="{Binding Universe}" />
+            <NumericUpDown Grid.Row="1" Grid.Column="4" Width="120" Minimum="1" Maximum="63999" Increment="1" FormatString="0" Value="{Binding Universe}" />
             <NumericUpDown Grid.Row="1" Grid.Column="6" Width="120" Minimum="1" Maximum="512" Increment="1" FormatString="0" Value="{Binding StartAddress}" />
           </Grid>
           <WrapPanel>
@@ -200,7 +200,7 @@
             <TextBox Text="{Binding Placement.NamePrefix}" Width="200" Margin="0,0,4,6" />
             <TextBlock Text="1, 2, 3…" Opacity="0.6" VerticalAlignment="Center" Margin="0,0,20,6" />
             <TextBlock Text="Universe" VerticalAlignment="Center" Margin="0,0,8,6" />
-            <ComboBox ItemsSource="{Binding Map.Universes}" SelectedItem="{Binding Map.Universe}" MinWidth="70" Margin="0,0,20,6" />
+            <ComboBox ItemsSource="{Binding Map.Universes}" SelectedItem="{Binding Map.UniverseChoice}" MinWidth="70" Margin="0,0,20,6" />
             <TextBlock Text="Quick add" VerticalAlignment="Center" Margin="0,0,8,6" />
             <NumericUpDown Value="{Binding Placement.Quantity}" Minimum="1" Maximum="512" Increment="1" FormatString="0" Width="110" Margin="0,0,6,6" />
             <Button Content="in a row" Command="{Binding AddInARowCommand}" Margin="0,0,0,6"

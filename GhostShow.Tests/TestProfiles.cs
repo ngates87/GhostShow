@@ -59,8 +59,8 @@ static class TestProfiles
     public static readonly FixtureProfileLibrary Library = new([Rgbw, Spot]);
 
     public static FixtureInstance Fixture(string name, int startAddress, string profileId = "test/rgbw",
-                                          string mode = "5ch", int universe = 0) =>
+                                          string mode = "5ch", int universe = 1) =>
         new() { Name = name, ProfileId = profileId, ModeName = mode, StartAddress = startAddress, Universe = universe };
 
-    public static PatchResult Patch(params FixtureInstance[] fixtures) => FixturePatcher.Patch(fixtures, [0], Library);
+    public static PatchResult Patch(params FixtureInstance[] fixtures) => FixturePatcher.Patch(fixtures, [1], Library);
 }

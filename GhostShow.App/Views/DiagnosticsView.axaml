@@ -27,6 +27,15 @@
         </ItemsControl>
       </StackPanel>
       <StackPanel Spacing="4">
+        <TextBlock Text="Playback" Classes="heading" />
+        <TextBlock Text="{Binding PlaybackState}" />
+        <TextBlock Text="{Binding PlaybackTiming}" />
+        <TextBlock Text="{Binding PlaybackErrors}" Classes="fault" TextWrapping="Wrap"
+                   IsVisible="{Binding PlaybackErrors, Converter={x:Static ObjectConverters.IsNotNull}}" />
+        <TextBlock Text="{Binding AudioState}" Classes.fault="{Binding AudioFaulted}" TextWrapping="Wrap" />
+        <TextBlock Text="{Binding TimelineIssues}" />
+      </StackPanel>
+      <StackPanel Spacing="4">
         <TextBlock Text="Application" Classes="heading" />
         <TextBlock Text="{Binding UiResponsiveness}" />
         <TextBlock Text="{Binding Memory}" />

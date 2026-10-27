@@ -3,7 +3,9 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using GhostShow.App.ViewModels;
 using GhostShow.Core.Diagnostics;
+using GhostShow.Audio;
 using GhostShow.Core.Engine;
+using GhostShow.Core.Playback;
 using GhostShow.Core.Fixtures;
 using GhostShow.Core.Storage;
 using GhostShow.Dmx;
@@ -53,14 +55,22 @@ public partial class App : Application
         var session = new ShowSession(engine, builtInProfiles, _loggerFactory.CreateLogger<ShowSession>());
         var outputs = new OutputManager(engine, _loggerFactory);
 
-        var viewModel = new MainViewModel(session, outputs, settings.Settings, paths, window.StorageProvider,
-                                          _recentEvents, _probe, _loggerFactory.CreateLogger<MainViewModel>());
+        // Audio opens its device in the background; playback runs on its own thread from the start (idle until Play).
+        var audio = new AudioService(_loggerFactory.CreateLogger<AudioService>()) { MasterVolume = settings.Settings.Audio.MasterVolume };
+        _ = audio.OpenAsync(settings.Settings.Audio.DeviceName);
+        var player = new ShowPlayer(engine, audio, new StopwatchClock());
+        var playbackLoop = new PlaybackLoop(player, _loggerFactory.CreateLogger<PlaybackLoop>());
+        playbackLoop.Start();
+
+        var services = new AppServices(session, outputs, player, playbackLoop, audio, settings.Settings, paths, _recentEvents, _probe);
+        var viewModel = new MainViewModel(services, window.StorageProvider, new Dialogs.SaveChangesDialogPrompt(window),
+                                          _loggerFactory.CreateLogger<MainViewModel>());
         window.DataContext = viewModel;
         await viewModel.StartAsync(settings.Error);
 
         if (UiLoadTest.IsRequested)
         {
-            var loadTest = new UiLoadTest(viewModel, engine, _probe, _loggerFactory.CreateLogger<UiLoadTest>());
+            var loadTest = new UiLoadTest(viewModel, services, _loggerFactory.CreateLogger<UiLoadTest>());
             window.Closing += (_, _) => loadTest.Dispose();
             loadTest.Start();
         }

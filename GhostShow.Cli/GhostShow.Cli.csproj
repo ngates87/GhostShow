@@ -10,6 +10,7 @@
     <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="10.0.14" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\GhostShow.Audio\GhostShow.Audio.csproj" />
     <ProjectReference Include="..\GhostShow.Core\GhostShow.Core.csproj" />
     <ProjectReference Include="..\GhostShow.Dmx\GhostShow.Dmx.csproj" />
   </ItemGroup>

@@ -20,7 +20,7 @@
                   <Grid ColumnDefinitions="Auto,8,*,8,Auto" RowDefinitions="Auto,Auto">
                     <TextBlock Text="Number" Opacity="0.7" />
                     <TextBlock Grid.Column="2" Text="Name" Opacity="0.7" />
-                    <NumericUpDown Grid.Row="1" Width="130" Minimum="0" Maximum="32767" Increment="1" FormatString="0"
+                    <NumericUpDown Grid.Row="1" Width="130" Minimum="1" Maximum="63999" Increment="1" FormatString="0"
                                    Value="{Binding Number}" />
                     <TextBox Grid.Row="1" Grid.Column="2" Text="{Binding Name}" />
                     <Button Grid.Row="1" Grid.Column="4" Content="Remove"
@@ -42,10 +42,10 @@
       <StackPanel DockPanel.Dock="Top" Spacing="6" Margin="0,0,0,8">
         <TextBlock Text="USB DMX adapters" Classes="heading" />
         <TextBlock TextWrapping="Wrap" Opacity="0.7"
-                   Text="Enttec DMX USB Pro and compatibles, and Open DMX adapters (Enttec Open DMX USB, most cheap FTDI-based cables). Scanning briefly sends a few bytes to each free USB serial port: don't scan during a show." />
+                   Text="Enttec DMX USB Pro and compatibles, and Open DMX adapters (Enttec Open DMX USB, most cheap FTDI-based cables). While this screen is open, adapters are found automatically when plugged in. A newly connected port is briefly checked; ports in use by an output are never touched." />
         <StackPanel Orientation="Horizontal" Spacing="8">
-          <Button Content="Scan for adapters" Command="{Binding DetectCommand}" />
-          <ProgressBar IsIndeterminate="True" Width="80" VerticalAlignment="Center" IsVisible="{Binding DetectCommand.IsRunning}" />
+          <Button Content="Scan again" Command="{Binding ScanAgainCommand}"
+                  ToolTip.Tip="Forget what's been found and check every port again" />
         </StackPanel>
         <TextBlock Text="{Binding DetectStatus}" TextWrapping="Wrap" />
       </StackPanel>

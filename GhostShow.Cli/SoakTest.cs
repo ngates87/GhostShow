@@ -23,6 +23,7 @@ sealed class SoakTest(TimeSpan duration, IDmxOutputDevice device, bool dark, ILo
 {
     const int MarkerAddress = 512;
     const int FixtureCount = 20;
+    const int Universe = GhostShow.Core.Model.Project.FirstUniverse;
 
     readonly MeasuringDevice _device = new(device);
     readonly List<SoakSample> _samples = [];
@@ -36,9 +37,9 @@ sealed class SoakTest(TimeSpan duration, IDmxOutputDevice device, bool dark, ILo
         for (int i = 0; i < FixtureCount; i++)
             session.Project.Fixtures.Add(new FixtureInstance { Name = $"Par {i + 1}", ProfileId = "generic/rgbw", ModeName = "5 channel (dimmer first)", StartAddress = 1 + i * 5 });
         var patch = session.Apply();
-        string savePath = Path.Combine(Path.GetTempPath(), $"ghostshow-soak-{Environment.ProcessId}.json");
+        string savePath = Path.Combine(Path.GetTempPath(), $"ghostshow-soak-{Environment.ProcessId}");
 
-        var service = new DmxOutputService(engine, 0, _device, loggerFactory.CreateLogger<DmxOutputService>());
+        var service = new DmxOutputService(engine, Universe, _device, loggerFactory.CreateLogger<DmxOutputService>());
         service.Start();
 
         using var stop = new CancellationTokenSource(duration);
@@ -60,7 +61,7 @@ sealed class SoakTest(TimeSpan duration, IDmxOutputDevice device, bool dark, ILo
         await saver;
         var end = Memory.Measure(forceCollection: true);
         bool stoppedCleanly = await service.StopAsync();
-        File.Delete(savePath);
+        if (Directory.Exists(savePath)) Directory.Delete(savePath, recursive: true);
 
         return Report(started.Elapsed, baseline, end, stoppedCleanly, service.LastError);
     }
@@ -76,14 +77,14 @@ sealed class SoakTest(TimeSpan duration, IDmxOutputDevice device, bool dark, ILo
         {
             int value = dark ? 0 : random.Next(256);
             if (random.Next(2) == 0) engine.SetFixtureControl(fixtures[random.Next(fixtures.Count)].Id, controls[random.Next(controls.Length)], value);
-            else engine.SetChannel(0, random.Next(101, MarkerAddress), value);
+            else engine.SetChannel(Universe, random.Next(101, MarkerAddress), value);
             Interlocked.Increment(ref _commands);
 
             if (Stopwatch.GetTimestamp() >= nextMarker)
             {
                 markerValue = dark ? (markerValue == 1 ? 2 : 1) : (markerValue % 255) + 1;
                 _device.ExpectMarker((byte)markerValue);
-                engine.SetChannel(0, MarkerAddress, markerValue);
+                engine.SetChannel(Universe, MarkerAddress, markerValue);
                 nextMarker = Stopwatch.GetTimestamp() + Stopwatch.Frequency;
             }
             Thread.Sleep(1);   // ~1,000 commands/s: faster than any operator, comparable to a busy timeline

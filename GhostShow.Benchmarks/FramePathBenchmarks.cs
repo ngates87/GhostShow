@@ -25,13 +25,13 @@ public class FramePathBenchmarks
         var fixtures = Enumerable.Range(0, 100)
             .Select(i => new FixtureInstance { Name = $"Par {i}", ProfileId = "bench/rgbw", ModeName = "5ch", StartAddress = 1 + i * 5 })
             .ToList();
-        var patch = FixturePatcher.Patch(fixtures, [0], BenchmarkProfiles.Library);
-        _engine = new ShowEngine([0], patch.Fixtures);
+        var patch = BenchmarkProfiles.PatchOrThrow(fixtures);
+        _engine = new ShowEngine([1], patch.Fixtures);
         _fixtureId = fixtures[50].Id;
     }
 
     [Benchmark(Description = "Engine → frame snapshot (output thread, per frame)")]
-    public bool CopyUniverse() => _engine.TryCopyUniverse(0, _frame, out _);
+    public bool CopyUniverse() => _engine.TryCopyUniverse(1, _frame, out _);
 
     [Benchmark(Description = "Frame → Enttec Pro packet")]
     public int BuildProPacket() => EnttecProPacket.WriteDmx(_proPacket, _frame);
@@ -40,7 +40,7 @@ public class FramePathBenchmarks
     public int BuildArtNetPacket() => ArtNetPacket.Write(_artNetPacket, 0, 1, _frame);
 
     [Benchmark(Description = "SetChannel command (raw fader)")]
-    public CommandResult SetChannel() => _engine.SetChannel(0, 300, ++_value & 0xFF);
+    public CommandResult SetChannel() => _engine.SetChannel(1, 300, ++_value & 0xFF);
 
     [Benchmark(Description = "SetFixtureControl command (fixture fader, 100 patched)")]
     public CommandResult SetFixtureControl() => _engine.SetFixtureControl(_fixtureId, ChannelFunction.Red, ++_value & 0xFF);
@@ -61,11 +61,19 @@ public class PatchBenchmarks
         .ToList();
 
     [Benchmark(Description = "Validate and patch fixtures")]
-    public PatchResult Patch() => FixturePatcher.Patch(_fixtures, [0], BenchmarkProfiles.Library);
+    public PatchResult Patch() => FixturePatcher.Patch(_fixtures, [1], BenchmarkProfiles.Library);
 }
 
 static class BenchmarkProfiles
 {
+    /// <summary>Patches into universe 1; a benchmark set up on a failed patch would measure the error path, so that throws.</summary>
+    public static PatchResult PatchOrThrow(IReadOnlyList<FixtureInstance> fixtures)
+    {
+        var patch = FixturePatcher.Patch(fixtures, [1], Library);
+        if (patch.Issues.Count > 0) throw new InvalidOperationException($"Benchmark patch is invalid: {patch.Issues[0]}");
+        return patch;
+    }
+
     public static readonly FixtureProfileLibrary Library = new(
     [
         new FixtureProfile

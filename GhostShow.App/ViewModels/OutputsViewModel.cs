@@ -9,6 +9,12 @@ using GhostShow.Dmx.Discovery;
 
 namespace GhostShow.App.ViewModels;
 
+/// <summary>A line in the adapter list: what it is, and whether it's free or which universe has it.</summary>
+public sealed record AdapterRow(string Description, string Status)
+{
+    public override string ToString() => $"{Description}  ·  {Status}";
+}
+
 /// <summary>The show's universes and, for this machine, which device each one is output on.</summary>
 public sealed partial class OutputsViewModel : ObservableObject
 {
@@ -20,6 +26,9 @@ public sealed partial class OutputsViewModel : ObservableObject
     readonly Func<Task> _saveSettings;
     readonly Action _markDirty;
     IReadOnlyList<DmxAdapterInfo> _adapters = [];
+    // Probe results by port: an adapter, or null for "checked, not an adapter". Busy ports are left out (see Watch).
+    readonly Dictionary<string, DmxAdapterInfo?> _probed = new();
+    bool _watching;
 
     public OutputsViewModel(ShowSession session, OutputManager outputs, MachineSettings settings,
                             Func<Task> saveSettings, Action markDirty)
@@ -33,10 +42,10 @@ public sealed partial class OutputsViewModel : ObservableObject
     }
 
     public ObservableCollection<UniverseRowViewModel> Universes { get; } = new();
-    public ObservableCollection<DmxAdapterInfo> Adapters { get; } = new();
+    public ObservableCollection<AdapterRow> Adapters { get; } = new();
 
     [ObservableProperty]
-    public partial string DetectStatus { get; set; } = "Not scanned yet.";
+    public partial string DetectStatus { get; set; } = "Looking for adapters…";
 
     /// <summary>Rebuilds the rows from the show, e.g. after New or Open.</summary>
     public void Reload()
@@ -52,29 +61,75 @@ public sealed partial class OutputsViewModel : ObservableObject
     public Task ApplyOutputsAsync() => _outputs.ApplyAsync(_session.Engine.Universes, _settings);
 
     /// <summary>
-    /// Scans USB serial ports. Runs on a worker thread; probing takes about a second. Adapters open in a running
-    /// output can't be probed and don't appear, but stay selectable as their universe's assigned device.
+    /// Keeps the adapter list current while the DMX setup screen is open; call every couple of seconds. Listing ports
+    /// opens none of them, so it's cheap. Only ports not seen before are probed (which briefly opens them and sends a
+    /// request), so plugging an adapter in shows it within a few seconds without re-probing everything. Ports held by
+    /// a running output can't be opened (the OS gives exclusive access), so probing never disturbs live output.
     /// </summary>
-    [RelayCommand(AllowConcurrentExecutions = false)]
-    async Task Detect()
+    public async Task WatchAdaptersAsync()
     {
-        DetectStatus = "Scanning USB serial ports…";
-        _adapters = await DmxAdapterDetector.DetectAsync();
-        Adapters.Clear();
-        foreach (var adapter in _adapters) Adapters.Add(adapter);
-        DetectStatus = _adapters.Count switch
+        if (_watching) return;
+        _watching = true;
+        try
         {
-            0 => "No free adapters found. Adapters already in use by an output aren't listed. On Linux, you need to be in the dialout group.",
-            1 => "Found 1 free adapter.",
-            var n => $"Found {n} free adapters.",
-        };
-        RefreshChoices();
+            var ports = await Task.Run(DmxAdapterDetector.CandidatePorts);
+            var gone = _probed.Keys.Except(ports).ToList();
+            var fresh = ports.Where(p => !_probed.ContainsKey(p)).ToList();
+            foreach (var port in gone) _probed.Remove(port);
+
+            if (fresh.Count > 0)
+            {
+                DetectStatus = "Checking newly connected USB serial ports…";
+                var results = await Task.WhenAll(fresh.Select(port => Task.Run(() =>
+                    (Port: port, Adapter: DmxAdapterDetector.Probe(port, 400, out bool busy), Busy: busy))));
+                // A busy port isn't remembered: it may be an adapter that's in use now and free later.
+                foreach (var result in results.Where(r => !r.Busy)) _probed[result.Port] = result.Adapter;
+            }
+
+            _adapters = _probed.Values.OfType<DmxAdapterInfo>().OrderBy(a => a.Port, StringComparer.OrdinalIgnoreCase).ToArray();
+            ShowAdapters();
+            if (gone.Count > 0 || fresh.Count > 0) RefreshChoices();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            // Runs unattended in the background, so report rather than throw into nowhere.
+            DetectStatus = $"Couldn't check for adapters: {ex.Message}";
+        }
+        finally
+        {
+            _watching = false;
+        }
+    }
+
+    /// <summary>Forgets every earlier probe and checks all ports again.</summary>
+    [RelayCommand]
+    async Task ScanAgain()
+    {
+        _probed.Clear();
+        await WatchAdaptersAsync();
+    }
+
+    /// <summary>Free adapters from probing, plus the ones running outputs have open (which can't be probed).</summary>
+    void ShowAdapters()
+    {
+        var rows = _adapters.Select(a => new AdapterRow(a.ToString(), "Available")).ToList();
+        foreach (var service in _outputs.Services.Where(s => s.Device.Port is not null && s.Status == DmxOutputStatus.Connected))
+            rows.Add(new AdapterRow(service.Device.ToString(), $"In use: universe {service.Universe}"));
+
+        if (!rows.SequenceEqual(Adapters))
+        {
+            Adapters.Clear();
+            foreach (var row in rows) Adapters.Add(row);
+        }
+        DetectStatus = rows.Count == 0
+            ? "No adapters connected. Plug one in: it appears here within a few seconds. (On Linux, you need to be in the dialout group.)"
+            : "Watching for adapters being plugged in or out.";
     }
 
     [RelayCommand]
     async Task AddUniverse()
     {
-        int next = _session.Project.Universes.Select(u => u.Number).DefaultIfEmpty(-1).Max() + 1;
+        int next = _session.Project.Universes.Select(u => u.Number).DefaultIfEmpty(GhostShow.Core.Model.Project.FirstUniverse - 1).Max() + 1;
         var universe = new UniverseConfig { Number = next, Name = $"Universe {next}" };
         _session.Project.Universes.Add(universe);
         var row = new UniverseRowViewModel(universe, OnShowUniversesChanged, OnDeviceChanged);
@@ -94,6 +149,7 @@ public sealed partial class OutputsViewModel : ObservableObject
     public void Tick()
     {
         foreach (var row in Universes) row.ShowStatus(_outputs.Find(row.Model.Number));
+        if (!_watching) ShowAdapters();   // an output connecting or dropping changes which adapters are "in use"
     }
 
     void RefreshChoices()

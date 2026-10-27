@@ -1,37 +1,18 @@
 using System.Diagnostics;
 using CommunityToolkit.Mvvm.ComponentModel;
+using GhostShow.App.Controls;
 using GhostShow.Core.Engine;
 using GhostShow.Dmx;
 
 namespace GhostShow.App.ViewModels;
 
-public sealed partial class MonitorCellViewModel(int address) : ObservableObject
-{
-    public int Address { get; } = address;
-
-    [ObservableProperty]
-    public partial byte Value { get; set; }
-
-    /// <summary>0-1, for the cell's fill.</summary>
-    public double Level => Value / 255.0;
-
-    [ObservableProperty]
-    public partial bool RecentlyChanged { get; set; }
-
-    internal long ChangedAt;
-
-    partial void OnValueChanged(byte value) => OnPropertyChanged(nameof(Level));
-}
-
 /// <summary>
 /// All 512 channels of the active universe, as last sent to the output device (or held by the engine if the
-/// universe has no running output). Only cells whose value changed are touched each tick, so a steady look costs
-/// almost nothing to display. A cell stays highlighted for <see cref="HighlightMs"/> after it changes.
+/// universe has no running output), for <see cref="DmxMonitorGrid"/>. The arrays are reused; <see cref="Revision"/>
+/// goes up only when a value changes or a change highlight expires, so a steady look costs nothing to display.
 /// </summary>
 public sealed partial class MonitorViewModel : ObservableObject
 {
-    const long HighlightMs = 600;
-
     readonly ShowEngine _engine;
     readonly Func<int, DmxOutputService?> _findOutput;
     readonly byte[] _frame = new byte[512];
@@ -40,10 +21,16 @@ public sealed partial class MonitorViewModel : ObservableObject
     {
         _engine = engine;
         _findOutput = findOutput;
-        Cells = Enumerable.Range(1, 512).Select(a => new MonitorCellViewModel(a)).ToArray();
     }
 
-    public IReadOnlyList<MonitorCellViewModel> Cells { get; }
+    /// <summary>Channel values, index = address - 1.</summary>
+    public byte[] Values { get; } = new byte[512];
+
+    /// <summary>Stopwatch timestamp of each channel's last change; 0 once the highlight has expired.</summary>
+    public long[] ChangedAt { get; } = new long[512];
+
+    [ObservableProperty]
+    public partial long Revision { get; private set; }
 
     [ObservableProperty]
     public partial string Source { get; set; } = "";
@@ -67,19 +54,21 @@ public sealed partial class MonitorViewModel : ObservableObject
         }
 
         long now = Stopwatch.GetTimestamp();
-        for (int i = 0; i < Cells.Count; i++)
+        bool changed = false;
+        for (int i = 0; i < Values.Length; i++)
         {
-            var cell = Cells[i];
-            if (cell.Value != _frame[i])
+            if (Values[i] != _frame[i])
             {
-                cell.Value = _frame[i];
-                cell.ChangedAt = now;
-                cell.RecentlyChanged = true;
+                Values[i] = _frame[i];
+                ChangedAt[i] = now;
+                changed = true;
             }
-            else if (cell.RecentlyChanged && Stopwatch.GetElapsedTime(cell.ChangedAt, now).TotalMilliseconds > HighlightMs)
+            else if (ChangedAt[i] != 0 && Stopwatch.GetElapsedTime(ChangedAt[i], now).TotalMilliseconds > DmxMonitorGrid.HighlightMs)
             {
-                cell.RecentlyChanged = false;
+                ChangedAt[i] = 0;   // highlight expired: redraw once more to remove it
+                changed = true;
             }
         }
+        if (changed) Revision++;
     }
 }

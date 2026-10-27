@@ -6,16 +6,13 @@
     <FluentTheme />
 
     <!-- Two levels of tabs: big department tabs (Show, Lighting, Audio), smaller screen tabs within each. -->
-    <Style Selector="TabControl.sections > TabItem">
+    <Style Selector="TabStrip.sections > TabStripItem">
       <Setter Property="FontSize" Value="22" />
       <Setter Property="FontWeight" Value="SemiBold" />
       <Setter Property="MinHeight" Value="44" />
       <Setter Property="Padding" Value="12,0,20,0" />
     </Style>
-    <Style Selector="TabControl.pages">
-      <Setter Property="Padding" Value="0,2,0,0" />
-    </Style>
-    <Style Selector="TabControl.pages > TabItem">
+    <Style Selector="TabStrip.pages > TabStripItem">
       <Setter Property="FontSize" Value="15" />
       <Setter Property="FontWeight" Value="Normal" />
       <Setter Property="MinHeight" Value="34" />
@@ -36,16 +33,6 @@
       <Setter Property="Margin" Value="0,0,0,8" />
       <Setter Property="CornerRadius" Value="6" />
       <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}" />
-    </Style>
-    <Style Selector="Border.cell">
-      <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}" />
-      <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="BorderBrush" Value="Transparent" />
-      <Setter Property="CornerRadius" Value="3" />
-      <Setter Property="ClipToBounds" Value="True" />
-    </Style>
-    <Style Selector="Border.cell.changed">
-      <Setter Property="BorderBrush" Value="Gold" />
     </Style>
     <Style Selector="Button.tile">
       <Setter Property="Width" Value="190" />
@@ -89,6 +76,65 @@
       <Setter Property="Margin" Value="0,0,6,4" />
       <Setter Property="CornerRadius" Value="10" />
       <Setter Property="Background" Value="#2E4D33" />
+    </Style>
+    <!-- Console-style fader modules -->
+    <Style Selector="Border.faderModule">
+      <Setter Property="Padding" Value="6" />
+      <Setter Property="CornerRadius" Value="6" />
+      <Setter Property="Background" Value="#141518" />
+      <Setter Property="BorderBrush" Value="#2C2D32" />
+      <Setter Property="BorderThickness" Value="1" />
+    </Style>
+    <Style Selector="Border.scribble">
+      <Setter Property="Padding" Value="4,4" />
+      <Setter Property="CornerRadius" Value="3" />
+      <Setter Property="Background" Value="#081620" />
+      <Setter Property="BorderBrush" Value="#000000" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="MinHeight" Value="64" />
+    </Style>
+    <Style Selector="Border.scribble.timeline">
+      <Setter Property="BorderBrush" Value="#C77700" />
+    </Style>
+    <Style Selector="TextBlock.scribbleName">
+      <Setter Property="FontFamily" Value="monospace" />
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Foreground" Value="#9FDCFF" />
+    </Style>
+    <Style Selector="TextBlock.scribbleLevel">
+      <Setter Property="FontFamily" Value="monospace" />
+      <Setter Property="FontSize" Value="20" />
+      <Setter Property="FontWeight" Value="Bold" />
+      <Setter Property="Foreground" Value="#FFD27A" />
+    </Style>
+    <Style Selector="TextBlock.scribbleSmall">
+      <Setter Property="FontFamily" Value="monospace" />
+      <Setter Property="FontSize" Value="10" />
+      <Setter Property="Foreground" Value="#6FA8C8" />
+    </Style>
+    <Style Selector="Button.consoleKey">
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="Padding" Value="0,5" />
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="FontWeight" Value="Bold" />
+      <Setter Property="CornerRadius" Value="4" />
+      <Setter Property="Foreground" Value="#E6E6E6" />
+      <Setter Property="BorderBrush" Value="#0A0A0B" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="Background">
+        <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
+          <GradientStop Color="#4A4C52" Offset="0" />
+          <GradientStop Color="#303136" Offset="1" />
+        </LinearGradientBrush>
+      </Setter>
+    </Style>
+    <Style Selector="Button.consoleKey:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#5A5C63" />
+    </Style>
+    <Style Selector="Button.consoleKey:pressed /template/ ContentPresenter">
+      <Setter Property="Background" Value="#2A6F99" />
     </Style>
     <Style Selector="Button.link">
       <Setter Property="Background" Value="Transparent" />

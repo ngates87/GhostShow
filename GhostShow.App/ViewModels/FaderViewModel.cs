@@ -6,8 +6,8 @@ namespace GhostShow.App.ViewModels;
 
 /// <summary>
 /// One slider driving one DMX channel through an engine command. The UI sets <see cref="Value"/>; the screen's
-/// refresh tick calls <see cref="ShowValue"/> with what the engine currently holds, so changes made elsewhere
-/// (another screen, later OSC or a timeline) appear here too. Both run on the UI thread, so a drag never fights
+/// refresh tick calls <see cref="ShowValue"/> with what the engine currently outputs, so changes made elsewhere
+/// (another screen, the playing timeline) appear here too. Both run on the UI thread, so a drag never fights
 /// the refresh: the engine already holds the value the slider just sent.
 /// </summary>
 public sealed partial class FaderViewModel : ObservableObject
@@ -43,6 +43,8 @@ public sealed partial class FaderViewModel : ObservableObject
             _value = clamped;
             OnPropertyChanged();
             OnPropertyChanged(nameof(Percent));
+            OnPropertyChanged(nameof(Level));
+            OnPropertyChanged(nameof(DmxValue));
             var result = _send(clamped);
             if (!result.Succeeded) _reportError(result.Error!);
         }
@@ -50,12 +52,33 @@ public sealed partial class FaderViewModel : ObservableObject
 
     public string Percent => $"{_value * 100 / 255}%";
 
-    public void ShowValue(byte engineValue)
+    /// <summary>The level the way a console shows it: "FL" at full, otherwise the percentage (0-99).</summary>
+    public string Level => _value == 255 ? "FL" : (_value * 100 / 255).ToString();
+
+    /// <summary>The raw DMX value, for the smaller line under the level.</summary>
+    public string DmxValue => $"DMX {_value}";
+
+    /// <summary>
+    /// The playing timeline controls this channel: the fader shows the timeline's level, and moving it changes the
+    /// manual level underneath, which takes effect when playback stops.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(TimelineTip))]
+    public partial bool IsTimelineControlled { get; private set; }
+
+    public string? TimelineTip => IsTimelineControlled
+        ? "The playing timeline controls this channel. Moving the fader changes the manual level, which applies when playback stops."
+        : null;
+
+    public void ShowValue(byte engineValue, bool timelineControlled = false)
     {
+        IsTimelineControlled = timelineControlled;
         if (engineValue == _value) return;
         _value = engineValue;
         OnPropertyChanged(nameof(Value));
         OnPropertyChanged(nameof(Percent));
+        OnPropertyChanged(nameof(Level));
+        OnPropertyChanged(nameof(DmxValue));
     }
 
     [RelayCommand]

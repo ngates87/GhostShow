@@ -29,7 +29,7 @@ public static class MachineSettingsStore
                     $"it was written by a newer GhostShow (version {settings.SchemaVersion})",
                 _ => null,
             };
-            if (problem is null) return new MachineSettingsLoadResult(settings!, null);
+            if (problem is null) return new MachineSettingsLoadResult(MigrateToCurrent(settings!), null);
         }
         catch (JsonException ex)
         {
@@ -53,6 +53,15 @@ public static class MachineSettingsStore
         }
         return new MachineSettingsLoadResult(new MachineSettings(),
             $"Machine settings couldn't be used because {problem}. The file was kept as {Path.GetFileName(backup)}; using defaults.");
+    }
+
+    /// <summary>Version 1 numbered universes from 0, like show files before version 3; shift them to match.</summary>
+    static MachineSettings MigrateToCurrent(MachineSettings settings)
+    {
+        if (settings.SchemaVersion < 2)
+            settings.Outputs = settings.Outputs.Select(o => o with { Universe = o.Universe + 1 }).ToList();
+        settings.SchemaVersion = MachineSettings.CurrentSchemaVersion;
+        return settings;
     }
 
     public static Task SaveAsync(MachineSettings settings, AppPaths paths, CancellationToken cancellationToken = default) =>

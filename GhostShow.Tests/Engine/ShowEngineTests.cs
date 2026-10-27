@@ -11,7 +11,7 @@ public class ShowEngineTests
     {
         var engine = new ShowEngine();
 
-        Assert.True(engine.SetChannel(0, 3, 255).Succeeded);
+        Assert.True(engine.SetChannel(1, 3, 255).Succeeded);
 
         Assert.Equal(255, Frame(engine)[2]);
     }
@@ -25,7 +25,7 @@ public class ShowEngineTests
     {
         var engine = new ShowEngine();
 
-        var result = engine.SetChannel(0, address, value);
+        var result = engine.SetChannel(1, address, value);
 
         Assert.False(result.Succeeded);
         Assert.False(string.IsNullOrEmpty(result.Error));
@@ -45,21 +45,21 @@ public class ShowEngineTests
     [Fact]
     public void Blackout_clears_every_universe()
     {
-        var engine = new ShowEngine([0, 1], []);
-        engine.SetChannel(0, 1, 100);
-        engine.SetChannel(1, 512, 100);
+        var engine = new ShowEngine([1, 2], []);
+        engine.SetChannel(1, 1, 100);
+        engine.SetChannel(2, 512, 100);
 
         engine.Blackout();
 
-        Assert.All(Frame(engine, 0), v => Assert.Equal(0, v));
         Assert.All(Frame(engine, 1), v => Assert.Equal(0, v));
+        Assert.All(Frame(engine, 2), v => Assert.Equal(0, v));
     }
 
     [Fact]
     public void Fixture_control_writes_the_mapped_channel()
     {
         var par = Fixture("Par", 10);
-        var engine = new ShowEngine([0], Patch(par).Fixtures);
+        var engine = new ShowEngine([1], Patch(par).Fixtures);
 
         Assert.True(engine.SetFixtureControl(par.Id, ChannelFunction.Blue, 200).Succeeded);
 
@@ -70,7 +70,7 @@ public class ShowEngineTests
     public void Fixture_control_the_mode_lacks_fails_clearly()
     {
         var par = Fixture("Par", 1, mode: "4ch");
-        var engine = new ShowEngine([0], Patch(par).Fixtures);
+        var engine = new ShowEngine([1], Patch(par).Fixtures);
 
         var result = engine.SetFixtureControl(par.Id, ChannelFunction.Intensity, 255);
 
@@ -82,7 +82,7 @@ public class ShowEngineTests
     public void Fixture_channel_numbers_are_relative_to_the_start_address()
     {
         var par = Fixture("Par", 100);
-        var engine = new ShowEngine([0], Patch(par).Fixtures);
+        var engine = new ShowEngine([1], Patch(par).Fixtures);
 
         engine.SetFixtureChannel(par.Id, 1, 7);
         engine.SetFixtureChannel(par.Id, 5, 9);
@@ -97,7 +97,7 @@ public class ShowEngineTests
     {
         var spot = Fixture("Spot", 20, profileId: "test/spot", mode: "3ch");
 
-        var engine = new ShowEngine([0], Patch(spot).Fixtures);
+        var engine = new ShowEngine([1], Patch(spot).Fixtures);
 
         Assert.Equal(32, Frame(engine)[20]);   // shutter at address 21 starts open
     }
@@ -106,10 +106,10 @@ public class ShowEngineTests
     public void Repatching_unchanged_fixtures_keeps_their_current_values()
     {
         var spot = Fixture("Spot", 20, profileId: "test/spot", mode: "3ch");
-        var engine = new ShowEngine([0], Patch(spot).Fixtures);
+        var engine = new ShowEngine([1], Patch(spot).Fixtures);
         engine.SetFixtureControl(spot.Id, ChannelFunction.Shutter, 0);
 
-        engine.Configure([0], Patch(spot).Fixtures);
+        engine.Configure([1], Patch(spot).Fixtures);
 
         Assert.Equal(0, Frame(engine)[20]);
     }
@@ -117,12 +117,12 @@ public class ShowEngineTests
     [Fact]
     public void Universes_that_stay_configured_keep_their_values()
     {
-        var engine = new ShowEngine([0], []);
-        engine.SetChannel(0, 1, 77);
+        var engine = new ShowEngine([1], []);
+        engine.SetChannel(1, 1, 77);
 
-        engine.Configure([0, 1], []);
+        engine.Configure([1, 2], []);
 
-        Assert.Equal(77, Frame(engine, 0)[0]);
+        Assert.Equal(77, Frame(engine, 1)[0]);
     }
 
     [Fact]
@@ -130,7 +130,7 @@ public class ShowEngineTests
     {
         var engine = new ShowEngine();
 
-        for (int i = 0; i <= 100_000; i++) engine.SetChannel(0, 1, i % 256);
+        for (int i = 0; i <= 100_000; i++) engine.SetChannel(1, 1, i % 256);
 
         Assert.Equal(100_000 % 256, Frame(engine)[0]);
     }
@@ -141,13 +141,13 @@ public class ShowEngineTests
         var engine = new ShowEngine();
         var writers = Enumerable.Range(1, 4).Select(address => Task.Run(() =>
         {
-            for (int i = 0; i < 20_000; i++) engine.SetChannel(0, address, i % 256);
-            engine.SetChannel(0, address, address);
+            for (int i = 0; i < 20_000; i++) engine.SetChannel(1, address, i % 256);
+            engine.SetChannel(1, address, address);
         }, TestContext.Current.CancellationToken));
         var reader = Task.Run(() =>
         {
             var frame = new byte[512];
-            for (int i = 0; i < 20_000; i++) engine.TryCopyUniverse(0, frame, out _);
+            for (int i = 0; i < 20_000; i++) engine.TryCopyUniverse(1, frame, out _);
         }, TestContext.Current.CancellationToken);
 
         await Task.WhenAll([.. writers, reader]);
@@ -155,7 +155,7 @@ public class ShowEngineTests
         Assert.Equal([1, 2, 3, 4], Frame(engine)[..4]);
     }
 
-    static byte[] Frame(ShowEngine engine, int universe = 0)
+    static byte[] Frame(ShowEngine engine, int universe = 1)
     {
         var frame = new byte[512];
         Assert.True(engine.TryCopyUniverse(universe, frame, out _));

@@ -20,7 +20,7 @@ public class DmxOutputServiceTests
 
     DmxOutputService Start(IDmxOutputDevice device)
     {
-        var service = new DmxOutputService(_engine, 0, device, _log, FastOptions);
+        var service = new DmxOutputService(_engine, 1, device, _log, FastOptions);
         service.Start();
         return service;
     }
@@ -31,8 +31,8 @@ public class DmxOutputServiceTests
         var simulator = new SimulatorDevice();
         var service = Start(simulator);
 
-        _engine.SetChannel(0, 1, 255);
-        _engine.SetChannel(0, 512, 7);
+        _engine.SetChannel(1, 1, 255);
+        _engine.SetChannel(1, 512, 7);
 
         var frame = new byte[512];
         await Eventually.True(() => { simulator.CopyLastFrame(frame); return frame[0] == 255 && frame[511] == 7; },
@@ -58,7 +58,7 @@ public class DmxOutputServiceTests
         var service = Start(device);
         await Eventually.True(() => device.FrameCount > 0, "output started");
 
-        for (int i = 1; i <= updates; i++) _engine.SetChannel(0, 1, i % 256);
+        for (int i = 1; i <= updates; i++) _engine.SetChannel(1, 1, i % 256);
 
         await Eventually.True(() => device.LastFrame[0] == updates % 256, "the final value is output");
         Assert.True(device.FrameCount < updates / 100, $"{device.FrameCount} frames for {updates} updates: frames go out at the frame rate, not once per update");
@@ -97,7 +97,7 @@ public class DmxOutputServiceTests
     {
         var device = new FakeDevice();
         var statuses = new List<DmxOutputStatus>();
-        var service = new DmxOutputService(_engine, 0, device, _log, FastOptions);
+        var service = new DmxOutputService(_engine, 1, device, _log, FastOptions);
         service.StatusChanged += s => { lock (statuses) statuses.Add(s.Status); };
         service.Start();
         await Eventually.True(() => device.FrameCount > 0, "output started");
@@ -117,7 +117,7 @@ public class DmxOutputServiceTests
     {
         var device = new FakeDevice();
         var service = Start(device);
-        _engine.SetChannel(0, 1, 255);
+        _engine.SetChannel(1, 1, 255);
         await Eventually.True(() => device.FrameCount > 0 && device.LastFrame[0] == 255, "the look is on stage");
 
         bool stopped = await service.StopAsync();
@@ -161,7 +161,7 @@ public class DmxOutputServiceTests
     {
         var device = new FakeDevice();
         var service = Start(device);
-        _engine.SetChannel(0, 10, 99);
+        _engine.SetChannel(1, 10, 99);
         await Eventually.True(() => device.FrameCount > 0 && device.LastFrame[9] == 99, "the value went out");
 
         var monitor = new byte[512];

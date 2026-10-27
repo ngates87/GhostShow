@@ -28,7 +28,7 @@ public sealed partial class PatchMapViewModel : ObservableObject
     public ObservableCollection<int> Universes { get; } = new();
 
     [ObservableProperty]
-    public partial int Universe { get; set; }
+    public partial int Universe { get; set; } = GhostShow.Core.Model.Project.FirstUniverse;
 
     [ObservableProperty]
     public partial IReadOnlyList<PatchMapBlock> Blocks { get; private set; } = [];
@@ -68,7 +68,21 @@ public sealed partial class PatchMapViewModel : ObservableObject
 
     public void Place(int startAddress) => _place(startAddress);
 
-    partial void OnUniverseChanged(int value) => Rebuild();
+    /// <summary>
+    /// For universe pickers. A ComboBox briefly selects nothing while its list is rebuilt; Universe is an int and can't
+    /// hold that, so pickers bind here and the empty selection is ignored.
+    /// </summary>
+    public int? UniverseChoice
+    {
+        get => Universe;
+        set { if (value is { } universe) Universe = universe; }
+    }
+
+    partial void OnUniverseChanged(int value)
+    {
+        OnPropertyChanged(nameof(UniverseChoice));
+        Rebuild();
+    }
 
     /// <summary>Called after every patch so the map always shows the current state.</summary>
     public void Refresh(IReadOnlyList<FixtureEditorViewModel> fixtures, PatchResult patch, IEnumerable<int> universes)
@@ -80,6 +94,8 @@ public sealed partial class PatchMapViewModel : ObservableObject
         {
             Universes.Clear();
             foreach (var n in numbers) Universes.Add(n);
+            if (!Universes.Contains(Universe) && Universes.Count > 0) Universe = Universes[0];
+            OnPropertyChanged(nameof(UniverseChoice));   // pickers lost their selection while the list was rebuilt
         }
         Rebuild();
     }

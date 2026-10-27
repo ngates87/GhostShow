@@ -5,21 +5,126 @@
         x:Class="GhostShow.App.MainWindow"
         x:DataType="vm:MainViewModel"
         Title="{Binding Title, FallbackValue=GhostShow}"
+        Icon="avares://ghostshow-app/Assets/ghostshow.ico"
         Width="1200" Height="780" MinWidth="800" MinHeight="500">
 
+  <Window.KeyBindings>
+    <KeyBinding Gesture="Ctrl+N" Command="{Binding NewCommand}" />
+    <KeyBinding Gesture="Ctrl+O" Command="{Binding OpenCommand}" />
+    <KeyBinding Gesture="Ctrl+S" Command="{Binding SaveCommand}" />
+    <KeyBinding Gesture="Ctrl+Shift+S" Command="{Binding SaveAsCommand}" />
+    <KeyBinding Gesture="Ctrl+W" Command="{Binding CloseShowCommand}" />
+    <KeyBinding Gesture="Ctrl+Q" Command="{Binding ExitCommand}" />
+    <KeyBinding Gesture="Ctrl+B" Command="{Binding BlackoutCommand}" />
+    <KeyBinding Gesture="Ctrl+D1" Command="{Binding GoToCommand}" CommandParameter="{x:Static vm:Page.Timeline}" />
+    <KeyBinding Gesture="Ctrl+D2" Command="{Binding GoToCommand}" CommandParameter="{x:Static vm:Page.Fixtures}" />
+    <KeyBinding Gesture="Ctrl+D3" Command="{Binding GoToCommand}" CommandParameter="{x:Static vm:Page.Audio}" />
+    <KeyBinding Gesture="Ctrl+D4" Command="{Binding GoToCommand}" CommandParameter="{x:Static vm:Page.Diagnostics}" />
+  </Window.KeyBindings>
+
   <DockPanel>
-    <!-- Toolbar: file commands and the always-available blackout -->
-    <Border DockPanel.Dock="Top" Padding="8" BorderThickness="0,0,0,1"
+    <!-- Menu bar. Shortcut keys shown here are handled by the window (file, view) or the timeline screen (editing,
+         Space for play/pause), so they work whether or not the menu is open. -->
+    <Menu DockPanel.Dock="Top">
+      <MenuItem Header="_File">
+        <MenuItem Header="_New Show" InputGesture="Ctrl+N" Command="{Binding NewCommand}" />
+        <MenuItem Header="_Open Show…" InputGesture="Ctrl+O" Command="{Binding OpenCommand}" />
+        <MenuItem Header="Open _Recent" Classes="recentRoot" ItemsSource="{Binding RecentShows}" IsEnabled="{Binding !!RecentShows.Count}">
+          <MenuItem.Styles>
+            <Style Selector="MenuItem:not(.recentRoot)" x:DataType="vm:RecentShowRow">
+              <Setter Property="Header" Value="{Binding Path}" />
+              <Setter Property="IsEnabled" Value="{Binding Exists}" />
+              <Setter Property="Command" Value="{Binding $parent[Window].((vm:MainViewModel)DataContext).OpenRecentCommand}" />
+              <Setter Property="CommandParameter" Value="{Binding}" />
+            </Style>
+          </MenuItem.Styles>
+        </MenuItem>
+        <MenuItem Header="Open Older Show _File (.json)…" Command="{Binding OpenOldShowCommand}" />
+        <Separator />
+        <MenuItem Header="_Save" InputGesture="Ctrl+S" Command="{Binding SaveCommand}" IsEnabled="{Binding IsShowOpen}" />
+        <MenuItem Header="Save _As…" InputGesture="Ctrl+Shift+S" Command="{Binding SaveAsCommand}" IsEnabled="{Binding IsShowOpen}" />
+        <Separator />
+        <MenuItem Header="_Close Show" InputGesture="Ctrl+W" Command="{Binding CloseShowCommand}" IsEnabled="{Binding IsShowOpen}" />
+        <Separator />
+        <MenuItem Header="E_xit" InputGesture="Ctrl+Q" Command="{Binding ExitCommand}" />
+      </MenuItem>
+      <MenuItem Header="_Edit" IsEnabled="{Binding IsShowOpen}">
+        <MenuItem Header="{Binding Timeline.UndoLabel}" InputGesture="Ctrl+Z" Command="{Binding Timeline.UndoCommand}" />
+        <MenuItem Header="{Binding Timeline.RedoLabel}" InputGesture="Ctrl+Y" Command="{Binding Timeline.RedoCommand}" />
+        <Separator />
+        <MenuItem Header="_Copy" InputGesture="Ctrl+C" Command="{Binding Timeline.CopyCommand}" />
+        <MenuItem Header="_Paste at Playhead" InputGesture="Ctrl+V" Command="{Binding Timeline.PasteCommand}" />
+        <MenuItem Header="_Duplicate" InputGesture="Ctrl+D" Command="{Binding Timeline.DuplicateCommand}" />
+        <MenuItem Header="De_lete" InputGesture="Delete" Command="{Binding Timeline.DeleteCommand}" />
+        <Separator />
+        <MenuItem Header="Select _All" InputGesture="Ctrl+A" Command="{Binding Timeline.SelectAllCommand}" />
+      </MenuItem>
+      <MenuItem Header="_View" IsEnabled="{Binding IsShowOpen}">
+        <MenuItem Header="_Timeline" InputGesture="Ctrl+1" Command="{Binding GoToCommand}" CommandParameter="{x:Static vm:Page.Timeline}" />
+        <MenuItem Header="_Lighting">
+          <MenuItem Header="_DMX Setup" Command="{Binding GoToCommand}" CommandParameter="{x:Static vm:Page.DmxSetup}" />
+          <MenuItem Header="_Fixtures" InputGesture="Ctrl+2" Command="{Binding GoToCommand}" CommandParameter="{x:Static vm:Page.Fixtures}" />
+          <MenuItem Header="_Control" Command="{Binding GoToCommand}" CommandParameter="{x:Static vm:Page.Control}" />
+          <MenuItem Header="C_hannels" Command="{Binding GoToCommand}" CommandParameter="{x:Static vm:Page.Channels}" />
+          <MenuItem Header="_Monitor" Command="{Binding GoToCommand}" CommandParameter="{x:Static vm:Page.Monitor}" />
+        </MenuItem>
+        <MenuItem Header="_Audio" InputGesture="Ctrl+3" Command="{Binding GoToCommand}" CommandParameter="{x:Static vm:Page.Audio}" />
+        <MenuItem Header="D_iagnostics" InputGesture="Ctrl+4" Command="{Binding GoToCommand}" CommandParameter="{x:Static vm:Page.Diagnostics}" />
+        <Separator />
+        <MenuItem Header="Zoom _In" Command="{Binding Timeline.ZoomInCommand}" />
+        <MenuItem Header="Zoom _Out" Command="{Binding Timeline.ZoomOutCommand}" />
+      </MenuItem>
+      <MenuItem Header="_Playback" IsEnabled="{Binding IsShowOpen}">
+        <MenuItem Header="{Binding Playback.PlayPauseLabel}" InputGesture="Space" Command="{Binding Playback.PlayPauseCommand}" />
+        <MenuItem Header="_Stop" Command="{Binding Playback.StopCommand}" />
+        <MenuItem Header="Play from _Start" Command="{Binding Playback.RestartCommand}" />
+        <Separator />
+        <MenuItem Header="_Blackout" InputGesture="Ctrl+B" Command="{Binding BlackoutCommand}" />
+      </MenuItem>
+      <MenuItem Header="_Help">
+        <MenuItem Header="_About GhostShow" Click="OnAbout" />
+      </MenuItem>
+    </Menu>
+
+    <!-- Slim toolbar: the transport and Blackout, on every screen. Blackout stays even with no show open. -->
+    <Border DockPanel.Dock="Top" Padding="8,6" BorderThickness="0,0,0,1"
             BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}">
       <DockPanel>
-        <Button DockPanel.Dock="Right" Content="Blackout" Command="{Binding BlackoutCommand}" HotKey="Ctrl+B"
-                ToolTip.Tip="Set every channel of every universe to 0 (Ctrl+B)"
+        <Button DockPanel.Dock="Left" Margin="0,0,10,0" Padding="2" Background="Transparent" BorderThickness="0"
+                VerticalAlignment="Center" Click="OnAbout" ToolTip.Tip="About GhostShow">
+          <Image Source="avares://ghostshow-app/Assets/ghostshow.png" Width="34" Height="34" />
+        </Button>
+        <Button DockPanel.Dock="Right" Content="Blackout" Command="{Binding BlackoutCommand}"
+                ToolTip.Tip="Stop playback and set every channel of every universe to 0 (Ctrl+B)"
                 Background="DarkRed" Foreground="White" FontWeight="SemiBold" Padding="16,6" />
-        <StackPanel Orientation="Horizontal" Spacing="6">
-          <Button Content="New" Command="{Binding NewCommand}" />
-          <Button Content="Open…" Command="{Binding OpenCommand}" HotKey="Ctrl+O" />
-          <Button Content="Save" Command="{Binding SaveCommand}" HotKey="Ctrl+S" />
-          <Button Content="Save As…" Command="{Binding SaveAsCommand}" />
+        <!-- Problems worth knowing about (patch errors, failing outputs); only there when there are some. -->
+        <Button DockPanel.Dock="Right" Margin="0,0,10,0" Padding="10,6" Background="#5A3A00" IsVisible="{Binding !!Warnings.Count}"
+                ToolTip.Tip="Things that need attention">
+          <TextBlock><Run Text="⚠ " /><Run Text="{Binding Warnings.Count}" /></TextBlock>
+          <Button.Flyout>
+            <Flyout>
+              <ItemsControl ItemsSource="{Binding Warnings}" MaxWidth="420">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="x:String">
+                    <TextBlock Text="{Binding}" TextWrapping="Wrap" Margin="0,3" />
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </Flyout>
+          </Button.Flyout>
+        </Button>
+        <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding IsShowOpen}">
+          <Button Content="{Binding Playback.PlayPauseLabel}" Command="{Binding Playback.PlayPauseCommand}" MinWidth="90"
+                  ToolTip.Tip="Play or pause the timeline (Space on the Timeline screen)" />
+          <Button Content="■ Stop" Command="{Binding Playback.StopCommand}"
+                  ToolTip.Tip="Stop: audio stops and the lights go back to their manual levels" />
+          <Button Content="⏮" Command="{Binding Playback.RestartCommand}" ToolTip.Tip="Play from the start" />
+          <StackPanel VerticalAlignment="Center" Margin="6,0,0,0">
+            <TextBlock Text="{Binding Playback.TimeLabel}" FontFamily="monospace" FontSize="15" />
+            <TextBlock FontSize="11" Opacity="0.7">
+              <Run Text="{Binding Timeline.TimelineName}" /><Run Text=" · " /><Run Text="{Binding Playback.StateLabel}" />
+            </TextBlock>
+          </StackPanel>
         </StackPanel>
       </DockPanel>
     </Border>
@@ -33,26 +138,42 @@
       </DockPanel>
     </Border>
 
-    <!-- Top level: Show, Lighting, Audio. Each department has its own row of screens. -->
-    <TabControl SelectedIndex="{Binding SelectedSection}" Margin="8,0,8,0" Classes="sections">
-      <TabItem Header="Show">
-        <TabControl SelectedIndex="{Binding SelectedShowPage}" Classes="pages">
-          <TabItem Header="Overview"><views:ConsoleView /></TabItem>
-          <TabItem Header="Diagnostics"><views:DiagnosticsView DataContext="{Binding Diagnostics}" /></TabItem>
-        </TabControl>
-      </TabItem>
-      <TabItem Header="Lighting">
-        <TabControl SelectedIndex="{Binding SelectedLightingPage}" Classes="pages">
-          <TabItem Header="DMX setup"><views:OutputsView DataContext="{Binding Outputs}" /></TabItem>
-          <TabItem Header="Fixtures"><views:FixtureSetupView DataContext="{Binding Fixtures}" /></TabItem>
-          <TabItem Header="Control"><views:FixtureControlView DataContext="{Binding Control}" /></TabItem>
-          <TabItem Header="Channels"><views:ChannelsView /></TabItem>
-          <TabItem Header="Monitor"><views:MonitorView /></TabItem>
-        </TabControl>
-      </TabItem>
-      <TabItem Header="Audio">
-        <views:AudioView />
-      </TabItem>
-    </TabControl>
+    <!-- With a show open: Timeline, Lighting (its own row of screens), Audio, Diagnostics. The tab strips only choose
+         the page; every screen below stays built and is just shown or hidden, so switching is instant (rebuilding a
+         screen such as the 512-channel monitor on every visit took hundreds of milliseconds). -->
+    <StackPanel DockPanel.Dock="Top" Margin="8,0,8,0" IsVisible="{Binding IsShowOpen}">
+      <TabStrip Classes="sections" SelectedIndex="{Binding SelectedSection}">
+        <TabStripItem Content="Timeline" />
+        <TabStripItem Content="Lighting" />
+        <TabStripItem Content="Audio" />
+        <TabStripItem Content="Diagnostics" />
+      </TabStrip>
+      <TabStrip Classes="pages" SelectedIndex="{Binding SelectedLightingPage}"
+                IsVisible="{Binding SelectedSection, Converter={x:Static vm:Converters.SectionIs}, ConverterParameter={x:Static vm:Section.Lighting}}">
+        <TabStripItem Content="DMX setup" />
+        <TabStripItem Content="Fixtures" />
+        <TabStripItem Content="Control" />
+        <TabStripItem Content="Channels" />
+        <TabStripItem Content="Monitor" />
+      </TabStrip>
+    </StackPanel>
+
+    <Panel Margin="8,0,8,0">
+      <views:HomeView IsVisible="{Binding CurrentPage, Converter={x:Static vm:Converters.PageIs}, ConverterParameter={x:Static vm:Page.Home}}" />
+      <views:TimelineView DataContext="{Binding Timeline}"
+                          IsVisible="{Binding $parent[Window].((vm:MainViewModel)DataContext).CurrentPage, Converter={x:Static vm:Converters.PageIs}, ConverterParameter={x:Static vm:Page.Timeline}}" />
+      <views:DiagnosticsView DataContext="{Binding Diagnostics}"
+                             IsVisible="{Binding $parent[Window].((vm:MainViewModel)DataContext).CurrentPage, Converter={x:Static vm:Converters.PageIs}, ConverterParameter={x:Static vm:Page.Diagnostics}}" />
+      <views:OutputsView DataContext="{Binding Outputs}"
+                         IsVisible="{Binding $parent[Window].((vm:MainViewModel)DataContext).CurrentPage, Converter={x:Static vm:Converters.PageIs}, ConverterParameter={x:Static vm:Page.DmxSetup}}" />
+      <views:FixtureSetupView DataContext="{Binding Fixtures}"
+                              IsVisible="{Binding $parent[Window].((vm:MainViewModel)DataContext).CurrentPage, Converter={x:Static vm:Converters.PageIs}, ConverterParameter={x:Static vm:Page.Fixtures}}" />
+      <views:FixtureControlView DataContext="{Binding Control}"
+                                IsVisible="{Binding $parent[Window].((vm:MainViewModel)DataContext).CurrentPage, Converter={x:Static vm:Converters.PageIs}, ConverterParameter={x:Static vm:Page.Control}}" />
+      <views:ChannelsView IsVisible="{Binding CurrentPage, Converter={x:Static vm:Converters.PageIs}, ConverterParameter={x:Static vm:Page.Channels}}" />
+      <views:MonitorView IsVisible="{Binding CurrentPage, Converter={x:Static vm:Converters.PageIs}, ConverterParameter={x:Static vm:Page.Monitor}}" />
+      <views:AudioView DataContext="{Binding Audio}"
+                     IsVisible="{Binding $parent[Window].((vm:MainViewModel)DataContext).CurrentPage, Converter={x:Static vm:Converters.PageIs}, ConverterParameter={x:Static vm:Page.Audio}}" />
+    </Panel>
   </DockPanel>
 </Window>

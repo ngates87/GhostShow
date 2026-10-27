@@ -1,0 +1,17 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="GhostShow.App.Dialogs.SaveChangesDialog"
+        Title="Unsaved changes"
+        Icon="avares://ghostshow-app/Assets/ghostshow.ico"
+        SizeToContent="WidthAndHeight" CanResize="False" WindowStartupLocation="CenterOwner"
+        MinWidth="420" MaxWidth="560">
+  <StackPanel Margin="24" Spacing="18">
+    <TextBlock x:Name="Question" FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap" />
+    <TextBlock Text="If you don't save, your changes since the last save will be lost." TextWrapping="Wrap" Opacity="0.8" />
+    <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+      <Button Content="Save" Classes="accent" IsDefault="True" Click="OnSave" MinWidth="90" HorizontalContentAlignment="Center" />
+      <Button Content="Don't save" Click="OnDontSave" MinWidth="90" HorizontalContentAlignment="Center" />
+      <Button Content="Cancel" IsCancel="True" Click="OnCancel" MinWidth="90" HorizontalContentAlignment="Center" />
+    </StackPanel>
+  </StackPanel>
+</Window>

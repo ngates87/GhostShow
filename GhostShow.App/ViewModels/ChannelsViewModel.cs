@@ -13,9 +13,10 @@ namespace GhostShow.App.ViewModels;
 public sealed partial class ChannelsViewModel : ObservableObject
 {
     readonly ShowEngine _engine;
+    readonly bool[] _timelineControlled = new bool[512];
     readonly Action<string> _reportError;
     readonly byte[] _frame = new byte[512];
-    int _universe;
+    int _universe = GhostShow.Core.Model.Project.FirstUniverse;
 
     public ChannelsViewModel(ShowEngine engine, Action<string> reportError)
     {
@@ -84,7 +85,8 @@ public sealed partial class ChannelsViewModel : ObservableObject
     public void Tick()
     {
         if (!_engine.TryCopyUniverse(_universe, _frame, out _)) return;
-        foreach (var fader in Faders) fader.ShowValue(_frame[fader.Address - 1]);
+        _engine.CopyTimelineControlled(_universe, _timelineControlled);
+        foreach (var fader in Faders) fader.ShowValue(_frame[fader.Address - 1], _timelineControlled[fader.Address - 1]);
     }
 
     void RebuildFaders()

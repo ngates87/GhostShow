@@ -69,13 +69,24 @@ public sealed class PatchMap : Control
     public static readonly StyledProperty<bool> CompactProperty =
         AvaloniaProperty.Register<PatchMap, bool>(nameof(Compact));
 
+    /// <summary>
+    /// Addresses to point out (the channels a lighting track picks). While any are set, the compact map dims every
+    /// other address, outlines these in gold, and shows ones no fixture covers (raw channels) in teal.
+    /// </summary>
+    public static readonly StyledProperty<IReadOnlySet<int>?> HighlightedAddressesProperty =
+        AvaloniaProperty.Register<PatchMap, IReadOnlySet<int>?>(nameof(HighlightedAddresses));
+
+    /// <summary>Run with the fixture's ID when a block is clicked: for maps inside templates, where events can't be wired.</summary>
+    public static readonly StyledProperty<System.Windows.Input.ICommand?> FixtureClickCommandProperty =
+        AvaloniaProperty.Register<PatchMap, System.Windows.Input.ICommand?>(nameof(FixtureClickCommand));
+
     /// <summary>Channel count of the fixture being placed; 0 turns placement off.</summary>
     public static readonly StyledProperty<int> FootprintProperty =
         AvaloniaProperty.Register<PatchMap, int>(nameof(Footprint));
 
     static PatchMap()
     {
-        AffectsRender<PatchMap>(BlocksProperty, SelectedIdProperty, FootprintProperty);
+        AffectsRender<PatchMap>(BlocksProperty, SelectedIdProperty, FootprintProperty, HighlightedAddressesProperty);
         AffectsMeasure<PatchMap>(BlocksProperty, CompactProperty);
     }
 
@@ -101,6 +112,18 @@ public sealed class PatchMap : Control
     {
         get => GetValue(CompactProperty);
         set => SetValue(CompactProperty, value);
+    }
+
+    public IReadOnlySet<int>? HighlightedAddresses
+    {
+        get => GetValue(HighlightedAddressesProperty);
+        set => SetValue(HighlightedAddressesProperty, value);
+    }
+
+    public System.Windows.Input.ICommand? FixtureClickCommand
+    {
+        get => GetValue(FixtureClickCommandProperty);
+        set => SetValue(FixtureClickCommandProperty, value);
     }
 
     public int Footprint
@@ -227,7 +250,20 @@ public sealed class PatchMap : Control
         foreach (var block in enabled.Where(b => b.Id == SelectedId))
             foreach (var segment in Segments(block.Start, Math.Min(block.End, Addresses)))
                 context.DrawRectangle(null, CompactSelectedPen, segment, 1, 1);
+
+        if (HighlightedAddresses is not { Count: > 0 } highlighted) return;
+        for (int address = 1; address <= Addresses; address++)
+        {
+            var cell = CellRect(address);
+            if (!highlighted.Contains(address)) context.DrawRectangle(DimFill, null, cell);
+            else if (!enabled.Any(b => b.Start <= address && address <= b.End)) context.DrawRectangle(RawHighlightFill, HighlightPen, cell.Deflate(1));
+            else context.DrawRectangle(null, HighlightPen, cell.Deflate(1));
+        }
     }
+
+    static readonly IBrush DimFill = new SolidColorBrush(Color.FromArgb(150, 0, 0, 0));
+    static readonly IBrush RawHighlightFill = new SolidColorBrush(Color.Parse("#26A69A"));
+    static readonly IPen HighlightPen = new Pen(Brushes.Gold, 1.5);
 
     void DrawPlacementPreview(DrawingContext context, int start)
     {
@@ -329,7 +365,11 @@ public sealed class PatchMap : Control
         var block = BlockAt(address);
         if (Compact)
         {
-            if (block is not null) FixtureClicked?.Invoke(block.Id);
+            if (block is not null)
+            {
+                FixtureClicked?.Invoke(block.Id);
+                if (FixtureClickCommand?.CanExecute(block.Id) == true) FixtureClickCommand.Execute(block.Id);
+            }
             e.Handled = true;
             return;
         }

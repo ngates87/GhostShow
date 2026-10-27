@@ -1,15 +1,61 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             x:Class="GhostShow.App.Views.AudioView">
-  <StackPanel Margin="0,16" Spacing="12" MaxWidth="760" HorizontalAlignment="Left">
-    <TextBlock Text="Audio" Classes="heading" />
-    <Border Classes="card">
-      <StackPanel Spacing="8">
-        <TextBlock TextWrapping="Wrap"
-                   Text="Audio isn't part of Phase 1 yet. This is where sound will live: output devices (sound cards and channels), the sound library, and per-zone levels, with cues placed on show timelines alongside lighting." />
-        <TextBlock TextWrapping="Wrap" Opacity="0.75"
-                   Text="Until then, the timeline prototype can play sounds from the command line (ghostshow run, using ffplay from FFmpeg)." />
-      </StackPanel>
-    </Border>
-  </StackPanel>
+             xmlns:vm="using:GhostShow.App.ViewModels"
+             x:Class="GhostShow.App.Views.AudioView"
+             x:DataType="vm:AudioViewModel">
+  <ScrollViewer>
+    <StackPanel Margin="0,16" Spacing="12" MaxWidth="860" HorizontalAlignment="Left">
+      <TextBlock Text="Audio output" Classes="heading" />
+      <Border Classes="card">
+        <StackPanel Spacing="10">
+          <TextBlock TextWrapping="Wrap" Opacity="0.75"
+                     Text="Where show audio plays on this computer. Like DMX adapters, this is saved with this computer's settings, not in the show, so a show moves between computers without changes." />
+          <Grid ColumnDefinitions="110,*,Auto" RowDefinitions="Auto,10,Auto,10,Auto">
+            <TextBlock Text="Device" VerticalAlignment="Center" />
+            <ComboBox Grid.Column="1" ItemsSource="{Binding Devices}" SelectedItem="{Binding SelectedDevice}" HorizontalAlignment="Stretch" />
+            <Button Grid.Column="2" Content="Refresh list" Command="{Binding RefreshDevicesCommand}" Margin="8,0,0,0" />
+
+            <TextBlock Grid.Row="2" Text="Master volume" VerticalAlignment="Center" />
+            <Slider Grid.Row="2" Grid.Column="1" Minimum="0" Maximum="100" Value="{Binding VolumePercent}" />
+            <TextBlock Grid.Row="2" Grid.Column="2" Text="{Binding VolumePercent, StringFormat='{}{0:0} %'}" VerticalAlignment="Center" Margin="8,0,0,0" MinWidth="50" />
+
+            <TextBlock Grid.Row="4" Text="Status" VerticalAlignment="Center" />
+            <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding StatusLabel}" VerticalAlignment="Center"
+                       Classes.fault="{Binding IsFaulted}" />
+            <Button Grid.Row="4" Grid.Column="2" Content="Test sound" Command="{Binding TestSoundCommand}" Margin="8,0,0,0"
+                    ToolTip.Tip="Plays a short tone at the master volume" />
+          </Grid>
+          <TextBlock Text="{Binding LastError}" Classes="fault" TextWrapping="Wrap"
+                     IsVisible="{Binding LastError, Converter={x:Static ObjectConverters.IsNotNull}}" />
+          <TextBlock Text="{Binding Message}" TextWrapping="Wrap" Opacity="0.8"
+                     IsVisible="{Binding Message, Converter={x:Static ObjectConverters.IsNotNull}}" />
+        </StackPanel>
+      </Border>
+
+      <TextBlock Text="Sounds in this show" Classes="heading" />
+      <Border Classes="card">
+        <StackPanel Spacing="4">
+          <TextBlock Text="No audio events yet. Add an audio track on the Show → Timeline screen, then double-click it to add a sound."
+                     TextWrapping="Wrap" Opacity="0.7" IsVisible="{Binding !Sounds.Count}" />
+          <Grid ColumnDefinitions="2*,2*,80,2*" Opacity="0.7" IsVisible="{Binding !!Sounds.Count}">
+            <TextBlock Text="File" /><TextBlock Grid.Column="1" Text="Used in" /><TextBlock Grid.Column="2" Text="Length" /><TextBlock Grid.Column="3" Text="Status" />
+          </Grid>
+          <ItemsControl ItemsSource="{Binding Sounds}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:ShowSoundRow">
+                <Grid ColumnDefinitions="2*,2*,80,2*" Margin="0,2">
+                  <TextBlock Text="{Binding File}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding File}" />
+                  <TextBlock Grid.Column="1" Text="{Binding Used}" TextTrimming="CharacterEllipsis" />
+                  <TextBlock Grid.Column="2" Text="{Binding Length}" />
+                  <TextBlock Grid.Column="3" Text="{Binding Status}" TextWrapping="Wrap" Classes.fault="{Binding Missing}" />
+                </Grid>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+          <TextBlock TextWrapping="Wrap" Opacity="0.7" Margin="0,6,0,0"
+                     Text="Files inside the show's folder are stored relative to it, so copy the whole folder to move a show with its sounds. WAV and MP3 are supported." />
+        </StackPanel>
+      </Border>
+    </StackPanel>
+  </ScrollViewer>
 </UserControl>

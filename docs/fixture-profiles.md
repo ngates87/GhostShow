@@ -121,7 +121,7 @@ Applied after every edit (`FixturePatcher`):
 | Fixture runs past 512 (message gives the highest start address that fits) | error | not patched |
 | Two fixtures with the same ID | error | the second isn't patched |
 | Overlapping addresses (message gives the shared range) | warning | both patched; the most recent write to a shared channel wins |
-| Duplicate universe numbers, universes out of 0-32767 | error | reported |
+| Duplicate universe numbers, universes out of 1-63999 | error | reported |
 
 Fixtures without errors keep working while you fix the others. Disabled fixtures are neither patched nor checked
 for overlaps.

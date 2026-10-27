@@ -45,9 +45,15 @@ public static class DmxAdapterDetector
             .ToArray();
     }
 
-    static IEnumerable<string> CandidatePorts()
+    /// <summary>
+    /// The serial ports a DMX adapter could be on, without opening any of them: cheap enough to poll every couple of
+    /// seconds to notice an adapter being plugged in.
+    /// </summary>
+    public static IReadOnlyList<string> CandidatePorts() => FilterCandidates(SerialPort.GetPortNames().Distinct()).ToArray();
+
+    static IEnumerable<string> FilterCandidates(IEnumerable<string> names)
     {
-        var ports = SerialPort.GetPortNames().Distinct().ToArray();
+        var ports = names.ToArray();
         // macOS lists every device twice; /dev/tty.* waits for carrier detect on open, /dev/cu.* doesn't.
         if (OperatingSystem.IsMacOS()) return ports.Where(p => !p.StartsWith("/dev/tty.", StringComparison.Ordinal));
         // Linux also lists 32 motherboard UARTs (ttyS*) that are never DMX adapters; only USB ports have a descriptor.
@@ -56,9 +62,15 @@ public static class DmxAdapterDetector
     }
 
     /// <summary>The adapter on this port, or null if it isn't a DMX adapter (or the port is busy).</summary>
-    public static DmxAdapterInfo? Probe(string port, int timeoutMs = 400)
+    public static DmxAdapterInfo? Probe(string port, int timeoutMs = 400) => Probe(port, timeoutMs, out _);
+
+    /// <param name="busy">
+    /// True if the port couldn't be opened (in use, e.g. by a running output, or no permission): it may be an adapter,
+    /// so callers shouldn't remember it as "not an adapter".
+    /// </param>
+    public static DmxAdapterInfo? Probe(string port, int timeoutMs, out bool busy)
     {
-        var pro = ProbePro(port, timeoutMs, out bool busy);
+        var pro = ProbePro(port, timeoutMs, out busy);
         if (pro is not null || busy) return pro;
         var usb = UsbSerialPorts.Describe(port);
         return usb is { IsFt232R: true }

@@ -6,7 +6,11 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>ghostshow-app</AssemblyName>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <ApplicationIcon>Assets/ghostshow.ico</ApplicationIcon>
   </PropertyGroup>
+  <ItemGroup>
+    <AvaloniaResource Include="Assets\**" />
+  </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="12.1.4" />
     <PackageReference Include="Avalonia.Desktop" Version="12.1.4" />
@@ -18,6 +22,7 @@
     <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="10.0.14" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\GhostShow.Audio\GhostShow.Audio.csproj" />
     <ProjectReference Include="..\GhostShow.Core\GhostShow.Core.csproj" />
     <ProjectReference Include="..\GhostShow.Dmx\GhostShow.Dmx.csproj" />
   </ItemGroup>

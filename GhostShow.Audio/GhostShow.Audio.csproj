@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="SoundFlow" Version="1.4.2" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\GhostShow.Core\GhostShow.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="GhostShow.Tests" />
+  </ItemGroup>
+</Project>

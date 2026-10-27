@@ -1,5 +1,7 @@
 <Solution>
+  <Project Path="GhostShow.App.Tests/GhostShow.App.Tests.csproj" />
   <Project Path="GhostShow.App/GhostShow.App.csproj" />
+  <Project Path="GhostShow.Audio/GhostShow.Audio.csproj" />
   <Project Path="GhostShow.Benchmarks/GhostShow.Benchmarks.csproj" />
   <Project Path="GhostShow.Cli/GhostShow.Cli.csproj" />
   <Project Path="GhostShow.Core/GhostShow.Core.csproj" />

@@ -1,6 +1,7 @@
 using GhostShow.Core.Fixtures;
 using GhostShow.Core.Model;
 using GhostShow.Core.Storage;
+using GhostShow.Core.Timeline;
 using Microsoft.Extensions.Logging;
 
 namespace GhostShow.Core.Engine;
@@ -28,8 +29,17 @@ public sealed class ShowSession
 
     public Project Project { get; private set; } = new();
 
-    /// <summary>null until the show has been opened from or saved to a file.</summary>
+    /// <summary>
+    /// The show's show.json (in its folder), or an older single-file show it was opened from; null until the show has
+    /// been opened or saved.
+    /// </summary>
     public string? FilePath { get; private set; }
+
+    /// <summary>
+    /// Opened from an older single-file show: it can't be saved back into that file (shows are folders now), so the
+    /// next save needs a folder. The old file is never changed.
+    /// </summary>
+    public bool IsSingleFileShow { get; private set; }
 
     public FixtureProfileLibrary Profiles { get; private set; }
 
@@ -66,13 +76,17 @@ public sealed class ShowSession
     {
         Project = new Project();
         FilePath = null;
+        IsSingleFileShow = false;
         Apply();
     }
 
-    /// <summary>Opens a show. On failure the current show stays open and the error is returned.</summary>
+    /// <summary>
+    /// Opens a show: its folder, its show.json, or an older single-file show. On failure the current show stays open
+    /// and the error is returned. Timeline files that couldn't be read are skipped and listed in the warnings.
+    /// </summary>
     public async Task<ProjectLoadResult> OpenAsync(string path, CancellationToken cancellationToken = default)
     {
-        var result = await ProjectStore.LoadAsync(path, cancellationToken);
+        var result = await ShowFolderStore.LoadAsync(path, cancellationToken);
         if (result.Project is null)
         {
             _logger.LogWarning("Couldn't open {Path}: {Error}", path, result.Error);
@@ -80,30 +94,61 @@ public sealed class ShowSession
         }
 
         Project = result.Project;
-        FilePath = path;
+        FilePath = Directory.Exists(path) ? Path.Combine(path, ShowFolderStore.ShowFileName) : path;
+        IsSingleFileShow = result.IsSingleFileShow;
         Apply();
-        _logger.LogInformation("Opened {Path}: {Fixtures} fixtures, {Issues} patch issues.", path, Project.Fixtures.Count, Patch.Issues.Count);
+        foreach (var warning in result.Warnings ?? []) _logger.LogWarning("{Warning}", warning);
+        _logger.LogInformation("Opened {Path}: {Fixtures} fixtures, {Timelines} timelines, {Issues} patch issues.",
+                               path, Project.Fixtures.Count, Project.Timelines.Count, Patch.Issues.Count);
         return result;
     }
 
     /// <summary>
-    /// Saves the show. The JSON is produced on the calling thread (a consistent snapshot, and fast); only the disk
-    /// write is asynchronous. Throws IOException/UnauthorizedAccessException if the write fails, leaving the
-    /// previous file intact.
+    /// Saves the show to a folder: back to its own folder when none is given (not possible for a single-file show,
+    /// which needs a folder). See <see cref="ShowFolderStore.SaveAsync"/> for what is written. Throws
+    /// IOException/UnauthorizedAccessException if writing fails; each file is either fully old or fully new.
+    /// Returns warnings (e.g. a folder that was kept because it holds other files).
     /// </summary>
-    public async Task SaveAsync(string? path = null, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<string>> SaveAsync(string? folder = null, CancellationToken cancellationToken = default)
     {
-        path ??= FilePath ?? throw new InvalidOperationException("The show has no file yet; give a path.");
-        string json = ProjectStore.ToJson(Project);
-        await AtomicFile.WriteAllTextAsync(path, json, cancellationToken);
-        FilePath = path;
-        _logger.LogInformation("Saved {Path}.", path);
+        folder ??= !IsSingleFileShow ? ShowFolder : null;
+        if (folder is null) throw new InvalidOperationException("The show has no folder yet; give one.");
+        folder = Path.GetFullPath(folder);
+        // Audio references follow the show: relative when inside its folder, absolute otherwise (see AudioPaths).
+        if (folder != ShowFolder) AudioPaths.Rebase(Project.Timelines, ShowFolder, folder);
+        var warnings = await ShowFolderStore.SaveAsync(Project, folder, IsSingleFileShow ? null : ShowFolder, cancellationToken);
+        FilePath = Path.Combine(folder, ShowFolderStore.ShowFileName);
+        IsSingleFileShow = false;
+        foreach (var warning in warnings) _logger.LogWarning("{Warning}", warning);
+        _logger.LogInformation("Saved {Folder}.", folder);
+        return warnings;
+    }
+
+    /// <summary>The show's folder (for a single-file show, the folder the file is in); relative audio references resolve against it.</summary>
+    public string? ShowFolder => FilePath is null ? null : Path.GetDirectoryName(Path.GetFullPath(FilePath));
+
+    /// <summary>
+    /// Compiles one of the show's timelines against the current patch, for playback. Problems (missing fixtures,
+    /// missing audio files, ...) come back in <see cref="CompiledTimeline.Issues"/>; the rest still plays.
+    /// </summary>
+    /// <param name="audioLength">Known audio file lengths (from the audio service); null when not known yet.</param>
+    public CompiledTimeline CompileTimeline(ShowTimeline timeline, Func<string, TimeSpan?> audioLength)
+    {
+        var folder = ShowFolder;
+        var context = new TimelineContext(
+            Patch.Fixtures.ToDictionary(f => f.Id),
+            Project.Fixtures.Select(f => f.Id).ToHashSet(),
+            Project.Universes.Select(u => u.Number).ToArray(),
+            reference => AudioPaths.Resolve(reference, folder),
+            audioLength);
+        return TimelineCompiler.Compile(timeline, context);
     }
 
     static IEnumerable<PatchIssue> ValidateUniverses(Project project)
     {
-        foreach (var universe in project.Universes.Where(u => u.Number is < 0 or > 32767))
-            yield return new PatchIssue(PatchIssueSeverity.Error, null, $"Universe {universe.Number} ('{universe.Name}') is out of range; use 0-32767.");
+        foreach (var universe in project.Universes.Where(u => u.Number is < Project.FirstUniverse or > Project.LastUniverse))
+            yield return new PatchIssue(PatchIssueSeverity.Error, null,
+                $"Universe {universe.Number} ('{universe.Name}') is out of range; universes are numbered {Project.FirstUniverse}-{Project.LastUniverse}.");
         foreach (var duplicate in project.Universes.GroupBy(u => u.Number).Where(g => g.Count() > 1))
             yield return new PatchIssue(PatchIssueSeverity.Error, null, $"Universe {duplicate.Key} is defined {duplicate.Count()} times.");
         if (project.Universes.Count == 0)

@@ -1,0 +1,19 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="GhostShow.App.Dialogs.AboutDialog"
+        Title="About GhostShow"
+        Icon="avares://ghostshow-app/Assets/ghostshow.ico"
+        SizeToContent="WidthAndHeight" CanResize="False" WindowStartupLocation="CenterOwner"
+        MinWidth="360" MaxWidth="460">
+  <StackPanel Margin="28,24" Spacing="14" HorizontalAlignment="Center">
+    <Image Source="avares://ghostshow-app/Assets/ghostshow.png" Width="200" Height="200" HorizontalAlignment="Center" />
+    <StackPanel Spacing="4" HorizontalAlignment="Center">
+      <TextBlock Text="GhostShow" FontSize="24" FontWeight="Bold" HorizontalAlignment="Center" />
+      <TextBlock x:Name="VersionText" Opacity="0.7" HorizontalAlignment="Center" />
+    </StackPanel>
+    <TextBlock Text="Open-source, cross-platform show control for haunted houses: DMX lighting and audio, played together from timelines."
+               TextWrapping="Wrap" TextAlignment="Center" Opacity="0.85" />
+    <Button Content="Close" Classes="accent" IsDefault="True" IsCancel="True" Click="OnClose"
+            MinWidth="90" HorizontalAlignment="Center" HorizontalContentAlignment="Center" />
+  </StackPanel>
+</Window>

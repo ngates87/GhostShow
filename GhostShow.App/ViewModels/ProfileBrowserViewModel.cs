@@ -30,6 +30,7 @@ public sealed partial class ProfileBrowserViewModel : ObservableObject
     Dictionary<string, string> _manufacturerNames = new();
     FixtureProfile? _current;
     string? _currentModeName;
+    bool _active;   // tiles are only built between Start and Stop: ~150 buttons nobody can see cost real time
 
     public ProfileBrowserViewModel(Action<FixtureProfile, FixtureMode> apply) => _apply = apply;
 
@@ -98,7 +99,15 @@ public sealed partial class ProfileBrowserViewModel : ObservableObject
         _manufacturerNames = library.Profiles
             .GroupBy(p => FixtureProfileLibrary.NormalizeName(p.Manufacturer))
             .ToDictionary(g => g.Key, g => g.GroupBy(p => p.Manufacturer).OrderByDescending(s => s.Count()).First().Key);
-        Refresh();
+        if (_active) Refresh();
+    }
+
+    /// <summary>The browser is hidden: drop the tiles so nothing invisible is kept up to date.</summary>
+    public void Stop()
+    {
+        _active = false;
+        Pending = null;
+        Tiles.Clear();
     }
 
     /// <summary>
@@ -107,6 +116,7 @@ public sealed partial class ProfileBrowserViewModel : ObservableObject
     /// </summary>
     public void Start(FixtureProfile? current, string? currentModeName, string applyLabel)
     {
+        _active = true;
         _current = current;
         _currentModeName = currentModeName;
         ApplyLabel = applyLabel;
@@ -180,6 +190,7 @@ public sealed partial class ProfileBrowserViewModel : ObservableObject
     void Refresh()
     {
         Tiles.Clear();
+        if (!_active) return;
         if (!string.IsNullOrWhiteSpace(Search)) ShowSearchResults();
         else if (OpenGroup is null) ShowGroups();
         else ShowGroup(OpenGroup);

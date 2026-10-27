@@ -27,9 +27,19 @@ public class ShowSessionTests : IDisposable
     }
 
     [Fact]
+    public void Universe_0_is_out_of_range()
+    {
+        _session.Project.Universes.Add(new UniverseConfig { Number = 0, Name = "Zero" });
+
+        var result = _session.Apply();
+
+        Assert.Contains(result.Issues, i => i.Message.Contains("numbered 1-63999"));
+    }
+
+    [Fact]
     public void Duplicate_universe_numbers_are_reported()
     {
-        _session.Project.Universes.Add(new UniverseConfig { Number = 0, Name = "Again" });
+        _session.Project.Universes.Add(new UniverseConfig { Number = 1, Name = "Again" });
 
         var result = _session.Apply();
 
@@ -42,15 +52,39 @@ public class ShowSessionTests : IDisposable
         var par = Fixture("Par", 5);
         _session.Project.Fixtures.Add(par);
         _session.Apply();
-        string path = _dir.File("show.json");
-        await _session.SaveAsync(path, TestContext.Current.CancellationToken);
+        string folder = _dir.File("Haunt");
+        await _session.SaveAsync(folder, TestContext.Current.CancellationToken);
 
         var reopened = new ShowSession(new ShowEngine(), Library, NullLogger<ShowSession>.Instance);
-        var result = await reopened.OpenAsync(path, TestContext.Current.CancellationToken);
+        var result = await reopened.OpenAsync(folder, TestContext.Current.CancellationToken);
 
         Assert.Null(result.Error);
-        Assert.Equal(path, reopened.FilePath);
+        Assert.Equal(Path.Combine(folder, "show.json"), reopened.FilePath);
+        Assert.Equal(folder, reopened.ShowFolder);
         Assert.Equal(5, Assert.Single(reopened.Patch.Fixtures).StartAddress);
+    }
+
+    [Fact]
+    public async Task A_single_file_show_opens_and_must_be_saved_to_a_folder_leaving_the_old_file_alone()
+    {
+        string old = _dir.File("old.json");
+        const string json = """{ "version": 4, "name": "Old", "timelines": [ { "name": "Room: 1", "tracks": [] }, { "name": "Room- 1", "tracks": [] } ] }""";
+        await File.WriteAllTextAsync(old, json, TestContext.Current.CancellationToken);
+
+        var result = await _session.OpenAsync(old, TestContext.Current.CancellationToken);
+
+        Assert.True(result.IsSingleFileShow);
+        Assert.True(_session.IsSingleFileShow);
+        Assert.Equal(["Room- 1", "Room- 1 2"], _session.Project.Timelines.Select(t => t.Name));   // made valid and unique as file names
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _session.SaveAsync(cancellationToken: TestContext.Current.CancellationToken));
+
+        string folder = _dir.File("Old show");
+        await _session.SaveAsync(folder, TestContext.Current.CancellationToken);
+
+        Assert.False(_session.IsSingleFileShow);
+        Assert.True(File.Exists(Path.Combine(folder, "timelines", "Room- 1 2.timeline.json")));
+        Assert.Equal(json, await File.ReadAllTextAsync(old, TestContext.Current.CancellationToken));
+        await _session.SaveAsync(cancellationToken: TestContext.Current.CancellationToken);   // from now on, saves to its folder
     }
 
     [Fact]
@@ -75,10 +109,10 @@ public class ShowSessionTests : IDisposable
         var reader = Task.Run(() =>
         {
             var frame = new byte[512];
-            while (!stop.IsCancellationRequested) { engine.TryCopyUniverse(0, frame, out _); reads++; }
+            while (!stop.IsCancellationRequested) { engine.TryCopyUniverse(1, frame, out _); reads++; }
         }, TestContext.Current.CancellationToken);
 
-        for (int i = 0; i < 20; i++) await _session.SaveAsync(_dir.File("show.json"), TestContext.Current.CancellationToken);
+        for (int i = 0; i < 20; i++) await _session.SaveAsync(_dir.File("Haunt"), TestContext.Current.CancellationToken);
         await stop.CancelAsync();
         await reader;
 

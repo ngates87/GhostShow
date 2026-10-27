@@ -49,6 +49,19 @@ public class MachineSettingsStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task Version_1_settings_numbered_from_0_are_renumbered_from_1()
+    {
+        await File.WriteAllTextAsync(_paths.MachineSettingsFile, """
+            { "schemaVersion": 1, "outputs": [ { "universe": 0, "device": { "type": "openDmx", "port": "/dev/ttyUSB0", "serialNumber": "AB0PFDWZ" } } ] }
+            """, TestContext.Current.CancellationToken);
+
+        var settings = (await MachineSettingsStore.LoadAsync(_paths, TestContext.Current.CancellationToken)).Settings;
+
+        Assert.Equal(1, Assert.Single(settings.Outputs).Universe);
+        Assert.Equal(MachineSettings.CurrentSchemaVersion, settings.SchemaVersion);
+    }
+
+    [Fact]
     public void Assigning_a_universe_again_replaces_its_device()
     {
         var settings = new MachineSettings();
@@ -57,5 +70,21 @@ public class MachineSettingsStoreTests : IDisposable
         settings.SetOutput(0, new OpenDmxDeviceConfig("/dev/ttyUSB0", null));
 
         Assert.IsType<OpenDmxDeviceConfig>(Assert.Single(settings.Outputs).Device);
+    }
+
+    [Fact]
+    public void Recent_shows_put_the_latest_first_once_and_keep_ten()
+    {
+        var settings = new MachineSettings();
+        for (int i = 0; i < 12; i++) settings.AddRecentShow(Path.Combine(Path.GetTempPath(), $"show{i}"));
+        settings.AddRecentShow(Path.Combine(Path.GetTempPath(), "show5") + Path.DirectorySeparatorChar);   // again, with a trailing slash
+
+        Assert.Equal(MachineSettings.MaxRecentShows, settings.RecentShows.Count);
+        Assert.Equal(Path.Combine(Path.GetTempPath(), "show5"), settings.RecentShows[0]);
+        Assert.Single(settings.RecentShows, p => p.EndsWith("show5"));
+        Assert.Equal(Path.Combine(Path.GetTempPath(), "show11"), settings.RecentShows[1]);
+
+        settings.RemoveRecentShow(settings.RecentShows[0]);
+        Assert.DoesNotContain(settings.RecentShows, p => p.EndsWith("show5"));
     }
 }

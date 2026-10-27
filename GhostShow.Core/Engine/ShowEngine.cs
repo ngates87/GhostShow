@@ -11,16 +11,23 @@ namespace GhostShow.Core.Engine;
 /// <see cref="TryCopyUniverse"/> at their own frame rate; nothing is queued, so a burst of slider moves just
 /// overwrites values and only the newest ones go out.
 ///
-/// Merging: raw channel commands and fixture commands write the same values; the most recent write wins.
-/// Timeline playback and priorities come in a later phase.
+/// Merging: raw channel commands and fixture commands write the same manual values; the most recent write wins.
+/// A playing timeline has its own layer (<see cref="SetTimelineLevels"/>), which takes precedence on the channels it
+/// controls; manual levels apply everywhere else, and everywhere again once the timeline is released (Stop).
 /// </summary>
 public sealed class ShowEngine : IShowCommands
 {
     readonly Lock _lock = new();
     Dictionary<int, DmxUniverse> _universes = new();
+
+    // The timeline layer: per universe, the levels the playing timeline wants and which channels it controls. Output
+    // takes the timeline's value where it controls a channel and the manual value everywhere else.
+    readonly Dictionary<int, (byte[] Values, bool[] Controlled)> _timeline = new();
+    long _timelineVersion;
     Dictionary<Guid, PatchedFixture> _fixtures = new();
 
-    public ShowEngine() : this([0], []) { }
+    /// <summary>An engine with just universe 1 and nothing patched, until <see cref="Configure"/> is called.</summary>
+    public ShowEngine() : this([Model.Project.FirstUniverse], []) { }
 
     public ShowEngine(IReadOnlyCollection<int> universes, IReadOnlyList<PatchedFixture> fixtures) =>
         Configure(universes, fixtures);
@@ -76,9 +83,67 @@ public sealed class ShowEngine : IShowCommands
                 return false;
             }
             u.CopyTo(destination);
-            version = u.Version;
+            version = u.Version + _timelineVersion;
+            if (_timeline.TryGetValue(universe, out var layer))
+            {
+                for (int i = 0; i < DmxUniverse.ChannelCount; i++)
+                    if (layer.Controlled[i]) destination[i] = layer.Values[i];
+            }
             return true;
         }
+    }
+
+    /// <summary>
+    /// Replaces the timeline layer with a frame from the playing timeline (see <see cref="Timeline.CompiledTimeline"/>).
+    /// While a channel is controlled by the timeline, output follows the timeline and manual changes to that channel
+    /// are kept but not visible; they show again once the timeline releases it. Universes not in the frame are released.
+    /// Called by the player on every tick (100 Hz); copies, so the player can reuse its frame. No allocation after the
+    /// first call per universe.
+    /// </summary>
+    public void SetTimelineLevels(Timeline.LevelsFrame frame)
+    {
+        lock (_lock)
+        {
+            foreach (var layer in _timeline.Values) Array.Clear(layer.Controlled);
+            for (int slot = 0; slot < frame.Universes.Count; slot++)
+            {
+                if (!_timeline.TryGetValue(frame.Universes[slot], out var layer))
+                    _timeline[frame.Universes[slot]] = layer = (new byte[DmxUniverse.ChannelCount], new bool[DmxUniverse.ChannelCount]);
+                frame.Values[slot].CopyTo(layer.Values, 0);
+                frame.Controlled[slot].CopyTo(layer.Controlled, 0);
+            }
+            _timelineVersion++;
+        }
+    }
+
+    /// <summary>Ends timeline control: every channel shows its manual level again (used by Stop).</summary>
+    public void ReleaseTimeline()
+    {
+        lock (_lock)
+        {
+            foreach (var layer in _timeline.Values) Array.Clear(layer.Controlled);
+            _timelineVersion++;
+        }
+    }
+
+    /// <summary>
+    /// Which channels of a universe the timeline controls (destination[i] is address i + 1), in one lock, so a screen
+    /// of faders can mark them. False everywhere when nothing is playing.
+    /// </summary>
+    public void CopyTimelineControlled(int universe, Span<bool> destination)
+    {
+        lock (_lock)
+        {
+            if (_timeline.TryGetValue(universe, out var layer)) layer.Controlled.AsSpan(0, Math.Min(destination.Length, DmxUniverse.ChannelCount)).CopyTo(destination);
+            else destination.Clear();
+        }
+    }
+
+    /// <summary>Whether the timeline currently controls a channel, so manual controls can say so.</summary>
+    public bool IsTimelineControlled(int universe, int address)
+    {
+        lock (_lock)
+            return DmxUniverse.IsValidAddress(address) && _timeline.TryGetValue(universe, out var layer) && layer.Controlled[address - 1];
     }
 
     public CommandResult SetChannel(int universe, int address, int value)

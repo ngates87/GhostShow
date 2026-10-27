@@ -1,0 +1,69 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:GhostShow.App.ViewModels"
+             x:Class="GhostShow.App.Views.HomeView"
+             x:DataType="vm:MainViewModel">
+  <!-- Shown when no show is open (first start, or after File → Close Show): start a show, or pick a recent one. -->
+  <ScrollViewer>
+    <StackPanel Spacing="24" Margin="24,32" MaxWidth="900" HorizontalAlignment="Left">
+
+      <StackPanel Orientation="Horizontal" Spacing="16">
+        <Image Source="avares://ghostshow-app/Assets/ghostshow.png" Width="96" Height="96" />
+        <StackPanel Spacing="4" VerticalAlignment="Center">
+          <TextBlock Text="GhostShow" FontSize="30" FontWeight="Bold" />
+          <TextBlock Text="Show control for haunts: lighting and sound on timelines." Opacity="0.7" />
+        </StackPanel>
+      </StackPanel>
+
+      <!-- Start something else -->
+      <StackPanel Spacing="8">
+        <TextBlock Text="Start" Classes="heading" />
+        <WrapPanel>
+          <Button Command="{Binding NewCommand}" Margin="0,0,10,10" Padding="16,10" MinWidth="200">
+            <StackPanel Spacing="2">
+              <TextBlock Text="New show" FontWeight="SemiBold" />
+              <TextBlock Text="An empty show; Save picks its folder" Opacity="0.7" FontSize="12" />
+            </StackPanel>
+          </Button>
+          <Button Command="{Binding OpenCommand}" Margin="0,0,10,10" Padding="16,10" MinWidth="200">
+            <StackPanel Spacing="2">
+              <TextBlock Text="Open show…" FontWeight="SemiBold" />
+              <TextBlock Text="A show folder (with a show.json)" Opacity="0.7" FontSize="12" />
+            </StackPanel>
+          </Button>
+          <Button Command="{Binding OpenOldShowCommand}" Margin="0,0,10,10" Padding="16,10" MinWidth="200">
+            <StackPanel Spacing="2">
+              <TextBlock Text="Open older show file…" FontWeight="SemiBold" />
+              <TextBlock Text="A single .json from earlier versions" Opacity="0.7" FontSize="12" />
+            </StackPanel>
+          </Button>
+        </WrapPanel>
+      </StackPanel>
+
+      <!-- Recent shows on this computer -->
+      <StackPanel Spacing="8">
+        <TextBlock Text="Recent shows" Classes="heading" />
+        <TextBlock Text="Shows you open or save appear here." Opacity="0.7" IsVisible="{Binding !RecentShows.Count}" />
+        <ItemsControl ItemsSource="{Binding RecentShows}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:RecentShowRow">
+              <DockPanel Margin="0,0,0,6">
+                <Button DockPanel.Dock="Right" Content="×" Padding="8,2" Margin="6,0,0,0" VerticalAlignment="Center"
+                        ToolTip.Tip="Remove from this list (the show itself isn't touched)"
+                        Command="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).ForgetRecentCommand}" CommandParameter="{Binding}" />
+                <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="12,8" IsEnabled="{Binding Exists}"
+                        Command="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).OpenRecentCommand}" CommandParameter="{Binding}">
+                  <StackPanel Spacing="2">
+                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding Location}" Opacity="0.65" FontSize="12" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Text="{Binding Note}" Classes="warning" FontSize="12" IsVisible="{Binding !Exists}" />
+                  </StackPanel>
+                </Button>
+              </DockPanel>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </StackPanel>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

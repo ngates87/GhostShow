@@ -13,6 +13,11 @@
     <Using Include="Xunit" />
   </ItemGroup>
   <ItemGroup>
+    <!-- Silent test audio, generated for these tests (see Assets/Audio/README.md). -->
+    <None Include="Assets\**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\GhostShow.Audio\GhostShow.Audio.csproj" />
     <ProjectReference Include="..\GhostShow.Core\GhostShow.Core.csproj" />
     <ProjectReference Include="..\GhostShow.Dmx\GhostShow.Dmx.csproj" />
   </ItemGroup>

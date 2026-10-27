@@ -7,7 +7,7 @@ public sealed class FixtureInstance
     public string Name { get; set; } = "Fixture";
     public string ProfileId { get; set; } = "";
     public string ModeName { get; set; } = "";
-    public int Universe { get; set; }
+    public int Universe { get; set; } = Model.Project.FirstUniverse;
 
     /// <summary>1-512: the DMX address of the fixture's first channel.</summary>
     public int StartAddress { get; set; } = 1;

@@ -88,9 +88,9 @@ public class FixturePatcherTests
     public void Fixtures_on_different_universes_never_overlap()
     {
         var left = Fixture("Left", 1);
-        var right = Fixture("Right", 1, universe: 1);
+        var right = Fixture("Right", 1, universe: 2);
 
-        var result = FixturePatcher.Patch([left, right], [0, 1], Library);
+        var result = FixturePatcher.Patch([left, right], [1, 2], Library);
 
         Assert.Empty(result.Issues);
     }

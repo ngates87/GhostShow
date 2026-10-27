@@ -8,7 +8,8 @@ namespace GhostShow.Core.Storage;
 /// </summary>
 public sealed class MachineSettings
 {
-    public const int CurrentSchemaVersion = 1;
+    /// <summary>2: universes numbered from 1 (version 1 numbered them from 0; loading shifts them up).</summary>
+    public const int CurrentSchemaVersion = 2;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
 
@@ -20,6 +21,29 @@ public sealed class MachineSettings
     /// folder and QLC+'s standard install folders are always searched; this is for anything else.
     /// </summary>
     public List<string> ProfileDirectories { get; set; } = [];
+
+    /// <summary>Audio output device and master volume for this computer.</summary>
+    public AudioSettings Audio { get; set; } = new();
+
+    /// <summary>Shows opened or saved on this computer, most recent first (show folders, or older single-file shows).</summary>
+    public List<string> RecentShows { get; set; } = [];
+
+    public const int MaxRecentShows = 10;
+
+    /// <summary>Puts a show at the top of the recent list (once), keeping at most <see cref="MaxRecentShows"/>.</summary>
+    public void AddRecentShow(string path)
+    {
+        path = Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        RemoveRecentShow(path);
+        RecentShows.Insert(0, path);
+        if (RecentShows.Count > MaxRecentShows) RecentShows.RemoveRange(MaxRecentShows, RecentShows.Count - MaxRecentShows);
+    }
+
+    public void RemoveRecentShow(string path)
+    {
+        var comparison = OperatingSystem.IsLinux() ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
+        RecentShows.RemoveAll(p => string.Equals(p, path, comparison));
+    }
 
     public OutputDeviceConfig? FindOutput(int universe) => Outputs.FirstOrDefault(o => o.Universe == universe)?.Device;
 
@@ -67,3 +91,7 @@ public sealed record UsbDmxProDeviceConfig(string Port, string? SerialNumber) : 
 
 /// <param name="Address">Node IP for unicast; null broadcasts.</param>
 public sealed record ArtNetDeviceConfig(string? Address, int ArtNetUniverse) : OutputDeviceConfig;
+
+/// <param name="DeviceName">The output device to use; null for the system default.</param>
+/// <param name="MasterVolume">0-1, applied on top of every audio event's own volume.</param>
+public sealed record AudioSettings(string? DeviceName = null, double MasterVolume = 1.0);
