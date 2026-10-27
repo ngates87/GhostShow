@@ -12,8 +12,14 @@ using Microsoft.Extensions.Logging;
 
 namespace GhostShow.App.ViewModels;
 
-/// <summary>Tabs, in the order MainWindow lists them.</summary>
-public enum Page { Console, Outputs, Fixtures, Control, Channels, Monitor, Diagnostics }
+/// <summary>Top-level tabs, in the order MainWindow lists them.</summary>
+public enum Section { Show, Lighting, Audio }
+
+/// <summary>
+/// Every screen. Show: Overview, Diagnostics. Lighting: DMX setup, Fixtures, Control, Channels, Monitor. Audio: Audio.
+/// Within a section, screens are listed in their tab order.
+/// </summary>
+public enum Page { Overview, Diagnostics, DmxSetup, Fixtures, Control, Channels, Monitor, Audio }
 
 /// <summary>
 /// The main window: file commands, navigation, the console page, and the UI refresh tick that keeps every screen
@@ -70,8 +76,48 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty, NotifyPropertyChangedFor(nameof(Title))]
     public partial bool IsDirty { get; set; }
 
+    /// <summary>Index of the selected top-level tab (see <see cref="Section"/>).</summary>
     [ObservableProperty]
-    public partial int SelectedPage { get; set; }
+    [NotifyPropertyChangedFor(nameof(CurrentPage))]
+    public partial int SelectedSection { get; set; }
+
+    /// <summary>Index of the selected tab within Show.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CurrentPage))]
+    public partial int SelectedShowPage { get; set; }
+
+    /// <summary>Index of the selected tab within Lighting.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CurrentPage))]
+    public partial int SelectedLightingPage { get; set; }
+
+    /// <summary>The screen on display; drives which screens refresh.</summary>
+    public Page CurrentPage
+    {
+        get => (Section)SelectedSection switch
+        {
+            Section.Show => Page.Overview + SelectedShowPage,
+            Section.Lighting => Page.DmxSetup + SelectedLightingPage,
+            _ => Page.Audio,
+        };
+        set
+        {
+            switch (value)
+            {
+                case <= Page.Diagnostics:
+                    SelectedShowPage = value - Page.Overview;
+                    SelectedSection = (int)Section.Show;
+                    break;
+                case <= Page.Monitor:
+                    SelectedLightingPage = value - Page.DmxSetup;
+                    SelectedSection = (int)Section.Lighting;
+                    break;
+                default:
+                    SelectedSection = (int)Section.Audio;
+                    break;
+            }
+        }
+    }
 
     /// <summary>The universe the monitor and channel faders show.</summary>
     [ObservableProperty]
@@ -88,11 +134,15 @@ public sealed partial class MainViewModel : ObservableObject
 
     partial void OnActiveUniverseChanged(int value) => Channels.SetUniverse(value);
 
+    partial void OnSelectedSectionChanged(int value) => OnPageShown();
+    partial void OnSelectedShowPageChanged(int value) => OnPageShown();
+    partial void OnSelectedLightingPageChanged(int value) => OnPageShown();
+
     /// <summary>Refresh a page as soon as it's shown rather than waiting for its next tick.</summary>
-    partial void OnSelectedPageChanged(int value)
+    void OnPageShown()
     {
         Outputs.Tick();
-        if ((Page)value == Page.Diagnostics) Diagnostics.Tick();
+        if (CurrentPage == Page.Diagnostics) Diagnostics.Tick();
         Tick();
     }
 
@@ -123,7 +173,7 @@ public sealed partial class MainViewModel : ObservableObject
     }
 
     [RelayCommand]
-    void GoTo(Page page) => SelectedPage = (int)page;
+    void GoTo(Page page) => CurrentPage = page;
 
     [RelayCommand]
     async Task New()
@@ -235,7 +285,7 @@ public sealed partial class MainViewModel : ObservableObject
     /// <summary>Screens refresh only while visible; slow-changing status refreshes once a second.</summary>
     void Tick()
     {
-        switch ((Page)SelectedPage)
+        switch (CurrentPage)
         {
             case Page.Monitor: Monitor.Tick(ActiveUniverse); break;
             case Page.Channels: Channels.Tick(); break;
@@ -244,7 +294,7 @@ public sealed partial class MainViewModel : ObservableObject
 
         if (++_tickCount % 30 != 0) return;
         Outputs.Tick();
-        if ((Page)SelectedPage == Page.Diagnostics) Diagnostics.Tick();
+        if (CurrentPage == Page.Diagnostics) Diagnostics.Tick();
         RefreshWarnings();
     }
 

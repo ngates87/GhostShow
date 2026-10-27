@@ -42,7 +42,7 @@ confusion.
 ## Setup
 
 ### Linux
-1. Plug in the adapter. `ghostshow detect` (or **Outputs → Scan for adapters** in the app) should list it, e.g.
+1. Plug in the adapter. `ghostshow detect` (or **Lighting → DMX setup → Scan for adapters** in the app) should list it, e.g.
    `/dev/ttyUSB0  (Open DMX, S/N AB0PFDWZ)`.
 2. Permission: you must be in the `dialout` group (`sudo usermod -aG dialout $USER`, then log out and in). Without
    it, the port shows as in use or access denied.
@@ -60,7 +60,7 @@ The adapter appears as `/dev/cu.usbserial-<serial number>`; GhostShow reads the 
 
 ## In the app
 
-**Outputs** lists the show's universes. For each one, choose its device: the simulator or a detected adapter.
+**Lighting → DMX setup** lists the show's universes. For each one, choose its device: the simulator or a detected adapter.
 The choice is saved for this computer (`machine.json`), not in the show. Status shows Connected with the live frame
 rate, or the fault and that it's retrying.
 
@@ -73,7 +73,7 @@ the scan list but stays assigned and running.
 1. `ghostshow detect` lists the adapter with its serial number.
 2. Visual: in the app, assign the adapter to universe 0, then on **Channels** push the fader for your fixture's
    address (or patch it under **Fixtures** and use **Control**). The fixture should respond immediately and smoothly.
-3. Replug: unplug the adapter during output. Outputs and Console show the fault within a frame; plug it back
+3. Replug: unplug the adapter during output. DMX setup and the Show overview show the fault within a frame; plug it back
    (any socket) and output resumes within about 2 s.
 4. Shutdown: close the app with a fixture lit. It should go dark (blackout is sent before the window closes).
 5. Sustained: `ghostshow soak --minutes 30 --opendmx /dev/ttyUSB0 --dark` (keeps fixtures at 0) and compare the

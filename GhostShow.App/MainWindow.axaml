@@ -33,14 +33,26 @@
       </DockPanel>
     </Border>
 
-    <TabControl SelectedIndex="{Binding SelectedPage}" Margin="8,0,8,0">
-      <TabItem Header="Console"><views:ConsoleView /></TabItem>
-      <TabItem Header="Outputs"><views:OutputsView DataContext="{Binding Outputs}" /></TabItem>
-      <TabItem Header="Fixtures"><views:FixtureSetupView DataContext="{Binding Fixtures}" /></TabItem>
-      <TabItem Header="Control"><views:FixtureControlView DataContext="{Binding Control}" /></TabItem>
-      <TabItem Header="Channels"><views:ChannelsView /></TabItem>
-      <TabItem Header="Monitor"><views:MonitorView /></TabItem>
-      <TabItem Header="Diagnostics"><views:DiagnosticsView DataContext="{Binding Diagnostics}" /></TabItem>
+    <!-- Top level: Show, Lighting, Audio. Each department has its own row of screens. -->
+    <TabControl SelectedIndex="{Binding SelectedSection}" Margin="8,0,8,0" Classes="sections">
+      <TabItem Header="Show">
+        <TabControl SelectedIndex="{Binding SelectedShowPage}" Classes="pages">
+          <TabItem Header="Overview"><views:ConsoleView /></TabItem>
+          <TabItem Header="Diagnostics"><views:DiagnosticsView DataContext="{Binding Diagnostics}" /></TabItem>
+        </TabControl>
+      </TabItem>
+      <TabItem Header="Lighting">
+        <TabControl SelectedIndex="{Binding SelectedLightingPage}" Classes="pages">
+          <TabItem Header="DMX setup"><views:OutputsView DataContext="{Binding Outputs}" /></TabItem>
+          <TabItem Header="Fixtures"><views:FixtureSetupView DataContext="{Binding Fixtures}" /></TabItem>
+          <TabItem Header="Control"><views:FixtureControlView DataContext="{Binding Control}" /></TabItem>
+          <TabItem Header="Channels"><views:ChannelsView /></TabItem>
+          <TabItem Header="Monitor"><views:MonitorView /></TabItem>
+        </TabControl>
+      </TabItem>
+      <TabItem Header="Audio">
+        <views:AudioView />
+      </TabItem>
     </TabControl>
   </DockPanel>
 </Window>

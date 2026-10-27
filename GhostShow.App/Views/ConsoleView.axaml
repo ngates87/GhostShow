@@ -47,7 +47,7 @@
       <StackPanel Spacing="6">
         <TextBlock Text="Go to" Classes="heading" />
         <WrapPanel>
-          <Button Content="Outputs &amp; hardware" Command="{Binding GoToCommand}" CommandParameter="{x:Static vm:Page.Outputs}" Margin="0,0,8,8" />
+          <Button Content="DMX setup" Command="{Binding GoToCommand}" CommandParameter="{x:Static vm:Page.DmxSetup}" Margin="0,0,8,8" />
           <Button Content="Fixture setup" Command="{Binding GoToCommand}" CommandParameter="{x:Static vm:Page.Fixtures}" Margin="0,0,8,8" />
           <Button Content="Fixture control" Command="{Binding GoToCommand}" CommandParameter="{x:Static vm:Page.Control}" Margin="0,0,8,8" />
           <Button Content="Raw channels" Command="{Binding GoToCommand}" CommandParameter="{x:Static vm:Page.Channels}" Margin="0,0,8,8" />

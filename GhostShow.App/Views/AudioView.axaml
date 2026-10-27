@@ -1,0 +1,15 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="GhostShow.App.Views.AudioView">
+  <StackPanel Margin="0,16" Spacing="12" MaxWidth="760" HorizontalAlignment="Left">
+    <TextBlock Text="Audio" Classes="heading" />
+    <Border Classes="card">
+      <StackPanel Spacing="8">
+        <TextBlock TextWrapping="Wrap"
+                   Text="Audio isn't part of Phase 1 yet. This is where sound will live: output devices (sound cards and channels), the sound library, and per-zone levels, with cues placed on show timelines alongside lighting." />
+        <TextBlock TextWrapping="Wrap" Opacity="0.75"
+                   Text="Until then, the timeline prototype can play sounds from the command line (ghostshow run, using ffplay from FFmpeg)." />
+      </StackPanel>
+    </Border>
+  </StackPanel>
+</UserControl>

@@ -10,7 +10,7 @@ structure later phases plug into.
 |---|---|---|
 | `GhostShow.Core` | Engine state and commands, universe model, fixture profiles/patching/validation, storage, diagnostics primitives, the frozen timeline prototype | `Microsoft.Extensions.Logging.Abstractions` only |
 | `GhostShow.Dmx` | Output service, device interface, simulator, Open DMX / USB Pro / Art-Net drivers, adapter discovery | Core, `System.IO.Ports` |
-| `GhostShow.App` | Avalonia desktop UI | Core, Dmx (Dmx is only used at startup and on the Outputs screen) |
+| `GhostShow.App` | Avalonia desktop UI | Core, Dmx (Dmx is only used at startup and on the DMX setup screen) |
 | `GhostShow.Cli` | Running without a UI, timeline playback, soak test | Core, Dmx |
 | `GhostShow.Tests` | xUnit v3 unit and integration tests | Core, Dmx |
 | `GhostShow.Benchmarks` | BenchmarkDotNet benchmarks for the frame path | Core, Dmx |

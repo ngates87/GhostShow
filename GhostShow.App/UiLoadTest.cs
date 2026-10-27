@@ -20,7 +20,7 @@ sealed class UiLoadTest(MainViewModel viewModel, ShowEngine engine, UiResponsive
     public void Start()
     {
         logger.LogWarning("UI load test running: all 512 channels of universe {Universe} are being changed continuously.", engine.Universes[0]);
-        viewModel.SelectedPage = (int)Page.Monitor;
+        viewModel.CurrentPage = Page.Monitor;
         Task.Factory.StartNew(ChangeChannels, TaskCreationOptions.LongRunning);
         Task.Run(ReportAsync);
     }

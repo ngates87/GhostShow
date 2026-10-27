@@ -5,6 +5,22 @@
   <Application.Styles>
     <FluentTheme />
 
+    <!-- Two levels of tabs: big department tabs (Show, Lighting, Audio), smaller screen tabs within each. -->
+    <Style Selector="TabControl.sections > TabItem">
+      <Setter Property="FontSize" Value="22" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="MinHeight" Value="44" />
+      <Setter Property="Padding" Value="12,0,20,0" />
+    </Style>
+    <Style Selector="TabControl.pages">
+      <Setter Property="Padding" Value="0,2,0,0" />
+    </Style>
+    <Style Selector="TabControl.pages > TabItem">
+      <Setter Property="FontSize" Value="15" />
+      <Setter Property="FontWeight" Value="Normal" />
+      <Setter Property="MinHeight" Value="34" />
+      <Setter Property="Padding" Value="10,0,14,0" />
+    </Style>
     <Style Selector="TextBlock.heading">
       <Setter Property="FontSize" Value="17" />
       <Setter Property="FontWeight" Value="SemiBold" />

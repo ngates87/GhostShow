@@ -22,15 +22,18 @@ Benchmarks: `dotnet run -c Release --project GhostShow.Benchmarks -- --filter '*
 
 ## The app
 
-| Screen | For |
-|---|---|
-| Console | Show status, outputs and their health, warnings, blackout |
-| Outputs | The show's universes, and which device (simulator or USB adapter) outputs each on this computer |
-| Fixtures | A heat map of the universe above the fixture list, and an address map for re-addressing (drag a fixture). **Add fixtures…** is a two-step wizard: choose the type (grid by manufacturer or type, or search), then click green openings on the map to add one per click, or quick-add several in a row, and press Done |
-| Control | Faders for a fixture's logical controls (intensity, colours) and every channel |
-| Channels | Raw faders, as many as fit the window, paged through all 512 channels |
-| Monitor | All 512 channels as actually sent to the device; changes highlighted |
-| Diagnostics | Frame rate and timing per output, UI responsiveness, memory, recent events |
+Three sections, each with its own screens:
+
+| Section | Screen | For |
+|---|---|---|
+| Show | Overview | Show status, warnings, output health, shortcuts to every screen |
+| | Diagnostics | Frame rate and timing per output, UI responsiveness, memory, recent events |
+| Lighting | DMX setup | The show's universes, and which device (simulator or USB adapter) outputs each on this computer |
+| | Fixtures | A heat map of the universe above the fixture list, and an address map for re-addressing (drag a fixture). **Add fixtures…** is a two-step wizard: choose the type (grid by manufacturer or type, or search), then click green openings on the map to add one per click, or quick-add several in a row, and press Done |
+| | Control | Faders for a fixture's logical controls (intensity, colours) and every channel |
+| | Channels | Raw faders, as many as fit the window, paged through all 512 channels |
+| | Monitor | All 512 channels as actually sent to the device; changes highlighted |
+| Audio | | Placeholder: audio comes in a later phase |
 
 **Blackout** (Ctrl+B) is always on the toolbar. Closing the app blacks out every output before it exits.
 
