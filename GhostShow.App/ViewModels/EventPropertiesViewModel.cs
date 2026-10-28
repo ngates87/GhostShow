@@ -17,12 +17,15 @@ public sealed partial class EventPropertiesViewModel : ObservableObject
     readonly Func<Task<string?>> _pickAudioFile;
     readonly PlaybackViewModel _playback;
     readonly Action<Guid, TimeSpan> _resize;
+    readonly TimelineEditorViewModel? _editor;
 
     /// <param name="resize">Changes a clip's length the way dragging its right edge does (a lighting clip scales or crops).</param>
+    /// <param name="editor">For effect clips' settings, new pattern and converting (null: those do nothing).</param>
     public EventPropertiesViewModel(TimelineEvent e, ShowSession session, EditHistory history, Func<Task<string?>> pickAudioFile,
-                                    PlaybackViewModel playback, Action<Guid, TimeSpan> resize)
+                                    PlaybackViewModel playback, Action<Guid, TimeSpan> resize, TimelineEditorViewModel? editor = null)
     {
         _resize = resize;
+        _editor = editor;
         Event = e;
         _session = session;
         _history = history;
@@ -35,7 +38,15 @@ public sealed partial class EventPropertiesViewModel : ObservableObject
     public bool IsAudio => Event is AudioEvent;
     public bool IsLightingClip => Event is LightingClip;
 
-    public string Kind => Event switch { LightingClip => LightingClip.DefaultName, _ => "Audio clip" };
+    public string Kind => Event switch
+    {
+        LightingClip { Effect: not null } clip => $"{clip.KindName} effect",
+        LightingClip clip => clip.KindName,
+        _ => "Audio clip",
+    };
+
+    /// <summary>A Level Control clip (handles of its own), not an effect.</summary>
+    public bool IsLevelControl => Event is LightingClip { Effect: null };
 
     /// <summary>A lighting clip's length; changing it scales or crops its envelopes, as dragging its edge does.</summary>
     public decimal ClipLengthSeconds
@@ -88,6 +99,91 @@ public sealed partial class EventPropertiesViewModel : ObservableObject
         {
             if (Event is LightingClip clip) Change(value ? "Scale envelopes on resize" : "Crop envelopes on resize", clip.ScaleOnResize, value, v => clip.ScaleOnResize = v, "scale");
         }
+    }
+
+    // ---- built-in effect ----
+
+    LightingClip? EffectClip => Event as LightingClip is { Effect: not null } clip ? clip : null;
+    LightingEffect? Effect => EffectClip?.Effect;
+    EffectInfo? Info => Effect is { } effect ? EffectInfo.Of(effect.Kind) : null;
+
+    public bool IsEffect => Effect is not null;
+
+    public static IReadOnlyList<EffectInfo> EffectKinds => EffectInfo.All;
+
+    /// <summary>Changing the kind keeps the strength and pattern, and takes the new kind's own rate and colour.</summary>
+    public EffectInfo? SelectedEffect
+    {
+        get => Info;
+        set
+        {
+            if (value is null || value.Kind == Effect?.Kind) return;
+            ChangeEffect($"Make it {value.Name}", e => { e.Kind = value.Kind; e.Rate = value.DefaultRate; e.Color = null; }, "kind");
+        }
+    }
+
+    public string EffectDescription => Info?.Description ?? "";
+    public string StrengthLabel => $"{Info?.StrengthLabel ?? "Strength"} (%)";
+
+    public decimal StrengthPercent
+    {
+        get => (decimal)Math.Round((Effect?.Strength ?? 0) * 100);
+        set => ChangeEffect($"Change {StrengthLabel.Replace(" (%)", "").ToLowerInvariant()}", e => e.Strength = (double)Math.Clamp(value, 0, 100) / 100, "strength");
+    }
+
+    public bool HasRate => Info?.RateLabel is not null;
+    public string RateLabel => Info?.RateLabel ?? "";
+    public decimal RateMinimum => (decimal)(Info?.MinRate ?? 0);
+    public decimal RateMaximum => (decimal)(Info?.MaxRate ?? 1);
+
+    public decimal Rate
+    {
+        get => (decimal)Math.Round(Effect?.Rate ?? 0, 2);
+        set => ChangeEffect($"Change {RateLabel.ToLowerInvariant()}", e => e.Rate = (double)value, "rate");
+    }
+
+    public bool HasColor => Info?.DefaultColor is not null;
+
+    /// <summary>"#RRGGBB"; the kind's own colour when none is set. A value that isn't a colour is ignored.</summary>
+    public string EffectColor
+    {
+        get => Effect?.Color ?? Info?.DefaultColor ?? "";
+        set
+        {
+            if (value is not { Length: 7 } || !Avalonia.Media.Color.TryParse(value, out _)) return;
+            string? color = string.Equals(value, Info?.DefaultColor, StringComparison.OrdinalIgnoreCase) ? null : value.ToUpperInvariant();
+            ChangeEffect("Change effect colour", e => e.Color = color, "color");
+        }
+    }
+
+    /// <summary>Quick picks for an effect's colour.</summary>
+    public static IReadOnlyList<string> Swatches { get; } = ["#DCE6FF", "#FFFFFF", "#FFD08A", "#FF0000", "#FF5A00", "#FFC400", "#20FF40", "#2050FF", "#9B30FF"];
+
+    [RelayCommand]
+    void PickColor(string color) => EffectColor = color;
+
+    /// <summary>On: the lights are left out when it ends; off: back where they were.</summary>
+    public bool EndsDark
+    {
+        get => Effect?.Ending == EffectEnding.Dark;
+        set => ChangeEffect(value ? "End dark" : "End back where it was", e => e.Ending = value ? EffectEnding.Dark : EffectEnding.BackToBefore, "ending");
+    }
+
+    [RelayCommand]
+    void NewPattern()
+    {
+        if (EffectClip is { } clip) _editor?.NewEffectPattern(clip);
+    }
+
+    [RelayCommand]
+    void ConvertToLevelControl()
+    {
+        if (EffectClip is { } clip) _editor?.ConvertToLevelControl(clip);
+    }
+
+    void ChangeEffect(string description, Action<LightingEffect> change, string field)
+    {
+        if (EffectClip is { } clip) _editor?.ChangeEffect(clip, description, change, field);
     }
 
     // ---- audio ----

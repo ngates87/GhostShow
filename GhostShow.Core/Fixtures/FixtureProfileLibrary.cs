@@ -14,6 +14,7 @@ public sealed record ProfileLoadError(string Source, string Message)
 public sealed class FixtureProfileLibrary
 {
     readonly Dictionary<string, FixtureProfile> _byId = new(StringComparer.OrdinalIgnoreCase);
+    readonly IReadOnlyList<FixtureProfile> _sources;   // every profile given, in order, for With and Without
 
     public FixtureProfileLibrary(IEnumerable<FixtureProfile> profiles, IEnumerable<ProfileLoadError>? loadErrors = null)
     {
@@ -21,7 +22,8 @@ public sealed class FixtureProfileLibrary
         // "SIXPAR 200IP"). Every ID stays findable, so shows using either keep working, but only the later source's
         // copy is listed for browsing.
         var listed = new Dictionary<string, FixtureProfile>();
-        foreach (var profile in profiles)
+        _sources = profiles.ToList();
+        foreach (var profile in _sources)
         {
             _byId[profile.Id] = profile;
             listed[SameFixtureKey(profile)] = profile;
@@ -41,6 +43,14 @@ public sealed class FixtureProfileLibrary
     public IReadOnlyList<ProfileLoadError> LoadErrors { get; }
 
     public FixtureProfile? Find(string id) => _byId.GetValueOrDefault(id);
+
+    /// <summary>The library with one more profile (or a new version of one with the same ID), e.g. a custom one just saved.</summary>
+    public FixtureProfileLibrary With(FixtureProfile profile) =>
+        new(_sources.Where(p => !string.Equals(p.Id, profile.Id, StringComparison.OrdinalIgnoreCase)).Append(profile), LoadErrors);
+
+    /// <summary>The library without a profile (e.g. a custom one just deleted).</summary>
+    public FixtureProfileLibrary Without(string id) =>
+        new(_sources.Where(p => !string.Equals(p.Id, id, StringComparison.OrdinalIgnoreCase)), LoadErrors);
 
     /// <summary>
     /// A name with case, spaces and punctuation removed, so "Pro-Lights" and "Prolights", or "KAM" and "Kam", compare

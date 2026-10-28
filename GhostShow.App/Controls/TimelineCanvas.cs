@@ -16,8 +16,9 @@ namespace GhostShow.App.Controls;
 /// track headers), drawn the way VenueMagic draws them:
 /// - Lighting track: its Level Control clips, each drawing its envelopes inside itself, every channel in its colour:
 ///   collapsed, as a preview; expanded (taller), with their handles. Between clips, each channel's held level.
-/// - Audio: a clip over the time it plays, with its fade-in and fade-out drawn as a volume outline; dashed when the
-///   file's length isn't known yet.
+/// - Audio: a clip over the time it plays, showing the file's waveform at the loudness it will play (the clip's volume
+///   and fades, and the track's volume), with its fade-in and fade-out drawn as a volume outline; dashed when the
+///   file's length isn't known yet (its waveform appears once it has been measured).
 /// Selected clips and handles are gold, things with problems dashed red, disabled clips and muted tracks dimmed,
 /// locked clips carry a padlock and linked ones a chain.
 ///
@@ -25,7 +26,8 @@ namespace GhostShow.App.Controls;
 /// release); drag an edge to resize (a lighting clip's envelopes scale or crop; an audio clip's left edge trims into
 /// its file); double-click an empty part of a row to add a clip, or a lighting clip to open the Envelope Editor (on an
 /// expanded clip's envelope line: to add a handle there).
-/// Right-click a clip: Add Envelope Handle ▸ (per channel), split, lock, link, copy, delete.
+/// Right-click a clip: Add Envelope Handle ▸ (per channel), split, lock, link, copy, delete; an effect clip (violet):
+/// New random pattern and Convert to Level Control. Right-click empty space: Add here, Add effect here ▸, Paste here.
 /// Mouse, handles (expanded lighting tracks): click selects (Ctrl adds); drag moves the selected handles in time (not
 /// past their neighbours; end handles only up and down) and level; right-click for the curve type and Delete. The
 /// first clip's start handle sets the channel's start level, when the channel starts at its first clip. Clicking or
@@ -56,8 +58,12 @@ public sealed class TimelineCanvas : Control
     static readonly IBrush ClipFill = new SolidColorBrush(Color.FromArgb(235, 0x2A, 0x26, 0x1E));
     static readonly IPen ClipBorder = new Pen(new SolidColorBrush(LightingColor), 1);
     static readonly IBrush TitleFill = new SolidColorBrush(LightingColor, 0.55);
+    static readonly Color EffectColor = Color.Parse("#8E6BD8");
+    static readonly IPen EffectBorder = new Pen(new SolidColorBrush(EffectColor), 1);
+    static readonly IBrush EffectTitleFill = new SolidColorBrush(EffectColor, 0.6);
     static readonly IPen SelectedPen = new Pen(Brushes.Gold, 2);
     static readonly IPen ErrorPen = new Pen(new SolidColorBrush(Color.Parse("#FF5252")), 2, new DashStyle([4, 3], 0));
+    static readonly IBrush WaveFill = new SolidColorBrush(Color.FromArgb(210, 0xC8, 0xE6, 0xFF));
     static readonly IPen RampPen = new Pen(new SolidColorBrush(Color.FromArgb(220, 255, 255, 255)), 1.5);
     static readonly IPen UnknownLengthPen = new Pen(new SolidColorBrush(Color.FromArgb(200, 255, 255, 255)), 1, new DashStyle([3, 3], 0));
     static readonly IPen HandleOutline = new Pen(Brushes.Black, 1);
@@ -77,6 +83,7 @@ public sealed class TimelineCanvas : Control
     public ContextMenu? LastMenu { get; private set; }
 
     ScrollViewer? _scroller;           // sideways (the lanes)
+    double _viewLeft, _viewRight;      // what's scrolled into view, while rendering
     ScrollViewer? _verticalScroller;   // up and down (headers and lanes together)
 
     // Drag state. Moves and resizes are previewed by drawing with an offset; the edit is made once, on release.
@@ -214,6 +221,7 @@ public sealed class TimelineCanvas : Control
         double right = (_scroller?.Offset.X ?? 0) + (_scroller?.Viewport.Width ?? bounds.Width) + 50;
         double viewTop = (_verticalScroller?.Offset.Y ?? 0) - RulerHeight - 50;
         double viewBottom = (_verticalScroller?.Offset.Y ?? 0) + (_verticalScroller?.Viewport.Height ?? bounds.Height) + 50;
+        (_viewLeft, _viewRight) = (left, right);
         var visibleRows = editor.Rows.Where(r => r.Bottom >= viewTop && r.Top <= viewBottom).ToList();
         var step = RulerStep();
 
@@ -315,20 +323,24 @@ public sealed class TimelineCanvas : Control
                 // Collapsed, the envelopes are a preview (lines only); expanded, they have their handles to edit.
                 bool expanded = ShowsEnvelopes(row);
                 context.FillRectangle(ClipFill, rect, 4);
-                context.FillRectangle(TitleFill, new Rect(rect.X, rect.Y, rect.Width, ClipTitle), 4);
-                using (context.PushClip(rect.Deflate(1))) DrawEnvelopes(context, editor, row, clip, rect, levels, editable: expanded);
-                context.DrawRectangle(ClipBorder, rect.Deflate(0.5), 4);
+                // Built-in effects (Lightning, Fire, …) have a violet title; their envelopes are made, not edited.
+                bool effect = clip.Effect is not null;
+                context.FillRectangle(effect ? EffectTitleFill : TitleFill, new Rect(rect.X, rect.Y, rect.Width, ClipTitle), 4);
+                using (context.PushClip(rect.Deflate(1))) DrawEnvelopes(context, editor, row, clip, rect, levels, editable: expanded && !effect);
+                context.DrawRectangle(effect ? EffectBorder : ClipBorder, rect.Deflate(0.5), 4);
                 double titleY = rect.Y + 0.5;
                 double icons = DrawClipIcons(context, clip, rect, titleY);
-                DrawText(context, clip.Name ?? LightingClip.DefaultName, new Point(rect.X + 4, titleY), Math.Min(labelRoom, rect.Width - 8 - icons), size: 11);
+                string title = effect ? $"⚡ {clip.Name ?? clip.KindName}" : clip.Name ?? clip.KindName;
+                DrawText(context, title, new Point(rect.X + 4, titleY), Math.Min(labelRoom, rect.Width - 8 - icons), size: 11);
                 break;
             }
             case AudioEvent audio:
             {
                 context.FillRectangle(new SolidColorBrush(AudioColor, 0.55), rect, 4);
+                using (context.PushClip(rect.Deflate(1))) DrawWaveform(context, editor, row.Track.Track, audio, rect, length);
                 if (editor.LengthOf(audio) <= TimeSpan.Zero && audio.Length is null)
                     context.DrawRectangle(UnknownLengthPen, rect.Deflate(1), 4);   // file length not known (yet)
-                DrawVolumeOutline(context, audio, rect, length);
+                DrawVolumeOutline(context, audio, row.Track.Track, rect, length);
                 double icons = DrawClipIcons(context, audio, rect, rect.Y + 1);
                 DrawText(context, TimelineCompiler.Describe(audio), rect.TopLeft + new Point(4, 1), Math.Min(labelRoom, rect.Width - 8 - icons));
                 break;
@@ -488,11 +500,54 @@ public sealed class TimelineCanvas : Control
         g.EndFigure(true);
     }
 
-    /// <summary>The volume envelope across the clip: rises over the fade-in, falls over the fade-out.</summary>
-    void DrawVolumeOutline(DrawingContext context, AudioEvent audio, Rect rect, TimeSpan length)
+    /// <summary>
+    /// The file's waveform across the clip (only the part in view), mirrored about the middle of the space under the
+    /// title, at the loudness it will play: the clip's volume and fades times the track's volume. A looping clip
+    /// repeats the file from its start point. Nothing until the file has been measured.
+    /// </summary>
+    void DrawWaveform(DrawingContext context, TimelineEditorViewModel editor, TimelineTrack track, AudioEvent audio, Rect rect, TimeSpan length)
+    {
+        if (editor.WaveformOf(audio) is not { Count: > 0 } waveform) return;
+        // While its left edge is dragged, the clip trims into its file by as much as its start moves.
+        var offset = audio.Offset;
+        if (_drag == DragKind.ResizeStart && audio.Id == _dragEvent) offset += _resizeStart - audio.Start;
+        var repeat = waveform.Length - offset;
+        double volume = Math.Clamp(audio.Volume, 0, 1) * Math.Clamp(track.Volume, 0, 1);
+        var gain = new AudioCue(audio.Id, "", "", 0, length > TimeSpan.Zero ? length.Ticks : null, 0, volume,
+                                audio.FadeIn.Ticks, audio.FadeOut.Ticks, audio.Loop);
+
+        TimeSpan FileTime(TimeSpan t) => audio.Loop && repeat > TimeSpan.Zero && offset + t >= waveform.Length
+            ? offset + TimeSpan.FromTicks(t.Ticks % repeat.Ticks)
+            : offset + t;
+
+        double top = rect.Y + ClipTitle, bottom = rect.Bottom - 2, middle = (top + bottom) / 2, half = (bottom - top) / 2;
+        double from = Math.Max(rect.X, _viewLeft), to = Math.Min(rect.Right, _viewRight);
+        if (to - from < 1 || half < 2) return;
+        int columns = (int)Math.Ceiling(to - from);
+        var heights = new double[columns + 1];
+        for (int i = 0; i <= columns; i++)
+        {
+            var t = TimeSpan.FromSeconds((from + i - rect.X) / Pps);
+            var file = FileTime(t);
+            heights[i] = waveform.PeakBetween(file, file + TimeSpan.FromSeconds(1 / Pps)) * gain.VolumeAt(t.Ticks) * half;
+        }
+        var geometry = new StreamGeometry();
+        using (var g = geometry.Open())
+        {
+            g.BeginFigure(new Point(from, middle - heights[0]), true);
+            for (int i = 1; i <= columns; i++) g.LineTo(new Point(from + i, middle - heights[i]));
+            for (int i = columns; i >= 0; i--) g.LineTo(new Point(from + i, middle + heights[i] + 0.5));
+            g.EndFigure(true);
+        }
+        context.DrawGeometry(WaveFill, null, geometry);
+    }
+
+    /// <summary>The volume envelope across the clip (clip times track volume): rises over the fade-in, falls over the fade-out.</summary>
+    void DrawVolumeOutline(DrawingContext context, AudioEvent audio, TimelineTrack track, Rect rect, TimeSpan length)
     {
         if (audio.FadeIn <= TimeSpan.Zero && audio.FadeOut <= TimeSpan.Zero) return;
-        double top = rect.Y + 16 + (1 - Math.Clamp(audio.Volume, 0, 1)) * (rect.Height - 18), bottom = rect.Bottom - 1;
+        double volume = Math.Clamp(audio.Volume, 0, 1) * Math.Clamp(track.Volume, 0, 1);
+        double top = rect.Y + 16 + (1 - volume) * (rect.Height - 18), bottom = rect.Bottom - 1;
         double fadeIn = Math.Min(X(audio.FadeIn), rect.Width), fadeOut = length > TimeSpan.Zero ? Math.Min(X(audio.FadeOut), rect.Width) : 0;
         var geometry = new StreamGeometry();
         using (var g = geometry.Open())
@@ -729,6 +784,11 @@ public sealed class TimelineCanvas : Control
             else StartBox(e, editor, point, additive);
             return;
         }
+        if (e.ClickCount == 2 && hit is LightingClip { Effect: not null } effectClip)
+        {
+            editor.SelectEvent(effectClip.Id, additive: false);   // its settings are in the properties panel
+            return;
+        }
         if (e.ClickCount == 2 && hit is LightingClip doubleClicked)
         {
             // On an envelope's line (expanded): a handle there. Elsewhere: the Envelope Editor (as in VenueMagic).
@@ -809,7 +869,15 @@ public sealed class TimelineCanvas : Control
     void ShowEventMenu(TimelineEditorViewModel editor, TimelineRow row, TimelineEvent clicked, TimeSpan at)
     {
         var items = new List<object>();
-        if (clicked is LightingClip clip)
+        if (clicked is LightingClip { Effect: not null } effectClip)
+        {
+            var pattern = new MenuItem { Header = "New random pattern", IsEnabled = !effectClip.Locked };
+            pattern.Click += (_, _) => editor.NewEffectPattern(effectClip);
+            var convert = new MenuItem { Header = "Convert to Level Control (editable handles)", IsEnabled = !effectClip.Locked };
+            convert.Click += (_, _) => editor.ConvertToLevelControl(effectClip);
+            items.AddRange([pattern, convert, new Separator()]);
+        }
+        else if (clicked is LightingClip clip)
         {
             var envelopes = new MenuItem { Header = "Envelope Editor…" };
             envelopes.Click += (_, _) => editor.OpenEnvelopeEditor(clip);
@@ -839,7 +907,7 @@ public sealed class TimelineCanvas : Control
         int count = editor.Selection.Count;
         string what = count > 1 ? $"{count} clips" : "clip";
         var position = editor.Playback.Position;
-        var split = new MenuItem { Header = "Split at playhead", IsEnabled = !clicked.Locked && clicked.Start < position && position < clicked.Start + editor.LengthOf(clicked) };
+        var split = new MenuItem { Header = "Split at playhead", IsEnabled = !clicked.Locked && clicked is not LightingClip { Effect: not null } && clicked.Start < position && position < clicked.Start + editor.LengthOf(clicked) };
         split.Click += (_, _) => editor.SplitCommand.Execute(null);
         items.Add(split);
         var lockItem = new MenuItem { Header = clicked.Locked ? $"Unlock {what}" : $"Lock {what}" };
@@ -875,7 +943,21 @@ public sealed class TimelineCanvas : Control
         add.Click += (_, _) => _ = editor.AddEventAtAsync(row.TrackIndex, at);
         var paste = new MenuItem { Header = "Paste here", IsEnabled = editor.CanPaste };
         paste.Click += (_, _) => editor.PasteAt(at);
-        Open(new ContextMenu { ItemsSource = new object[] { add, paste } });
+        var items = new List<object> { add };
+        if (row.Track.IsLighting)
+        {
+            var effects = new MenuItem { Header = "Add effect here" };
+            effects.ItemsSource = EffectInfo.All.Select(info =>
+            {
+                var item = new MenuItem { Header = info.Name };
+                ToolTip.SetTip(item, info.Description);
+                item.Click += (_, _) => editor.AddEffectAt(row.Track, editor.SnapTime(at), info.Kind);
+                return item;
+            }).ToList();
+            items.Add(effects);
+        }
+        items.Add(paste);
+        Open(new ContextMenu { ItemsSource = items });
     }
 
     /// <summary>Right-click a handle: its curve type (how the level gets to it from the previous handle), and Delete.</summary>

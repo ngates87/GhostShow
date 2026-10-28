@@ -32,6 +32,19 @@ public class AudioCueTests : IDisposable
     }
 
     [Fact]
+    public void The_track_volume_scales_every_clip_volume()
+    {
+        var loud = new AudioEvent { File = "thunder.wav", Volume = 0.8 };
+        var full = new AudioEvent { File = "thunder.wav", Start = S(5) };
+        var track = new TimelineTrack { Kind = TrackKind.Audio, Volume = 0.5, Events = [loud, full] };
+
+        var compiled = Compile(Timeline(track), Context(showFolder: _dir.Path));
+
+        Assert.Equal([0.4, 0.5], compiled.AudioCues.Select(c => Math.Round(c.Volume, 6)));
+        Assert.Equal(1.0, new TimelineTrack().Volume);   // a new track (or one saved before track volumes) is at full volume
+    }
+
+    [Fact]
     public void Missing_files_are_reported_with_the_path_looked_for()
     {
         var e = new AudioEvent { File = "nope.wav" };

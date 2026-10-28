@@ -52,7 +52,7 @@ public sealed class ShowTimeline
         Name = name, Folder = Folder, Length = Length, Loop = Loop, Playback = Playback,
         Tracks = Tracks.Select(t => new TimelineTrack
         {
-            Name = t.Name, Kind = t.Kind, Enabled = t.Enabled, Color = t.Color, DrawLevelsBetweenClips = t.DrawLevelsBetweenClips,
+            Name = t.Name, Kind = t.Kind, Enabled = t.Enabled, Color = t.Color, DrawLevelsBetweenClips = t.DrawLevelsBetweenClips, Volume = t.Volume,
             Events = t.Events.Select(e => e.Clone()).ToList(),
             Channels = t.Channels.Select(c => c.Clone()).ToList(),
         }).ToList(),
@@ -148,6 +148,12 @@ public sealed class TimelineTrack
 
     /// <summary>Display colour, e.g. "#2E7D9A"; null for the kind's default.</summary>
     public string? Color { get; set; }
+
+    /// <summary>
+    /// Audio tracks: 0-1, multiplied into every clip's own volume, so whole tracks can be balanced against each other
+    /// (ambience under a voice-over) without touching their clips.
+    /// </summary>
+    public double Volume { get; set; } = 1.0;
 
     /// <summary>The track's clips: audio events, or (lighting) <see cref="LightingClip"/>s.</summary>
     public List<TimelineEvent> Events { get; set; } = [];
@@ -313,6 +319,8 @@ public abstract class TimelineEvent
 /// - handles in between can't pass their neighbours.
 /// After the clip, the channel holds its end level until the next clip. A clip that starts while another is still
 /// running takes over from its start. See <see cref="TrackLevels"/>.
+/// With an <see cref="Effect"/> it's a built-in effect clip instead (Lightning, Fire, …): its envelopes are made from
+/// the effect's settings, for every channel of the track, and its <see cref="Lanes"/> aren't used.
 /// </summary>
 public sealed class LightingClip : TimelineEvent
 {
@@ -326,6 +334,14 @@ public sealed class LightingClip : TimelineEvent
 
     /// <summary>Resizing scales the envelopes with the clip (on), or crops them, keeping their handles' times (off).</summary>
     public bool ScaleOnResize { get; set; } = true;
+
+    /// <summary>A built-in effect this clip plays instead of its own envelopes; null for a Level Control clip.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public LightingEffect? Effect { get; set; }
+
+    /// <summary>What the clip is: "Level Control", or the effect's name.</summary>
+    [JsonIgnore]
+    public string KindName => Effect is { } effect ? EffectInfo.Of(effect.Kind).Name : DefaultName;
 
     public ChannelLane? LaneFor(LaneTarget target) => Lanes.FirstOrDefault(l => l.Target == target);
 
@@ -408,7 +424,7 @@ public sealed class LightingClip : TimelineEvent
     /// </summary>
     public LightingClip? SplitAt(TimeSpan at, Func<LaneTarget, byte> startLevels)
     {
-        if (at <= TimeSpan.Zero || at >= Length) return null;
+        if (at <= TimeSpan.Zero || at >= Length || Effect is not null) return null;   // an effect is made whole: convert it to split it
         var after = new LightingClip { Name = Name, Enabled = Enabled, Start = Start + at, Length = Length - at, ScaleOnResize = ScaleOnResize };
         foreach (var lane in Lanes)
         {
@@ -450,6 +466,7 @@ public sealed class LightingClip : TimelineEvent
     public override TimelineEvent Clone() => new LightingClip
     {
         Name = Name, Start = Start, Enabled = Enabled, Length = Length, ScaleOnResize = ScaleOnResize, Lanes = Lanes.Select(l => l.Clone()).ToList(),
+        Effect = Effect?.Clone(),
     };
 }
 

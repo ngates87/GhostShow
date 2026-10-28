@@ -52,6 +52,7 @@ public sealed class AudioService : IAudioOutput, IDisposable
     readonly Lock _lock = new();
     readonly Dictionary<Guid, Instance> _instances = new();
     readonly ConcurrentDictionary<string, TimeSpan?> _lengths = new();
+    readonly ConcurrentDictionary<string, Waveform> _waveforms = new();
     readonly ConcurrentDictionary<string, byte> _reported = new();   // "path: error" already logged
     readonly Timer _recovery;
     AudioPlaybackDevice? _device;
@@ -306,12 +307,24 @@ public sealed class AudioService : IAudioOutput, IDisposable
         return null;
     }
 
+    /// <summary>
+    /// A file's waveform, made while it was measured; null until then (asking starts the measuring, like
+    /// <see cref="GetLength"/>). <see cref="LengthMeasured"/> is raised once it's ready.
+    /// </summary>
+    public Waveform? GetWaveform(string path)
+    {
+        if (_waveforms.TryGetValue(path, out var waveform)) return waveform;
+        GetLength(path);
+        return null;
+    }
+
     /// <summary>Measures a file now (exact duration, scanning MP3s fully). For callers already off the UI thread.</summary>
     public TimeSpan? MeasureNow(string path) => Measure(path);
 
     /// <summary>
     /// Decodes the whole file and counts samples. MP3 headers only give an estimate (off by a factor of two or more on
     /// short files, measured), and a cue's end time must be right, so this pays for a full decode, off the playback path.
+    /// The same pass collects the file's waveform for the timeline.
     /// </summary>
     TimeSpan? Measure(string path)
     {
@@ -320,10 +333,16 @@ public sealed class AudioService : IAudioOutput, IDisposable
             using var stream = File.OpenRead(path);
             using var provider = new StreamDataProvider(_engine, _format, stream);
             var buffer = new float[16384];
+            var waveform = new WaveformBuilder(_format.SampleRate, _format.Channels);
             long samples = 0;
             int read;
-            while ((read = provider.ReadBytes(buffer)) > 0) samples += read;
+            while ((read = provider.ReadBytes(buffer)) > 0)
+            {
+                samples += read;
+                waveform.Add(buffer.AsSpan(0, read));
+            }
             var length = TimeSpan.FromSeconds((double)samples / (_format.SampleRate * _format.Channels));
+            _waveforms[path] = waveform.Build();
             _lengths[path] = length;
             LengthMeasured?.Invoke(path);
             return length;

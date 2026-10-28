@@ -51,6 +51,23 @@ public class UiTests
     });
 
     [Fact]
+    public Task Dragging_an_audio_track_s_volume_slider_sets_its_volume_in_one_undo_step() => Ui.Run(() =>
+    {
+        using var rig = new WindowRig();
+        var header = rig.Find<ListBoxItem>(i => i.DataContext is TrackRowViewModel { IsAudio: true });
+        var slider = header.GetVisualDescendants().OfType<Slider>().Single(s => s.IsEffectivelyVisible);
+        var thumb = slider.GetVisualDescendants().OfType<Avalonia.Controls.Primitives.Thumb>().First();
+        var track = rig.TrackRow("Audio").Track.Track;
+
+        rig.Drag(rig.CenterOf(thumb), slider.TranslatePoint(new Point(slider.Bounds.Width / 2, slider.Bounds.Height / 2), rig.Window)!.Value);
+
+        Assert.InRange(track.Volume, 0.3, 0.7);
+        Assert.Contains(header.GetVisualDescendants().OfType<TextBlock>(), t => t.Text == $"{track.Volume * 100:0}%");
+        rig.Editor.UndoCommand.Execute(null);
+        Assert.Equal(1.0, track.Volume);
+    });
+
+    [Fact]
     public Task Right_clicking_a_lighting_track_header_offers_channels() => Ui.Run(() =>
     {
         using var rig = new WindowRig();
@@ -70,6 +87,26 @@ public class UiTests
 
         Assert.NotNull(rig.Editor.ChannelPicker);
         Assert.True(rig.Editor.ChannelPicker!.Fixtures.Single(f => f.Name == "Entry LED").Channels[1].IsChecked);   // Red is on the track
+    });
+
+    [Fact]
+    public Task Right_clicking_an_empty_part_of_a_lighting_row_adds_an_effect_there() => Ui.Run(() =>
+    {
+        using var rig = new WindowRig();
+        var row = rig.TrackRow("Lighting");
+
+        rig.Click(rig.At(row, 6), MouseButton.Right);
+        rig.ClickMenuItem(rig.MenuItem("Add effect here"));
+        rig.ClickMenuItem(rig.MenuItem("Fire"));
+
+        var clip = Assert.IsType<LightingClip>(Assert.Single(row.Track.Track.Events));
+        Assert.Equal((EffectKind.Fire, S(6), "Fire"), (clip.Effect!.Kind, clip.Start, clip.Name));
+        Assert.Equal("Fire effect", rig.Editor.Properties!.Kind);
+
+        rig.Click(rig.At(row, 7), MouseButton.Right);   // on it now: its own menu
+        Assert.Contains(rig.Canvas.LastMenu!.Items.OfType<MenuItem>(), i => i.Header as string == "Convert to Level Control (editable handles)");
+        Assert.DoesNotContain(rig.Canvas.LastMenu.Items.OfType<MenuItem>(), i => i.Header as string == "Add Envelope Handle");
+        rig.Canvas.LastMenu.Close();
     });
 
     [Fact]
@@ -275,6 +312,33 @@ public class UiTests
     });
 
     [Fact]
+    public Task The_custom_fixture_type_editor_s_buttons_add_move_and_remove_channels() => Ui.Run(() =>
+    {
+        using var rig = new WindowRig();
+        rig.ViewModel.CurrentPage = Page.Fixtures;
+        WindowRig.Pump(300);
+        var setup = rig.ViewModel.Fixtures;
+        setup.StartAddCommand.Execute(null);
+        WindowRig.Pump(200);
+        rig.Click(rig.CenterOf(rig.Find<Button>(b => b.Content as string == "＋ New fixture type…")));
+        var mode = setup.ProfileEditor!.SelectedMode!;
+        Button Quick(string label) => rig.Find<Button>(b => b.Content as string == $"＋ {label}" && b.IsEffectivelyVisible);
+
+        rig.Click(rig.CenterOf(Quick("Red")));
+        rig.Click(rig.CenterOf(Quick("Dimmer (intensity)")));
+        rig.Click(rig.CenterOf(Quick("Other")));
+        Assert.Equal(["Red", "Dimmer", "Channel 3"], mode.Channels.Select(c => c.Name));
+
+        var dimmerUp = rig.Find<Button>(b => b.DataContext == mode.Channels[1] && ToolTip.GetTip(b) as string == "Move up");
+        rig.Click(rig.CenterOf(dimmerUp));   // the dimmer first, as on most fixtures
+        Assert.Equal(["Dimmer", "Red", "Channel 3"], mode.Channels.Select(c => c.Name));
+
+        var removeLast = rig.Find<Button>(b => b.DataContext == mode.Channels[2] && ToolTip.GetTip(b) as string == "Remove");
+        rig.Click(rig.CenterOf(removeLast));
+        Assert.Equal(["Dimmer", "Red"], mode.Channels.Select(c => c.Name));
+    });
+
+    [Fact]
     public Task Ctrl_W_closes_the_show_and_shows_home() => Ui.Run(() =>
     {
         using var rig = new WindowRig();
@@ -385,20 +449,32 @@ public class UiTests
     });
 
     [Fact]
-    public Task The_add_button_says_what_it_adds_and_new_lighting_clips_are_Level_Control_clips() => Ui.Run(() =>
+    public Task The_add_button_is_for_sounds_and_level_control_is_first_in_the_effects_menu() => Ui.Run(() =>
     {
         using var rig = new WindowRig();
+        var add = rig.Find<Button>(b => b.Command == rig.Editor.AddEventCommand);
         rig.Editor.SelectedTrack = rig.Editor.Tracks.Single(t => t.Kind == TrackKind.Audio);
-        Assert.Equal("+ Sound…", rig.Editor.AddLabel);
+        WindowRig.Pump();
+        Assert.Equal("+ Sound…", add.GetVisualDescendants().OfType<TextBlock>().Single().Text);
+        Assert.True(add.IsVisible);
         rig.Editor.SelectedTrack = rig.Editor.Tracks[0];
-        Assert.Equal("+ Level Control", rig.Editor.AddLabel);
+        WindowRig.Pump();
+        Assert.False(add.IsVisible);   // lighting clips come from the Effects menu
 
-        rig.Editor.AddEventCommand.Execute(null);
+        var effects = rig.Find<Button>(b => b.Flyout is MenuFlyout f && f.Items.OfType<MenuItem>().Any(i => i.Header as string == "Level Control"));
+        var flyout = (MenuFlyout)effects.Flyout!;
+        rig.Click(rig.CenterOf(effects));   // open it: its items' commands bind once shown
+        Assert.True(flyout.IsOpen);
+        var items = flyout.Items.OfType<MenuItem>().ToList();
+        Assert.Equal("Level Control", items[0].Header);
+        Assert.Equal(EffectInfo.All.Select(i => i.Name), items.Skip(1).Select(i => (string)i.Header!));
+        items[0].Command!.Execute(items[0].CommandParameter);
         rig.Editor.Playback.Seek(S(10));
-        rig.Editor.AddEventCommand.Execute(null);
+        items[1].Command!.Execute(items[1].CommandParameter);
 
-        Assert.Equal(["Level Control", "Level Control"], rig.Lighting.Events.Select(e => e.Name));
-        var button = rig.Find<Button>(b => b.Command == rig.Editor.AddEventCommand);
-        Assert.Equal("+ Level Control", button.GetVisualDescendants().OfType<TextBlock>().Single().Text);   // the label shows on the button
+        flyout.Hide();
+
+        Assert.Equal(["Level Control", "Lightning"], rig.Lighting.Events.Select(e => e.Name));
+        Assert.Equal([null, EffectKind.Lightning], rig.Lighting.Events.Cast<LightingClip>().Select(c => c.Effect?.Kind));
     });
 }

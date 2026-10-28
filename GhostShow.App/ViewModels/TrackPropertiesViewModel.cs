@@ -6,7 +6,8 @@ namespace GhostShow.App.ViewModels;
 
 /// <summary>
 /// A track's properties in the right-hand panel (right-click its name → Properties…): its name and, for a lighting
-/// track, VenueMagic's track options and each channel's starting level. Every change is an undoable edit.
+/// track, VenueMagic's track options and each channel's starting level; for an audio track, its volume. Every change
+/// is an undoable edit.
 /// </summary>
 public sealed partial class TrackPropertiesViewModel : ObservableObject
 {
@@ -24,6 +25,7 @@ public sealed partial class TrackPropertiesViewModel : ObservableObject
 
     public TimelineTrack Track => _row.Track;
     public bool IsLighting => _row.IsLighting;
+    public bool IsAudio => _row.IsAudio;
     public string Heading => $"{_row.KindLabel} track";
 
     public string Name
@@ -36,6 +38,13 @@ public sealed partial class TrackPropertiesViewModel : ObservableObject
     {
         get => Track.DrawLevelsBetweenClips;
         set => _editor.SetDrawLevelsBetweenClips(Track, value);
+    }
+
+    /// <summary>Audio: 0-100, multiplied into every clip's own volume.</summary>
+    public decimal VolumePercent
+    {
+        get => (decimal)Math.Round(Track.Volume * 100);
+        set => _editor.SetTrackVolume(Track, (double)Math.Clamp(value, 0, 100) / 100);
     }
 
     public IReadOnlyList<ChannelStartViewModel> Channels { get; private set; }
@@ -60,6 +69,7 @@ public sealed partial class TrackPropertiesViewModel : ObservableObject
         foreach (var channel in Channels) channel.Refresh();
         OnPropertyChanged(nameof(Name));
         OnPropertyChanged(nameof(DrawLevelsBetweenClips));
+        OnPropertyChanged(nameof(VolumePercent));
     }
 }
 

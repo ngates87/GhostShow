@@ -1,3 +1,5 @@
+using GhostShow.Core.Fixtures;
+
 namespace GhostShow.Core.Timeline;
 
 /// <summary>
@@ -116,13 +118,20 @@ public sealed class TrackLevels
     public static IReadOnlyList<LightingClip> PlayingOrder(TimelineTrack track) =>
         track.Events.OfType<LightingClip>().Where(c => c.Enabled).OrderBy(c => c.Start).ToList();
 
-    public static TrackLevels Resolve(TimelineTrack track, ChannelLane channel) => Resolve(PlayingOrder(track), channel);
+    /// <param name="functionOf">What a fixture channel by number does (from the patch), so effects treat it right; null if not known.</param>
+    public static TrackLevels Resolve(TimelineTrack track, ChannelLane channel, Func<LaneTarget, ChannelFunction?>? functionOf = null)
+    {
+        int index = track.Channels.IndexOf(channel);
+        var role = index >= 0 ? LightingEffects.Roles(track.Channels, functionOf)[index] : EffectRole.Brightness;
+        return Resolve(PlayingOrder(track), channel, role: role, function: channel.Target.Control ?? functionOf?.Invoke(channel.Target));
+    }
 
     /// <summary>
-    /// Every channel of a track (in the track's order). Finds each clip's envelopes once for all channels, so a track
-    /// with many channels and clips stays quick.
+    /// Every channel of a track (in the track's order). Finds each clip's envelopes (and makes each effect's keys)
+    /// once for all channels, so a track with many channels and clips stays quick.
     /// </summary>
-    public static IReadOnlyList<TrackLevels> ResolveAll(TimelineTrack track)
+    /// <param name="functionOf">What a fixture channel by number does (from the patch), so effects treat it right; null if not known.</param>
+    public static IReadOnlyList<TrackLevels> ResolveAll(TimelineTrack track, Func<LaneTarget, ChannelFunction?>? functionOf = null)
     {
         var clips = PlayingOrder(track);
         var lanes = clips.Select(c =>
@@ -131,12 +140,20 @@ public sealed class TrackLevels
             foreach (var lane in c.Lanes) byTarget.TryAdd(lane.Target, lane);
             return byTarget;
         }).ToList();
-        return track.Channels.Select(channel => Resolve(clips, channel, i => lanes[i].GetValueOrDefault(channel.Target))).ToList();
+        var keys = clips.Select(c => c.Effect is { } effect ? LightingEffects.Keys(effect, c.Length) : null).ToList();
+        var roles = LightingEffects.Roles(track.Channels, functionOf);
+        return track.Channels.Select((channel, k) => Resolve(clips, channel, i => lanes[i].GetValueOrDefault(channel.Target), i => keys[i],
+                                                             roles[k], channel.Target.Control ?? functionOf?.Invoke(channel.Target))).ToList();
     }
 
     /// <param name="clips">The track's clips in playing order (see <see cref="PlayingOrder"/>).</param>
     /// <param name="laneOf">The envelope of clips[i] for the channel (default: looked up in the clip).</param>
-    public static TrackLevels Resolve(IReadOnlyList<LightingClip> clips, ChannelLane channel, Func<int, ChannelLane?>? laneOf = null)
+    /// <param name="keysOf">An effect clip's keys (default: made from its effect).</param>
+    /// <param name="role">How effect clips treat the channel (see <see cref="LightingEffects.Roles"/>).</param>
+    /// <param name="function">What the channel does (for an effect's colour); null for a dimmer or raw channel.</param>
+    public static TrackLevels Resolve(IReadOnlyList<LightingClip> clips, ChannelLane channel, Func<int, ChannelLane?>? laneOf = null,
+                                      Func<int, IReadOnlyList<LightingEffects.Key>?>? keysOf = null, EffectRole role = EffectRole.Brightness,
+                                      ChannelFunction? function = null)
     {
         var result = new List<ClipEnvelope>(clips.Count);
         byte level = channel.StartLevel;
@@ -144,8 +161,17 @@ public sealed class TrackLevels
         {
             var clip = clips[i];
             var playsFor = i + 1 < clips.Count && clips[i + 1].Start - clip.Start < clip.Length ? clips[i + 1].Start - clip.Start : clip.Length;
-            var lane = laneOf is null ? clip.LaneFor(channel.Target) : laneOf(i);
-            var envelope = new ClipEnvelope(clip, lane, Envelope.WithStart(lane?.Points, level, clip.Length), playsFor);
+            ClipEnvelope envelope;
+            if (clip.Effect is { } effect)
+            {
+                var keys = keysOf?.Invoke(i) ?? LightingEffects.Keys(effect, clip.Length);
+                envelope = new ClipEnvelope(clip, null, LightingEffects.EnvelopeFor(keys, role, function, level, clip.Length), playsFor);
+            }
+            else
+            {
+                var lane = laneOf is null ? clip.LaneFor(channel.Target) : laneOf(i);
+                envelope = new ClipEnvelope(clip, lane, Envelope.WithStart(lane?.Points, level, clip.Length), playsFor);
+            }
             result.Add(envelope);
             level = envelope.EndLevel;
         }

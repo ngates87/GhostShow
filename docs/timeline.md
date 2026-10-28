@@ -41,9 +41,10 @@ To export or back up a show, copy or zip the whole folder.
 | Thing | Fields | Notes |
 |---|---|---|
 | `ShowTimeline` | Name, Length (optional), Loop, Tracks | No length: the timeline ends when its last event does. Loop: at the end it starts again from 0 |
-| `TimelineTrack` | Name, Kind (Lighting, Audio), Enabled, Events (clips), Channels (lighting), DrawLevelsBetweenClips | A disabled (muted) track is ignored when playing. Track order matters for ties (below) |
+| `TimelineTrack` | Name, Kind (Lighting, Audio), Enabled, Events (clips), Channels (lighting), DrawLevelsBetweenClips, Volume (audio) | A disabled (muted) track is ignored when playing. Track order matters for ties (below). An audio track's Volume (0–1, default 1) multiplies every clip's own Volume |
 | `ChannelLane` | Target, Points, Color; on a track also Start (FirstClip or Fixed) and StartLevel | On a track: a channel it controls, and where it is before the first clip. In a clip: that channel's envelope |
-| `LightingClip` | Start, Length, Name, Lanes, ScaleOnResize | VenueMagic's Level Control clip: an envelope per channel, handles timed from the clip's start (rules below) |
+| `LightingClip` | Start, Length, Name, Lanes, ScaleOnResize, Effect (optional) | VenueMagic's Level Control clip: an envelope per channel, handles timed from the clip's start (rules below). With an Effect it's a built-in effect clip instead (below) |
+| `LightingEffect` | Kind, Strength (0–1), Rate, Color, Seed, Ending (BackToBefore, Dark) | A built-in effect's settings; its envelopes are made from them |
 | `LaneTarget` | A fixture and its control (Intensity, Red, …) or channel number; or a universe and DMX address | Fixture targets follow the fixture when it's re-addressed |
 | `CurvePoint` | Time, Value (0–255), Curve (Linear, Step, Spline) | An envelope handle: a level at a time. Curve says how the level gets here from the previous handle |
 | `AudioEvent` | Start, File, Length (optional), Offset, Volume, FadeIn, FadeOut, Loop | Plays from Offset into the file; for Length if set, otherwise to the end of the file (forever, if looping) |
@@ -83,6 +84,30 @@ flattened into sorted per-channel steps (`CompiledTimeline`). Playback then only
 - **The timeline only controls channels it has reached.** Once it sets a channel, it holds it until playback stops.
 - **Problems don't stop the show.** A missing or unpatched fixture, an undefined universe, a missing audio file, a
   negative time: that event is reported (Timeline screen, Diagnostics) and skipped; everything else plays.
+
+### Built-in effects
+
+A lighting clip can be a built-in effect instead of a Level Control (Effects ▾ on the toolbar, or right-click an
+empty part of a lighting row → Add effect here ▸): **Lightning** (strikes of cold flickering flashes), **Brown out**
+(the power sags, stutters and drops out, then recovers), **Explosion** (a blinding flash, then a dying fireball glow
+in the dark), **Failing bulb** (mostly on, with stuttering drop-outs), **Fire** (a warm restless flicker),
+**Strobe** (hard flashes in the dark), **Heartbeat** (lub-dub pulses of colour) and **Police lights** (red and blue
+double flashes).
+
+- **Settings** (properties panel): the kind, a strength (brightness, or how deep it dims), a rate where the kind has
+  one (strikes, flashes or beats per second or minute, speed), a colour where it has one, and whether it leaves the
+  lights out at the end. **New random pattern** keeps the settings and re-rolls the timing (the pattern comes from a
+  stored seed, so the same settings always play the same way, on any computer).
+- **Every channel of the track** takes part, by what it does: a dimmer (or a raw DMX channel) carries the
+  brightness; a colour channel takes the effect's colour (white is what red, green and blue share, amber the orange
+  part, UV none); a fixture without a dimmer on the track dims through its colour channels; anything else (pan,
+  gobo, a strobe channel, …) is left where it was.
+- **They fit among Level Control clips:** an effect starts from where the previous clip left each channel, and
+  (unless it ends dark) puts it back there at its end, so the next clip carries on from the same levels.
+- **Editing:** move, resize (the effect is made again for the new length), lock and link like any clip. Their
+  envelopes show on the timeline but have no handles; **Convert to Level Control** (properties or right-click)
+  turns the effect into ordinary handles to fine-tune, playing exactly as before. Effects can't be split (convert
+  first). Flashes last at least 40 ms, so DMX (about 40 updates a second) always shows them.
 
 ### Lighting and manual control together
 
@@ -161,6 +186,11 @@ overlap; they are mixed in software.
   restarts at the right place.
 - **File lengths** are measured by decoding (MP3 headers only give estimates), in the background, the first time a
   file is used; until then an audio event without a Length is treated as open-ended.
+- **Waveforms** come from the same decode: the loudest sample in every 5 ms of the file (200 per second, one byte
+  each: about 700 KB for an hour), kept in memory for the session. Nothing is saved; they're rebuilt when the show is
+  opened again.
+- **Volume** of a sound = its clip's Volume × its track's Volume × its fades × (while a higher-priority timeline
+  ducks it) the duck level, then the master volume. All are 0–100%: nothing is boosted above the file's own level.
 
 ### Where sound files are found
 
@@ -178,7 +208,8 @@ same files. The Audio screen lists every sound the show uses and whether it was 
   for now; switching tabs stops playback). Closing a tab doesn't remove the timeline. Loop and Length (0 = until the
   last event ends) are beside the tabs.
 - **Tracks** on the left: rename, mute (checkbox), add (Lighting, Audio), remove, reorder.
-- **Toolbar:** Add track, a **+** button that adds to the selected track (+ Level Control, + Sound…),
+- **Toolbar:** Add track, **Effects ▾** (Level Control, then the built-in effects: added at the playhead on the
+  selected lighting track), **+ Sound…** (when an audio track is selected),
   Split (at the playhead), Lock, Link and Unlink, undo/redo, zoom and snap. Everything else is on right-click menus
   and the Edit menu.
 - **Track headers:** double-click a name (or F2) to rename it. Right-click for Channels… (lighting), expand,
@@ -222,8 +253,11 @@ same files. The Audio screen lists every sound the show uses and whether it was 
     and Delete. Locked clips show a padlock; linked ones a chain.
   - The properties panel shows the selected clip's name, start, Enable playback, Lock clip, length and "Scale
     envelopes on resize"; or the selected handle's time on the timeline, level (% and DMX) and curve.
-- **Audio tracks:** audio clips span the time they play, with fades drawn as a volume outline (dashed while the
-  file's length isn't known). Double-click an empty part of the row to add one; drag to
+- **Audio tracks:** audio clips span the time they play and show the file's waveform, drawn at the loudness it will
+  play (the clip's volume and fades times the track's volume; a looping clip repeats it), with fades also drawn as a
+  volume outline (dashed while the file's length isn't known; the waveform appears once it has been measured). The
+  track header has a volume slider (also in the track's Properties…); a slider drag is one undo step, and it
+  changes what's playing straight away. Double-click an empty part of the row to add one; drag to
   move (snapped to the Snap setting); drag an audio clip's right edge to change its length, or its left edge to
   start later (or earlier) into the file.
 - **Right-click** empty space for Add here and Paste here.

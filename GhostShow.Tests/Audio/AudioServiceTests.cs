@@ -152,6 +152,31 @@ public class AudioServiceTests : IAsyncLifetime
         Assert.True(_audio.Generation > generation);
     }
 
+    [Fact]
+    public async Task Measuring_a_file_also_makes_its_waveform()
+    {
+        // 1 s of silence, then 1 s of a 440 Hz tone at half volume: 16-bit mono at 44.1 kHz (decoding converts it).
+        using var dir = new TempDirectory();
+        string path = dir.File("tone.wav");
+        const int rate = 44100;
+        using (var w = new BinaryWriter(File.Create(path)))
+        {
+            w.Write("RIFF"u8); w.Write(36 + rate * 4); w.Write("WAVE"u8);
+            w.Write("fmt "u8); w.Write(16); w.Write((short)1); w.Write((short)1); w.Write(rate); w.Write(rate * 2); w.Write((short)2); w.Write((short)16);
+            w.Write("data"u8); w.Write(rate * 4);
+            for (int i = 0; i < rate; i++) w.Write((short)0);
+            for (int i = 0; i < rate; i++) w.Write((short)(Math.Sin(2 * Math.PI * 440 * i / rate) * 0.5 * short.MaxValue));
+        }
+
+        Assert.Null(_audio.GetWaveform(path));   // never blocks: it's made when the file is measured
+        await Eventually.True(() => _audio.GetWaveform(path) is not null, "the waveform is made");
+
+        var waveform = _audio.GetWaveform(path)!;
+        Assert.Equal(2, waveform.Length.TotalSeconds, tolerance: 0.05);
+        Assert.True(waveform.PeakBetween(TimeSpan.Zero, TimeSpan.FromSeconds(0.9)) < 0.02, "the silent second is flat");
+        Assert.Equal(0.5, waveform.PeakBetween(TimeSpan.FromSeconds(1.1), TimeSpan.FromSeconds(1.9)), tolerance: 0.05);
+    }
+
     [Theory]
     [InlineData("silence-0.5s.wav", 0.5)]
     [InlineData("silence-3s.wav", 3.0)]

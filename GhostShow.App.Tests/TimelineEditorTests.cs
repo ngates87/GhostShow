@@ -91,6 +91,21 @@ sealed class TimelineRig : IDisposable
         return Events(TrackKind.Audio)[^1];
     }
 
+    /// <summary>Writes a real WAV (16-bit mono, 8 kHz): a 440 Hz tone at the given level for that long.</summary>
+    public string ToneFile(double seconds, double level)
+    {
+        Directory.CreateDirectory(_configDirectory);
+        string path = Path.Combine(_configDirectory, $"tone-{Guid.NewGuid():N}.wav");
+        const int rate = 8000;
+        int samples = (int)(seconds * rate);
+        using var w = new BinaryWriter(File.Create(path));
+        w.Write("RIFF"u8); w.Write(36 + samples * 2); w.Write("WAVE"u8);
+        w.Write("fmt "u8); w.Write(16); w.Write((short)1); w.Write((short)1); w.Write(rate); w.Write(rate * 2); w.Write((short)2); w.Write((short)16);
+        w.Write("data"u8); w.Write(samples * 2);
+        for (int i = 0; i < samples; i++) w.Write((short)(Math.Sin(2 * Math.PI * 440 * i / rate) * level * short.MaxValue));
+        return path;
+    }
+
     /// <summary>Gives the lighting track the RGB fixture's Red channel and returns its lane.</summary>
     public ChannelLane RedLane()
     {
@@ -375,10 +390,10 @@ public class TimelineEditorTests : IDisposable
         _rig.RedLane();
         var lighting = _rig.Track(TrackKind.Lighting);
 
-        Assert.Equal([(0, 150.0), (150, 46)], Editor.Rows.Select(r => (r.Top, r.Height)));
+        Assert.Equal([(0, 150.0), (150, 64)], Editor.Rows.Select(r => (r.Top, r.Height)));
         lighting.IsExpanded = false;
-        Assert.Equal([(0, 64.0), (64, 46)], Editor.Rows.Select(r => (r.Top, r.Height)));   // room for a preview of the envelopes
-        Assert.Equal(110, Editor.ContentHeight);
+        Assert.Equal([(0, 64.0), (64, 64)], Editor.Rows.Select(r => (r.Top, r.Height)));   // room for a preview of the envelopes
+        Assert.Equal(128, Editor.ContentHeight);
     }
 
     // ---- lighting: Level Control clips and their envelopes ----
@@ -555,6 +570,108 @@ public class TimelineEditorTests : IDisposable
         Assert.Equal(255, properties.Dmx);
         Editor.UndoCommand.Execute(null);
         Assert.Equal(10, a.Value);
+    }
+
+    [Fact]
+    public void An_audio_track_s_volume_scales_its_clips_and_a_slider_drag_undoes_in_one_step()
+    {
+        _rig.PickedFile = _rig.ToneFile(1, 0.5);
+        _rig.AddSound(1);
+        var row = _rig.Track(TrackKind.Audio);
+
+        foreach (double percent in new[] { 90.0, 75, 60, 50 }) row.VolumePercent = percent;   // as a slider drag sends them
+
+        Assert.Equal((0.5, "50%"), (row.Track.Volume, row.VolumeLabel));
+        Assert.Equal(0.5, Assert.Single(_rig.Compiled.AudioCues).Volume, 6);
+        Editor.EditTrackProperties(row);
+        Assert.Equal(50m, Editor.TrackProperties!.VolumePercent);
+        Assert.True(Editor.TrackProperties.IsAudio);
+
+        Editor.UndoCommand.Execute(null);
+
+        Assert.Equal(1.0, row.Track.Volume);
+        Assert.Equal(1.0, Assert.Single(_rig.Compiled.AudioCues).Volume, 6);
+        Assert.Equal(100m, Editor.TrackProperties.VolumePercent);
+
+        Editor.TrackProperties.VolumePercent = 30;
+        Assert.Equal((0.3, 30.0), (row.Track.Volume, row.VolumePercent));
+    }
+
+    [Fact]
+    public async Task A_sound_s_waveform_is_ready_once_its_file_has_been_measured()
+    {
+        _rig.PickedFile = _rig.ToneFile(2, 0.5);
+        var sound = (AudioEvent)_rig.AddSound(1);
+
+        Waveform? waveform = null;
+        for (int i = 0; i < 100 && (waveform = Editor.WaveformOf(sound)) is null; i++) await Task.Delay(50, TestContext.Current.CancellationToken);
+
+        Assert.NotNull(waveform);
+        Assert.Equal(2, waveform.Length.TotalSeconds, 0.05);
+        Assert.Equal(0.5, waveform.PeakBetween(S(0.5), S(1.5)), 0.05);
+    }
+
+    [Fact]
+    public void An_effect_is_added_at_the_playhead_and_its_settings_change_how_it_plays_undoably()
+    {
+        _rig.RedLane();
+        _rig.Playback.Seek(S(2));
+        Editor.SelectedTrack = _rig.Track(TrackKind.Lighting);
+
+        Editor.AddEffectCommand.Execute(EffectKind.Lightning);
+
+        var clip = Clip();
+        Assert.Equal(("Lightning", S(2), S(4), EffectKind.Lightning), (clip.Name, clip.Start, clip.Length, clip.Effect!.Kind));
+        int Peak() => Editor.LevelsOf(_rig.LightingTrack)[0].Find(clip)!.Handles.Max(p => p.Value);
+        Assert.Equal(0xDC, Peak());   // red's share of the cold white flash (no dimmer on the track: the colour carries it)
+        var properties = Editor.Properties!;
+        Assert.Equal((true, false, "Lightning effect"), (properties.IsEffect, properties.IsLevelControl, properties.Kind));
+
+        properties.StrengthPercent = 60;
+        properties.StrengthPercent = 50;   // typed: one undo step
+        Assert.Equal(110, Peak());
+        properties.EffectColor = "#FF0000";
+        Assert.Equal(128, Peak());
+        properties.SelectedEffect = EffectInfo.Of(EffectKind.Strobe);
+        Assert.Equal((EffectKind.Strobe, 10.0, (string?)null), (clip.Effect!.Kind, clip.Effect.Rate, clip.Effect.Color));
+
+        for (int i = 0; i < 3; i++) Editor.UndoCommand.Execute(null);
+
+        Assert.Equal((EffectKind.Lightning, 1.0, (string?)null), (clip.Effect!.Kind, clip.Effect.Strength, clip.Effect.Color));
+        Assert.Equal(0xDC, Peak());
+    }
+
+    [Fact]
+    public void Converting_an_effect_gives_a_level_control_clip_that_plays_the_same_with_handles_to_edit()
+    {
+        var red = _rig.RedLane();
+        var before = AddClip(0, 2);
+        Handle(before, red, 1, 100);
+        Editor.SelectPoint(EndHandle(before, red), additive: false);
+        Editor.PointProperties!.Dmx = 80;
+        _rig.Playback.Seek(S(3));
+        Editor.AddEffectCommand.Execute(EffectKind.Fire);
+        var fire = Clip(1);
+        IEnumerable<(TimeSpan, byte)> Played() => Editor.LevelsOf(_rig.LightingTrack)[0].Find(fire)!.Handles.Select(p => (p.Time, p.Value)).ToList();
+        var played = Played();
+
+        Assert.Equal(80, played.First().Item2);   // it starts where the clip before left the light
+        Assert.Null(Editor.AddHandle(fire, red.Target, S(4)));   // an effect's envelopes are made, not edited
+        Editor.SplitAt(S(5));
+        Assert.Equal(2, _rig.LightingTrack.Events.Count);        // nor split
+
+        Editor.ConvertToLevelControl(fire);
+
+        Assert.Null(fire.Effect);
+        Assert.Equal(played, Played());
+        Assert.Equal(red.Target, Assert.Single(fire.Lanes).Target);
+        Assert.NotNull(Editor.AddHandle(fire, red.Target, S(4.01)));
+
+        Editor.UndoCommand.Execute(null);
+        Editor.UndoCommand.Execute(null);
+        Assert.Equal(EffectKind.Fire, fire.Effect!.Kind);
+        Assert.Empty(fire.Lanes);
+        Assert.Equal(played, Played());
     }
 
     [Fact]

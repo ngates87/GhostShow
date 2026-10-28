@@ -119,6 +119,8 @@
         <Border DockPanel.Dock="Top" Classes="wizard">
           <DockPanel>
             <Button DockPanel.Dock="Right" Content="Cancel" Command="{Binding CancelWizardCommand}" />
+            <Button DockPanel.Dock="Right" Content="＋ New fixture type…" Command="{Binding NewProfileCommand}" Margin="0,0,8,0"
+                    ToolTip.Tip="Can't find your fixture? Make its type yourself: its modes and channels, from the fixture's manual" />
             <TextBlock Text="{Binding WizardTitle}" Classes="heading" VerticalAlignment="Center" TextWrapping="Wrap" />
           </DockPanel>
         </Border>
@@ -142,6 +144,12 @@
                   <DockPanel>
                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="12,0,0,0">
                       <Button Content="{Binding ApplyLabel}" Command="{Binding ApplyCommand}" Classes="accent" />
+                      <Button Content="Edit…" IsVisible="{Binding PendingIsCustom}"
+                              Command="{Binding $parent[UserControl].((vm:FixtureSetupViewModel)DataContext).EditCustomProfileCommand}"
+                              ToolTip.Tip="Change this custom fixture type" />
+                      <Button Content="Copy and edit…"
+                              Command="{Binding $parent[UserControl].((vm:FixtureSetupViewModel)DataContext).CopyProfileCommand}"
+                              ToolTip.Tip="Close, but not quite? Make your own type starting from this one" />
                       <Button Content="Pick another" Command="{Binding CancelCommand}" />
                     </StackPanel>
                     <StackPanel Spacing="6">
@@ -177,6 +185,134 @@
                 </ItemsControl>
               </ScrollViewer>
             </DockPanel>
+      </DockPanel>
+
+      <!-- From step 1: make or edit a custom fixture type -->
+      <DockPanel IsVisible="{Binding IsEditingProfile}">
+        <Border DockPanel.Dock="Top" Classes="wizard">
+          <TextBlock Text="{Binding WizardTitle}" Classes="heading" VerticalAlignment="Center" TextWrapping="Wrap" />
+        </Border>
+        <ContentControl Content="{Binding ProfileEditor}">
+          <ContentControl.ContentTemplate>
+            <DataTemplate x:DataType="vm:CustomProfileEditorViewModel">
+              <DockPanel>
+                <!-- Save, delete, and what's in the way -->
+                <Border DockPanel.Dock="Bottom" Classes="confirm" Margin="0,10,0,0">
+                  <DockPanel>
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                      <Button Content="Save fixture type" Command="{Binding SaveCommand}" Classes="accent"
+                              ToolTip.Tip="Saved to your own profile folder, for every show on this computer" />
+                      <Button Content="Cancel" Command="{Binding CancelCommand}" />
+                    </StackPanel>
+                    <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="0,0,12,0"
+                                IsVisible="{Binding IsEditing}">
+                      <Button Content="Delete…" Command="{Binding DeleteCommand}" IsEnabled="{Binding CanDelete}" IsVisible="{Binding !IsConfirmingDelete}"
+                              ToolTip.Tip="{Binding DeleteHint}" />
+                      <TextBlock Text="Delete this fixture type? Other shows that use it will show those fixtures as missing their type."
+                                 IsVisible="{Binding IsConfirmingDelete}" TextWrapping="Wrap" MaxWidth="320" VerticalAlignment="Center" />
+                      <Button Content="Delete" Command="{Binding DeleteCommand}" IsVisible="{Binding IsConfirmingDelete}" Background="DarkRed" Foreground="White" />
+                      <Button Content="Keep it" Command="{Binding CancelDeleteCommand}" IsVisible="{Binding IsConfirmingDelete}" />
+                    </StackPanel>
+                    <StackPanel VerticalAlignment="Center" Spacing="2">
+                      <TextBlock Text="{Binding Problems}" Classes="warning" TextWrapping="Wrap" IsVisible="{Binding HasProblems}" />
+                      <TextBlock Text="{Binding Error}" Classes="fault" TextWrapping="Wrap" IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}" />
+                      <TextBlock Text="Ready to save." Opacity="0.7" IsVisible="{Binding !HasProblems}" />
+                    </StackPanel>
+                  </DockPanel>
+                </Border>
+
+                <Grid ColumnDefinitions="230,16,*">
+                  <!-- The type, and its modes -->
+                  <DockPanel>
+                  <StackPanel DockPanel.Dock="Top" Spacing="6" Margin="0,0,0,6">
+                    <TextBlock Text="Manufacturer" Classes="label" />
+                    <TextBox Text="{Binding Manufacturer}" PlaceholderText="e.g. Chauvet (optional)" />
+                    <TextBlock Text="Model" Classes="label" />
+                    <TextBox Text="{Binding Model}" PlaceholderText="e.g. Hurricane 1000" />
+                    <TextBlock Text="Kind of fixture" Classes="label" />
+                    <ComboBox ItemsSource="{x:Static vm:CustomProfileEditorViewModel.Categories}" SelectedItem="{Binding Category}" HorizontalAlignment="Stretch"
+                              ToolTip.Tip="Where it's listed when browsing by type" />
+                    <DockPanel Margin="0,12,0,0">
+                      <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="4">
+                        <Button Content="＋" Command="{Binding AddModeCommand}" Padding="8,2" ToolTip.Tip="Add a mode" />
+                        <Button Content="Copy" Command="{Binding DuplicateModeCommand}" Padding="8,2" ToolTip.Tip="A copy of the selected mode, to change" />
+                        <Button Content="−" Command="{Binding RemoveModeCommand}" Padding="8,2" ToolTip.Tip="Remove the selected mode" />
+                      </StackPanel>
+                      <TextBlock Text="Modes" Classes="heading" VerticalAlignment="Center" />
+                    </DockPanel>
+                    <TextBlock Text="Many fixtures have a choice of DMX layouts (a menu or DIP switch setting): one mode each." Opacity="0.7" FontSize="12" TextWrapping="Wrap" />
+                  </StackPanel>
+                    <ListBox ItemsSource="{Binding Modes}" SelectedItem="{Binding SelectedMode}">
+                      <ListBox.ItemTemplate>
+                        <DataTemplate x:DataType="vm:ModeDraftViewModel">
+                          <StackPanel>
+                            <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding Summary}" FontSize="11" Opacity="0.7" />
+                          </StackPanel>
+                        </DataTemplate>
+                      </ListBox.ItemTemplate>
+                    </ListBox>
+                  </DockPanel>
+
+                  <!-- The selected mode's channels, in DMX order -->
+                  <ContentControl Grid.Column="2" Content="{Binding SelectedMode}">
+                    <ContentControl.ContentTemplate>
+                      <DataTemplate x:DataType="vm:ModeDraftViewModel">
+                        <DockPanel>
+                          <StackPanel DockPanel.Dock="Top" Spacing="6" Margin="0,0,0,8">
+                            <Grid ColumnDefinitions="Auto,*">
+                              <TextBlock Text="Mode name" Classes="label" Margin="0,0,8,0" />
+                              <TextBox Grid.Column="1" Text="{Binding Name}" PlaceholderText="e.g. 7 channel" />
+                            </Grid>
+                            <TextBlock Text="Channels, in DMX order (channel 1 is at the fixture's start address). Add them as the manual lists them:" Opacity="0.7" FontSize="12" TextWrapping="Wrap" />
+                            <ItemsControl ItemsSource="{x:Static vm:CustomProfileEditorViewModel.QuickChannels}">
+                              <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                              <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:FunctionOption">
+                                  <Button Content="{Binding Label, StringFormat='＋ {0}'}" Margin="0,0,6,6" Padding="8,3"
+                                          Command="{Binding $parent[ItemsControl].((vm:ModeDraftViewModel)DataContext).AddChannelCommand}" CommandParameter="{Binding}" />
+                                </DataTemplate>
+                              </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <Grid ColumnDefinitions="30,*,150,64,88" Margin="0,4,0,0" Opacity="0.7">
+                              <TextBlock Text="Ch" />
+                              <TextBlock Grid.Column="1" Text="Name" />
+                              <TextBlock Grid.Column="2" Text="Does" />
+                              <TextBlock Grid.Column="3" Text="Starts at" ToolTip.Tip="The level it's set to when patched (e.g. a shutter's 'open' value)" />
+                            </Grid>
+                          </StackPanel>
+                          <TextBlock DockPanel.Dock="Top" Text="No channels yet: use the buttons above." Opacity="0.6" Margin="0,4"
+                                     IsVisible="{Binding !Channels.Count}" />
+                          <ScrollViewer>
+                            <ItemsControl ItemsSource="{Binding Channels}">
+                              <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:ChannelDraftViewModel">
+                                  <Grid ColumnDefinitions="30,*,150,64,88" Margin="0,2">
+                                    <TextBlock Text="{Binding Number}" VerticalAlignment="Center" FontWeight="SemiBold" />
+                                    <TextBox Grid.Column="1" Text="{Binding Name}" Margin="0,0,6,0" />
+                                    <ComboBox Grid.Column="2" ItemsSource="{x:Static vm:CustomProfileEditorViewModel.Functions}" SelectedItem="{Binding Function}"
+                                              HorizontalAlignment="Stretch" Margin="0,0,6,0" />
+                                    <NumericUpDown Grid.Column="3" Value="{Binding DefaultValue}" Minimum="0" Maximum="255" Increment="1" FormatString="0"
+                                                   ShowButtonSpinner="False" Margin="0,0,6,0" />
+                                    <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="2">
+                                      <Button Content="↑" Command="{Binding MoveUpCommand}" Padding="7,2" ToolTip.Tip="Move up" />
+                                      <Button Content="↓" Command="{Binding MoveDownCommand}" Padding="7,2" ToolTip.Tip="Move down" />
+                                      <Button Content="×" Command="{Binding RemoveCommand}" Padding="7,2" ToolTip.Tip="Remove" />
+                                    </StackPanel>
+                                  </Grid>
+                                </DataTemplate>
+                              </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                          </ScrollViewer>
+                        </DockPanel>
+                      </DataTemplate>
+                    </ContentControl.ContentTemplate>
+                  </ContentControl>
+                </Grid>
+              </DockPanel>
+            </DataTemplate>
+          </ContentControl.ContentTemplate>
+        </ContentControl>
       </DockPanel>
 
       <!-- Wizard step 2: click openings to add fixtures of the chosen type -->

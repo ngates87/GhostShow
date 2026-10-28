@@ -27,6 +27,25 @@ Loaded at startup in this order; a later source replaces an earlier profile with
 5. **Your own folder**: `~/.config/GhostShow/profiles` (Linux), `%APPDATA%\GhostShow\profiles` (Windows),
    `~/Library/Application Support/GhostShow/profiles` (macOS).
 
+## Making your own (custom fixture types)
+
+For a fixture none of the libraries have: **Fixtures → Add fixtures… → ＋ New fixture type…**, or pick the closest
+library fixture and **Copy and edit…** (usually quickest: most fixtures differ from a similar one by a channel or
+two). Fill in the manufacturer (optional), model and kind of fixture, then each mode the fixture offers (its DMX
+layouts, from its manual), channel by channel in DMX order: a name, what it does (Dimmer, Red, Strobe, Pan, ...,
+or Other) and the level it sits at when patched (e.g. a shutter's "open" value). The quick buttons add the common
+channels. Problems are listed as you go; **Save fixture type** is available once there are none.
+
+It's saved as an ordinary GhostShow profile in your own folder (below), under `custom/`, with an ID made from the
+names (`custom/chauvet/hurricane-1000`), and comes back picked, ready to place. Custom types show "Custom" on their
+tiles and match a search for "custom". Pick one and **Edit…** to change it: its ID stays, so fixtures using it keep
+working, and fixtures in the open show on a mode you rename move to the new name. **Delete…** is offered for a type
+no fixture in the open show uses (it asks first: other shows using it would lose it).
+
+Custom types live on this computer, not in the show: a show opened on another computer shows its fixtures of a
+custom type as missing their type until the profile file is copied there too (`profiles/custom/...` under the
+config folder).
+
 Every folder may contain GhostShow `.json` profiles and QLC+ `.qxf` files, in subfolders too. A file that can't be
 read is skipped and listed under Diagnostics; it never stops the rest from loading.
 

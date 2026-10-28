@@ -241,6 +241,9 @@ public sealed partial class PlaybackViewModel : ObservableObject
     /// <summary>A file's measured length, if known yet (measuring starts in the background on first ask).</summary>
     public TimeSpan? AudioLength(string path) => _services.Audio.GetLength(path);
 
+    /// <summary>A file's waveform for drawing; null until it has been measured (which recompiles, so the timeline redraws).</summary>
+    public Waveform? AudioWaveform(string path) => _services.Audio.GetWaveform(path);
+
     IEnumerable<string> AudioFiles(ShowTimeline? timeline) =>
         (timeline?.Tracks ?? []).SelectMany(t => t.Events).OfType<AudioEvent>()
             .Where(e => !string.IsNullOrWhiteSpace(e.File))

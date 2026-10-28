@@ -1,6 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using GhostShow.Core.Engine;
+using GhostShow.Core.Fixtures;
 using GhostShow.Core.Storage;
 using Microsoft.Extensions.Logging;
 
@@ -68,6 +69,42 @@ public sealed partial class ProfileLibraryViewModel : ObservableObject
             _logger.LogWarning("Fixture library download failed: {Error}", ex.Message);
             DownloadStatus = $"Download failed: {ex.Message} The previous library (if any) is unchanged.";
         }
+    }
+
+    /// <summary>
+    /// Saves a custom fixture type to the user's profile folder and puts it in the library straight away (no reload).
+    /// Returns why it couldn't be saved, or null.
+    /// </summary>
+    public string? SaveCustom(FixtureProfile profile)
+    {
+        try
+        {
+            CustomProfiles.Save(_paths, profile);
+        }
+        catch (Exception ex) when (ex is InvalidDataException or IOException or UnauthorizedAccessException)
+        {
+            _logger.LogWarning("Couldn't save the custom fixture type {Profile}: {Error}", profile, ex.Message);
+            return $"Couldn't save it: {ex.Message}";
+        }
+        _logger.LogInformation("Saved the custom fixture type {Profile} ({Id}).", profile, profile.Id);
+        _session.UseProfiles(_session.Profiles.With(profile));
+        return null;
+    }
+
+    /// <summary>Deletes a custom fixture type's file and takes it out of the library. Returns why it couldn't, or null.</summary>
+    public string? DeleteCustom(FixtureProfile profile)
+    {
+        try
+        {
+            CustomProfiles.Delete(_paths, profile);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return $"Couldn't delete it: {ex.Message}";
+        }
+        _logger.LogInformation("Deleted the custom fixture type {Profile} ({Id}).", profile, profile.Id);
+        _session.UseProfiles(_session.Profiles.Without(profile.Id));
+        return null;
     }
 
     void DescribeDownload()

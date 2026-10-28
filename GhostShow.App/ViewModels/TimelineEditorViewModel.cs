@@ -46,6 +46,8 @@ public sealed partial class TrackRowViewModel : ObservableObject
 
     public bool IsLighting => Track.Kind == TrackKind.Lighting;
 
+    public bool IsAudio => Track.Kind == TrackKind.Audio;
+
     /// <summary>Lighting: tall, with each clip's envelopes drawn inside it (where handles are edited).</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(Height), nameof(ExpandGlyph), nameof(ShowSubtitle))]
@@ -65,7 +67,7 @@ public sealed partial class TrackRowViewModel : ObservableObject
     /// <summary>Under the name, where there's room: what the track controls (lighting) or its kind.</summary>
     public string Subtitle => IsLighting ? ChannelSummary : KindLabel;
 
-    public bool ShowSubtitle => Height > TimelineEditorViewModel.CollapsedTrackHeight;
+    public bool ShowSubtitle => IsLighting && Height > TimelineEditorViewModel.CollapsedTrackHeight;
 
     [RelayCommand]
     void ToggleExpanded() => IsExpanded = !IsExpanded;
@@ -130,6 +132,15 @@ public sealed partial class TrackRowViewModel : ObservableObject
         }
     }
 
+    /// <summary>Audio: the track's volume, 0-100 (the header's slider).</summary>
+    public double VolumePercent
+    {
+        get => Math.Round(Track.Volume * 100);
+        set => editor.SetTrackVolume(Track, value / 100);
+    }
+
+    public string VolumeLabel => $"{VolumePercent:0}%";
+
     public bool Enabled
     {
         get => Track.Enabled;
@@ -148,6 +159,8 @@ public sealed partial class TrackRowViewModel : ObservableObject
         OnPropertyChanged(nameof(Name));
         OnPropertyChanged(nameof(Enabled));
         OnPropertyChanged(nameof(MuteLabel));
+        OnPropertyChanged(nameof(VolumePercent));
+        OnPropertyChanged(nameof(VolumeLabel));
         RefreshLanes();
     }
 
@@ -378,7 +391,11 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
         if (oldValue is not null) oldValue.IsSelected = false;
         if (newValue is not null) newValue.IsSelected = true;
         OnPropertyChanged(nameof(AddLabel));
+        OnPropertyChanged(nameof(IsAudioTrackSelected));
     }
+
+    /// <summary>The toolbar's Add button is for sounds; lighting clips (Level Control and effects) are in the Effects menu.</summary>
+    public bool IsAudioTrackSelected => SelectedTrack?.Kind == TrackKind.Audio;
 
     /// <summary>The toolbar's Add button says what it adds to the selected track.</summary>
     public string AddLabel => SelectedTrack?.Kind switch
@@ -730,6 +747,15 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
         if (SelectedTrack is { } row) MoveTrack(row, direction);
     }
 
+    /// <summary>An audio track's volume (0-1, multiplied into its clips'). Dragging the slider makes one undo step.</summary>
+    public void SetTrackVolume(TimelineTrack track, double volume)
+    {
+        volume = Math.Round(Math.Clamp(volume, 0, 1), 2);
+        if (track.Volume == volume) return;
+        double old = track.Volume;
+        History.Execute("Change track volume", () => track.Volume = volume, () => track.Volume = old, (track.Id, "volume"));
+    }
+
     /// <summary>Moves a track up (-1) or down (+1), keeping it selected.</summary>
     public void MoveTrack(TrackRowViewModel row, int direction)
     {
@@ -783,7 +809,7 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
         EnvelopeEditorFollowSelection();
         var single = _selection.Count == 1 ? FindEvent(_selection.First()) : null;
         if (Properties?.Event != single)
-            Properties = single is null ? null : new EventPropertiesViewModel(single, _session, History, _pickAudioFile, _playback, ResizeEvent);
+            Properties = single is null ? null : new EventPropertiesViewModel(single, _session, History, _pickAudioFile, _playback, ResizeEvent, this);
         else
             Properties?.Refresh();
     }
@@ -822,6 +848,10 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
         ? null
         : _playback.AudioLength(AudioPaths.Resolve(audio.File, _session.ShowFolder));
 
+    public Waveform? WaveformOf(AudioEvent audio) => string.IsNullOrWhiteSpace(audio.File)
+        ? null
+        : _playback.AudioWaveform(AudioPaths.Resolve(audio.File, _session.ShowFolder));
+
     public string? FixtureName(Guid id) => _session.Project.Fixtures.FirstOrDefault(f => f.Id == id)?.Name;
 
     TimeSpan EndOf(TimelineEvent e) => e.Start + LengthOf(e);
@@ -852,7 +882,12 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
         return count == 1 ? kind : kind + "s";
     }
 
-    static string Describe(TimelineEvent e) => e switch { LightingClip => "Level Control clip", _ => "audio clip" };
+    static string Describe(TimelineEvent e) => e switch
+    {
+        LightingClip { Effect: not null } clip => $"{clip.KindName} effect",
+        LightingClip => "Level Control clip",
+        _ => "audio clip",
+    };
 }
 
 public sealed record SnapOption(string Label, TimeSpan Interval)

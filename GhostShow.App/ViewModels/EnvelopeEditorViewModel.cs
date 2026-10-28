@@ -37,7 +37,8 @@ public sealed partial class EnvelopeEditorViewModel : ObservableObject
 
     public string Title => Clip is null
         ? "Envelope Editor"
-        : $"Envelope Editor · {Clip.Name ?? LightingClip.DefaultName} · {Track?.Name} · {PlaybackViewModel.Format(Clip.Start)}–{PlaybackViewModel.Format(Clip.Start + Clip.Length)}";
+        : $"Envelope Editor · {Clip.Name ?? Clip.KindName} · {Track?.Name} · {PlaybackViewModel.Format(Clip.Start)}–{PlaybackViewModel.Format(Clip.Start + Clip.Length)}"
+          + (Clip.Effect is not null ? " · an effect: view only (convert it to Level Control to edit its handles)" : "");
 
     /// <summary>The track's channels by fixture, with whether each is drawn.</summary>
     public ObservableCollection<EnvelopeFixtureViewModel> Fixtures { get; } = new();

@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using GhostShow.Core.Engine;
 using GhostShow.Core.Fixtures;
+using GhostShow.Core.Storage;
 
 namespace GhostShow.App.ViewModels;
 
@@ -15,6 +16,8 @@ public enum SetupStep
     ChooseType,
     /// <summary>Wizard step 2: click openings on the map to add fixtures of the chosen type, then Done.</summary>
     Place,
+    /// <summary>From step 1: make (or edit) a custom fixture type, for a fixture the libraries don't have.</summary>
+    EditProfile,
 }
 
 /// <summary>
@@ -74,18 +77,24 @@ public sealed partial class FixtureSetupViewModel : ObservableObject
     public PatchMapViewModel Map { get; }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsOverview), nameof(IsChoosingType), nameof(IsPlacing), nameof(WizardTitle))]
+    [NotifyPropertyChangedFor(nameof(IsOverview), nameof(IsChoosingType), nameof(IsPlacing), nameof(IsEditingProfile), nameof(WizardTitle))]
     public partial SetupStep Step { get; private set; }
 
     public bool IsOverview => Step == SetupStep.Overview;
     public bool IsChoosingType => Step == SetupStep.ChooseType;
     public bool IsPlacing => Step == SetupStep.Place;
+    public bool IsEditingProfile => Step == SetupStep.EditProfile;
+
+    /// <summary>The custom fixture type being made or edited (the EditProfile step).</summary>
+    [ObservableProperty]
+    public partial CustomProfileEditorViewModel? ProfileEditor { get; private set; }
 
     public string WizardTitle => Step switch
     {
         SetupStep.ChooseType when _changingType => $"Change the type of '{Selected?.Name}'",
         SetupStep.ChooseType => "Add fixtures · step 1 of 2 · choose the fixture type",
         SetupStep.Place => "Add fixtures · step 2 of 2 · click green openings to place them",
+        SetupStep.EditProfile => ProfileEditor?.Heading ?? "",
         _ => "",
     };
 
@@ -130,6 +139,88 @@ public sealed partial class FixtureSetupViewModel : ObservableObject
 
     [RelayCommand]
     void CancelWizard() => Step = SetupStep.Overview;
+
+    // ---- custom fixture types ----
+
+    /// <summary>"Can't find it? New fixture type": a blank custom type.</summary>
+    [RelayCommand]
+    void NewProfile() => EditProfile(null, editInPlace: false);
+
+    /// <summary>"Copy and edit": a custom type starting from the picked profile (usually the quickest way).</summary>
+    [RelayCommand]
+    void CopyProfile()
+    {
+        if (Browser.Pending?.Profile is { } profile) EditProfile(profile, editInPlace: false);
+    }
+
+    /// <summary>Edit the picked profile, if it's a custom one.</summary>
+    [RelayCommand]
+    void EditCustomProfile()
+    {
+        if (Browser.Pending?.Profile is { } profile && CustomProfiles.IsCustom(profile)) EditProfile(profile, editInPlace: true);
+    }
+
+    void EditProfile(FixtureProfile? source, bool editInPlace)
+    {
+        int usedBy = source is null ? 0 : _session.Project.Fixtures.Count(f => string.Equals(f.ProfileId, source.Id, StringComparison.OrdinalIgnoreCase));
+        ProfileEditor = new CustomProfileEditorViewModel(source, editInPlace,
+            newId: (manufacturer, model) => CustomProfiles.NewId(manufacturer, model, _session.Profiles),
+            save: SaveProfile, cancel: () => BackToBrowser(null), delete: DeleteProfile, usedBy: usedBy);
+        Step = SetupStep.EditProfile;
+    }
+
+    /// <summary>
+    /// Saves it, moves this show's fixtures off any mode that was renamed, and goes back to the type picker with the
+    /// saved type picked (so Next places it, or, when changing a fixture's type, uses it).
+    /// </summary>
+    string? SaveProfile(FixtureProfile profile, IReadOnlyDictionary<string, string> renamedModes)
+    {
+        if (Library.SaveCustom(profile) is { } error) return error;
+        bool changed = false;
+        foreach (var fixture in _session.Project.Fixtures.Where(f => string.Equals(f.ProfileId, profile.Id, StringComparison.OrdinalIgnoreCase)))
+            if (renamedModes.TryGetValue(fixture.ModeName, out var renamed))
+            {
+                fixture.ModeName = renamed;
+                changed = true;
+            }
+        if (changed) _markDirty();
+        RefreshFixtures();
+        BackToBrowser(profile);
+        return null;
+    }
+
+    void DeleteProfile(FixtureProfile profile)
+    {
+        if (Library.DeleteCustom(profile) is { } error)
+        {
+            ProfileEditor?.ShowError(error);
+            return;
+        }
+        RefreshFixtures();
+        BackToBrowser(null);
+    }
+
+    /// <summary>Back to choosing a type (for new fixtures, or the selected one's), with a profile picked if given.</summary>
+    void BackToBrowser(FixtureProfile? pick)
+    {
+        ProfileEditor = null;
+        Browser.SetLibrary(_session.Profiles);
+        if (_changingType && Selected is { } selected) Browser.Start(selected.Profile, selected.Model.ModeName, $"Use this type for '{selected.Name}'");
+        else Browser.Start(_lastAddedProfile, _lastAddedMode, "Next: place them ▶");
+        Step = SetupStep.ChooseType;
+        if (pick is not null) Browser.Pick(pick);
+    }
+
+    /// <summary>The fixture list again (they look their profiles up when made), keeping the selection and the step.</summary>
+    void RefreshFixtures()
+    {
+        var selected = Selected?.Model;
+        Fixtures.Clear();
+        foreach (var fixture in _session.Project.Fixtures)
+            Fixtures.Add(new FixtureEditorViewModel(fixture, _session.Profiles.Find, OnFixtureChanged));
+        Selected = Fixtures.FirstOrDefault(f => f.Model == selected) ?? Fixtures.FirstOrDefault();
+        _session.Apply();
+    }
 
     /// <summary>From placing back to the type picker, keeping what was already added.</summary>
     [RelayCommand]
@@ -269,10 +360,13 @@ public sealed partial class FixtureSetupViewModel : ObservableObject
         return space > 0 && int.TryParse(name[(space + 1)..], out _) ? name[..space] : name;
     }
 
-    /// <summary>"{stem} N" with the lowest N from 1 that no fixture uses yet.</summary>
+    /// <summary>
+    /// "{stem} N" with the lowest N from 1 that no fixture uses yet. The stem is used as given (a model name such as
+    /// "Hurricane 1000" keeps its number); Duplicate passes the copied fixture's name without its own number.
+    /// </summary>
     string NextName(string stem)
     {
-        stem = NameStem(stem.Trim());
+        stem = stem.Trim();
         if (stem.Length == 0) stem = "Fixture";
         var taken = Fixtures.Select(f => f.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
         int n = 1;

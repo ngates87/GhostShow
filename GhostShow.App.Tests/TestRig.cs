@@ -20,12 +20,15 @@ sealed class TestRig : IDisposable
     {
         Library = new FixtureProfileLibrary([Par, Wash, Fogger, Dimmer]);
         Session = new ShowSession(new ShowEngine(), Library, NullLogger<ShowSession>.Instance);
-        var paths = new AppPaths(_configDirectory);
-        var libraryViewModel = new ProfileLibraryViewModel(Session, paths, new MachineSettings(), NullLogger.Instance);
+        Paths = new AppPaths(_configDirectory);
+        var libraryViewModel = new ProfileLibraryViewModel(Session, Paths, new MachineSettings(), NullLogger.Instance);
         Setup = new FixtureSetupViewModel(Session, libraryViewModel, () => Dirty = true);
     }
 
     public FixtureProfileLibrary Library { get; }
+
+    /// <summary>A config folder of its own (custom fixture types are saved under it), deleted afterwards.</summary>
+    public AppPaths Paths { get; }
     public ShowSession Session { get; }
     public FixtureSetupViewModel Setup { get; }
     public bool Dirty { get; private set; }

@@ -59,7 +59,12 @@ public class ShowFolderStoreTests : IDisposable
             Tracks =
             [
                 new TimelineTrack { Name = "Lights", Kind = TrackKind.Lighting, Color = "#FF0000", Channels = [red, new ChannelLane { Target = LaneTarget.Raw(3, 512) }], Events = [block] },
-                new TimelineTrack { Name = "Sound", Kind = TrackKind.Audio, Enabled = false, Events = [sound] },
+                new TimelineTrack { Name = "Sound", Kind = TrackKind.Audio, Enabled = false, Volume = 0.4, Events = [sound] },
+                new TimelineTrack
+                {
+                    Name = "Storm", Kind = TrackKind.Lighting, Channels = [new ChannelLane { Target = red.Target }],
+                    Events = [new LightingClip { Start = TimeSpan.FromSeconds(3), Effect = new LightingEffect { Kind = EffectKind.Lightning, Strength = 0.8, Rate = 3, Color = "#CCDDFF", Seed = 42, Ending = EffectEnding.Dark } }],
+                },
             ],
         };
         var project = Show(lightning, Timeline("Lobby"));
@@ -92,7 +97,10 @@ public class ShowFolderStoreTests : IDisposable
         Assert.Equal((block.Id, "Flash", TimeSpan.FromSeconds(1.5), TimeSpan.FromSeconds(2)), (reloadedBlock.Id, reloadedBlock.Name, reloadedBlock.Start, reloadedBlock.Length));
         Assert.Equal([(TimeSpan.Zero, (byte)3, CurveKind.Linear), (TimeSpan.FromSeconds(0.5), (byte)255, CurveKind.Step), (TimeSpan.FromSeconds(2), (byte)9, CurveKind.Spline)],
                      Assert.Single(reloadedBlock.Lanes).Points.Select(p => (p.Time, p.Value, p.Curve)));
-        Assert.False(timeline.Tracks[1].Enabled);
+        Assert.Equal((false, 0.4, 1.0), (timeline.Tracks[1].Enabled, timeline.Tracks[1].Volume, timeline.Tracks[0].Volume));
+        var storm = Assert.IsType<LightingClip>(Assert.Single(timeline.Tracks[2].Events)).Effect!;
+        Assert.Equal((EffectKind.Lightning, 0.8, 3.0, "#CCDDFF", 42, EffectEnding.Dark), (storm.Kind, storm.Strength, storm.Rate, storm.Color, storm.Seed, storm.Ending));
+        Assert.Null(((LightingClip)timeline.Tracks[0].Events[0]).Effect);
         var reloadedSound = Assert.IsType<AudioEvent>(timeline.Tracks[1].Events[0]);
         Assert.Equal(("audio/z.wav", 0.8, TimeSpan.FromSeconds(1), true), (reloadedSound.File, reloadedSound.Volume, reloadedSound.FadeIn, reloadedSound.Loop));
     }

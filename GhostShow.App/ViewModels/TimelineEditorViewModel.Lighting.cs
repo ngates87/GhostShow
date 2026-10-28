@@ -23,7 +23,7 @@ public sealed record TimelineRow(int TrackIndex, TrackRowViewModel Track, double
 /// </summary>
 public sealed partial class TimelineEditorViewModel
 {
-    public const double CollapsedTrackHeight = 34, CollapsedLightingHeight = 64, ExpandedTrackHeight = 150, AudioTrackHeight = 46;
+    public const double CollapsedTrackHeight = 34, CollapsedLightingHeight = 64, ExpandedTrackHeight = 150, AudioTrackHeight = 64;
 
     readonly HashSet<Guid> _expanded = [];
     readonly HashSet<CurvePoint> _selectedPoints = [];
@@ -177,7 +177,8 @@ public sealed partial class TimelineEditorViewModel
     {
         EnsureIndex();
         if (_levels.TryGetValue(track, out var levels)) return levels;
-        return _levels[track] = TrackLevels.ResolveAll(track);
+        var patched = _session.Patch.Fixtures.ToDictionary(f => f.Id);
+        return _levels[track] = TrackLevels.ResolveAll(track, target => TimelineCompiler.FunctionOf(target, patched));
     }
 
     TimelineTrack? TrackOf(LightingClip clip) => SelectedTimeline?.Tracks.FirstOrDefault(t => t.Events.Contains(clip));
@@ -224,7 +225,7 @@ public sealed partial class TimelineEditorViewModel
     /// </summary>
     public CurvePoint? AddHandle(LightingClip clip, LaneTarget target, TimeSpan time)
     {
-        if (clip.Locked) return null;
+        if (clip.Locked || clip.Effect is not null) return null;   // an effect's envelopes are made from its settings
         var at = SnapTime(time) - clip.Start;
         if (at <= TimeSpan.Zero || at >= clip.Length) at = time - clip.Start;   // the grid would put it on an edge
         if (at <= TimeSpan.Zero || at >= clip.Length) return null;
@@ -269,6 +270,87 @@ public sealed partial class TimelineEditorViewModel
         _selection.Clear();
         _selection.Add(clip.Id);
         SelectionChanged();
+    }
+
+    // ---- built-in effects ----
+
+    /// <summary>Adds a built-in effect clip (Lightning, Fire, …) at a time, at the effect's usual length, with a fresh random pattern.</summary>
+    public LightingClip? AddEffectAt(TrackRowViewModel row, TimeSpan time, EffectKind kind)
+    {
+        var track = row.Track;
+        if (!row.IsLighting) return null;
+        if (track.Channels.Count == 0)
+        {
+            EditChannels(row);
+            return null;
+        }
+        var info = EffectInfo.Of(kind);
+        var clip = new LightingClip { Name = info.Name, Start = time, Length = info.DefaultLength, Effect = LightingEffect.Create(kind, Random.Shared.Next()) };
+        History.Execute($"Add {info.Name} effect", () => track.Events.Add(clip), () => track.Events.Remove(clip));
+        _selectedPoints.Clear();
+        _selection.Clear();
+        _selection.Add(clip.Id);
+        SelectionChanged();
+        return clip;
+    }
+
+    /// <summary>The toolbar's Effects menu: the effect at the playhead, on the selected lighting track (or the first one).</summary>
+    [RelayCommand]
+    void AddEffect(EffectKind kind)
+    {
+        if (EffectsTrack() is { } row) AddEffectAt(row, SnapTime(_playback.Position), kind);
+    }
+
+    /// <summary>The Effects menu's Level Control: a clip at the playhead, on the selected lighting track (or the first one).</summary>
+    [RelayCommand]
+    void AddLevelControl()
+    {
+        if (EffectsTrack() is { } row) AddClipAt(row, SnapTime(_playback.Position));
+    }
+
+    TrackRowViewModel? EffectsTrack() => SelectedTrack is { IsLighting: true } selected ? selected : Tracks.FirstOrDefault(t => t.IsLighting);
+
+    /// <summary>Changes an effect clip's settings (one undoable edit; typing into one field merges).</summary>
+    public void ChangeEffect(LightingClip clip, string description, Action<LightingEffect> change, string field)
+    {
+        if (clip.Effect is not { } current || clip.Locked) return;
+        var changed = current.Clone();
+        change(changed);
+        if (EffectEquals(current, changed)) return;
+        History.Execute(description, () => clip.Effect = changed, () => clip.Effect = current, (clip.Id, "effect:" + field));
+    }
+
+    static bool EffectEquals(LightingEffect a, LightingEffect b) =>
+        (a.Kind, a.Strength, a.Rate, a.Color, a.Seed, a.Ending) == (b.Kind, b.Strength, b.Rate, b.Color, b.Seed, b.Ending);
+
+    /// <summary>The same effect with a new random pattern (other strike times, another flicker).</summary>
+    public void NewEffectPattern(LightingClip clip) => ChangeEffect(clip, "New random pattern", e => e.Seed = Random.Shared.Next(), "seed-" + Guid.NewGuid());
+
+    /// <summary>
+    /// Turns an effect clip into a Level Control clip with the effect's envelopes as its own handles, to fine-tune by
+    /// hand (as it plays now: from where the previous clip leaves each channel). One undo step.
+    /// </summary>
+    public void ConvertToLevelControl(LightingClip clip)
+    {
+        if (clip.Effect is not { } effect || clip.Locked || TrackOf(clip) is not { } track) return;
+        var patched = _session.Patch.Fixtures.ToDictionary(f => f.Id);
+        ChannelFunction? FunctionOf(LaneTarget t) => TimelineCompiler.FunctionOf(t, patched);
+        var keys = LightingEffects.Keys(effect, clip.Length);
+        var roles = LightingEffects.Roles(track.Channels, FunctionOf);
+        var levels = LevelsOf(track);
+        var lanes = new List<ChannelLane>();
+        for (int i = 0; i < track.Channels.Count; i++)
+        {
+            var target = track.Channels[i].Target;
+            if (roles[i] == EffectRole.Untouched) continue;
+            byte start = levels.FirstOrDefault(l => l.Channel == track.Channels[i])?.StartLevelOf(clip) ?? track.Channels[i].StartLevel;
+            var envelope = LightingEffects.EnvelopeFor(keys, roles[i], target.Control ?? FunctionOf(target), start, clip.Length);
+            lanes.Add(new ChannelLane { Target = target, Points = envelope.Skip(1).Select(p => p.Clone()).ToList() });
+        }
+        var oldLanes = clip.Lanes;
+        History.Execute("Convert to Level Control",
+                        () => { clip.Effect = null; clip.Lanes = lanes; },
+                        () => { clip.Effect = effect; clip.Lanes = oldLanes; });
     }
 
     /// <summary>
@@ -435,7 +517,8 @@ public sealed partial class TimelineEditorViewModel
     public void SplitAt(TimeSpan at)
     {
         var candidates = _selection.Count > 0 ? SelectedEvents() : SelectedTrack?.Track.Events ?? [];
-        var splits = candidates.Where(e => !e.Locked && e is LightingClip or AudioEvent && e.Start < at && at < e.Start + LengthOf(e))
+        // Effects are made whole (a split would make two different effects): convert one first to split it.
+        var splits = candidates.Where(e => !e.Locked && e is LightingClip { Effect: null } or AudioEvent && e.Start < at && at < e.Start + LengthOf(e))
                                .Select(e => (Track: TrackContaining(e)!, Event: e)).ToList();
         if (splits.Count == 0) return;
         var undo = new List<Action>();

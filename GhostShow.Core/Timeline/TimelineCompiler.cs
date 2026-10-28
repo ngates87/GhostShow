@@ -35,7 +35,7 @@ public static class TimelineCompiler
         {
             var track = timeline.Tracks[trackIndex];
             if (!track.Enabled) continue;
-            var channelLevels = TrackLevels.ResolveAll(track);
+            var channelLevels = TrackLevels.ResolveAll(track, target => FunctionOf(target, context));
             for (int laneIndex = 0; laneIndex < track.Channels.Count; laneIndex++)
             {
                 var lane = track.Channels[laneIndex];
@@ -71,7 +71,7 @@ public static class TimelineCompiler
                         if (resolved.Count > 0) contentEnd = Math.Max(contentEnd, (levels.Start + levels.Fade).Ticks);
                         break;
                     case AudioEvent sound:
-                        if (CompileAudio(sound, context, issues) is { } cue)
+                        if (CompileAudio(sound, track, context, issues) is { } cue)
                         {
                             audio.Add(cue);
                             contentEnd = Math.Max(contentEnd, cue.End ?? cue.Start);
@@ -253,6 +253,14 @@ public static class TimelineCompiler
         }
     }
 
+    /// <summary>What a fixture channel does, from the patch (for effects); null if the fixture or channel isn't there.</summary>
+    public static ChannelFunction? FunctionOf(LaneTarget target, IReadOnlyDictionary<Guid, PatchedFixture> fixtures) =>
+        target.Control ?? (target is { FixtureId: { } id, Channel: { } n } && fixtures.TryGetValue(id, out var fixture) && n >= 1 && n <= fixture.ChannelCount
+            ? fixture.Mode.Channels[n - 1].Function
+            : null);
+
+    static ChannelFunction? FunctionOf(LaneTarget target, TimelineContext context) => FunctionOf(target, context.Fixtures);
+
     static int RawAddress(Level level) => level.Channel ?? 0;
 
     static int FixtureAddress(PatchedFixture fixture, Level level)
@@ -261,7 +269,7 @@ public static class TimelineCompiler
         return level.Channel is { } channel ? fixture.AddressOfChannel(channel) : 0;
     }
 
-    static AudioCue? CompileAudio(AudioEvent e, TimelineContext context, List<TimelineIssue> issues)
+    static AudioCue? CompileAudio(AudioEvent e, TimelineTrack track, TimelineContext context, List<TimelineIssue> issues)
     {
         if (string.IsNullOrWhiteSpace(e.File))
         {
@@ -285,7 +293,7 @@ public static class TimelineCompiler
                   : !e.Loop && context.AudioLength(path) is { } fileLength ? (e.Start + fileLength - e.Offset).Ticks
                   : null;
         return new AudioCue(e.Id, Describe(e), path, e.Start.Ticks, end, e.Offset.Ticks,
-                            Math.Clamp(e.Volume, 0, 1), e.FadeIn.Ticks, e.FadeOut.Ticks, e.Loop);
+                            Math.Clamp(e.Volume, 0, 1) * Math.Clamp(track.Volume, 0, 1), e.FadeIn.Ticks, e.FadeOut.Ticks, e.Loop);
     }
 
     static void CheckIds(ShowTimeline timeline, List<TimelineIssue> issues)

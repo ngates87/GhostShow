@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using GhostShow.Core.Fixtures;
+using GhostShow.Core.Storage;
 
 namespace GhostShow.App.ViewModels;
 
@@ -55,7 +56,7 @@ public sealed partial class ProfileBrowserViewModel : ObservableObject
 
     /// <summary>The profile picked in the grid, with its modes, waiting for Apply or Cancel. null when nothing is picked.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasPending), nameof(PendingTitle), nameof(PendingDetail))]
+    [NotifyPropertyChangedFor(nameof(HasPending), nameof(PendingTitle), nameof(PendingDetail), nameof(PendingIsCustom))]
     public partial ModeChoiceViewModel? Pending { get; private set; }
 
     public bool HasPending => Pending is not null;
@@ -142,6 +143,19 @@ public sealed partial class ProfileBrowserViewModel : ObservableObject
         }
     }
 
+    /// <summary>Shows a profile picked, in its group, waiting for its mode and Apply (e.g. a custom type just saved).</summary>
+    public void Pick(FixtureProfile profile)
+    {
+        Search = "";
+        Pending = new ModeChoiceViewModel(profile, profile == _current ? _currentModeName : null);
+        var group = GroupOf(profile);
+        if (group == OpenGroup) Refresh();
+        else OpenGroup = group;
+    }
+
+    /// <summary>The picked profile is one of the user's own (so it can be edited, not just copied).</summary>
+    public bool PendingIsCustom => Pending?.Profile is { } profile && CustomProfiles.IsCustom(profile);
+
     [RelayCommand]
     void Apply()
     {
@@ -219,7 +233,8 @@ public sealed partial class ProfileBrowserViewModel : ObservableObject
         var matches = _library.Profiles
             .Where(p => terms.All(t => p.Manufacturer.Contains(t, StringComparison.OrdinalIgnoreCase)
                                        || p.Model.Contains(t, StringComparison.OrdinalIgnoreCase)
-                                       || p.EffectiveCategory.Label().Contains(t, StringComparison.OrdinalIgnoreCase)))
+                                       || p.EffectiveCategory.Label().Contains(t, StringComparison.OrdinalIgnoreCase)
+                                       || (CustomProfiles.IsCustom(p) && "custom".Contains(t, StringComparison.OrdinalIgnoreCase))))
             .ToList();
         foreach (var profile in matches.Take(MaxSearchResults)) Tiles.Add(ProfileTileFor(profile));
         Breadcrumb = matches.Count > MaxSearchResults
@@ -235,7 +250,8 @@ public sealed partial class ProfileBrowserViewModel : ObservableObject
             : profile.Manufacturer;
         string modes = profile.Modes.Count == 1 ? "1 mode" : $"{profile.Modes.Count} modes";
         bool inUse = profile == _current;
-        return new ProfileTile(profile.Model, $"{(inUse ? "✓ In use · " : "")}{context} · {modes}", null, profile,
+        string custom = CustomProfiles.IsCustom(profile) ? "Custom · " : "";
+        return new ProfileTile(profile.Model, $"{(inUse ? "✓ In use · " : "")}{custom}{context} · {modes}", null, profile,
                                inUse, profile == Pending?.Profile);
     }
 }

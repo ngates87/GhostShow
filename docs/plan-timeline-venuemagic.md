@@ -68,6 +68,8 @@ volume, master lamp level, loop, play-once-only.
    several channels together.
 3. **Timeline chrome**: play-range bar, clip time display, toolbar parity, track panel parity (lock,
    solo, pin, master level), track size and pages, Timeline Options with time formats, Space play/stop, Home/End.
-4. **Effects and events**: a project Fixture Effects library (chasers; built-ins such as Candelabra and Lightning),
+4. **Effects and events**: built-in effects done (2026-10-28: Lightning, Brown out, Explosion, Failing bulb, Fire,
+   Strobe, Heartbeat, Police lights; see docs/timeline.md); audio waveforms and track volume done. Still to do:
+   a project Fixture Effects library (chasers; built-ins such as Candelabra and Lightning),
    project-level events on event tracks (Run, Stop and Pause Timeline), audio clips with waveforms and volume/pan
    envelopes.
