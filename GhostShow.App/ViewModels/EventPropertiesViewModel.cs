@@ -18,7 +18,7 @@ public sealed partial class EventPropertiesViewModel : ObservableObject
     readonly PlaybackViewModel _playback;
     readonly Action<Guid, TimeSpan> _resize;
 
-    /// <param name="resize">Changes a block's length the way dragging its right edge does (a lighting block stretches).</param>
+    /// <param name="resize">Changes a clip's length the way dragging its right edge does (a lighting clip scales or crops).</param>
     public EventPropertiesViewModel(TimelineEvent e, ShowSession session, EditHistory history, Func<Task<string?>> pickAudioFile,
                                     PlaybackViewModel playback, Action<Guid, TimeSpan> resize)
     {
@@ -33,13 +33,12 @@ public sealed partial class EventPropertiesViewModel : ObservableObject
     public TimelineEvent Event { get; }
 
     public bool IsAudio => Event is AudioEvent;
-    public bool IsMarker => Event is MarkerEvent;
-    public bool IsLightingBlock => Event is LightingClip;
+    public bool IsLightingClip => Event is LightingClip;
 
-    public string Kind => Event switch { LightingClip => "Lighting block", AudioEvent => "Audio event", _ => "Marker" };
+    public string Kind => Event switch { LightingClip => LightingClip.DefaultName, _ => "Audio clip" };
 
-    /// <summary>A lighting block's length; changing it stretches the block's lines, as dragging its edge does.</summary>
-    public decimal BlockLengthSeconds
+    /// <summary>A lighting clip's length; changing it scales or crops its envelopes, as dragging its edge does.</summary>
+    public decimal ClipLengthSeconds
     {
         get => Event is LightingClip clip ? Seconds(clip.Length) : 0;
         set
@@ -53,19 +52,42 @@ public sealed partial class EventPropertiesViewModel : ObservableObject
     public string? Name
     {
         get => Event.Name;
-        set => Change("Rename event", Event.Name, string.IsNullOrWhiteSpace(value) ? null : value, v => Event.Name = v, "name");
+        set => Change("Rename clip", Event.Name, string.IsNullOrWhiteSpace(value) ? null : value, v => Event.Name = v, "name");
     }
 
     public decimal StartSeconds
     {
         get => Seconds(Event.Start);
-        set => Change("Move event", Event.Start, Time(value), v => Event.Start = v, "start");
+        set
+        {
+            if (!Event.Locked) Change("Move clip", Event.Start, Time(value), v => Event.Start = v, "start");
+        }
     }
 
+    /// <summary>VenueMagic's "Enable playback": a disabled clip is skipped (the next one carries on from the one before).</summary>
     public bool Enabled
     {
         get => Event.Enabled;
-        set => Change(value ? "Enable event" : "Disable event", Event.Enabled, value, v => Event.Enabled = v, "enabled");
+        set => Change(value ? "Enable clip" : "Disable clip", Event.Enabled, value, v => Event.Enabled = v, "enabled");
+    }
+
+    /// <summary>Locked: can't be moved, resized, split, deleted or have its envelopes edited.</summary>
+    public bool Locked
+    {
+        get => Event.Locked;
+        set => Change(value ? "Lock clip" : "Unlock clip", Event.Locked, value, v => Event.Locked = v, "locked");
+    }
+
+    public bool IsUnlocked => !Event.Locked;
+
+    /// <summary>On: resizing scales the envelopes with the clip. Off: it crops them (handles keep their times).</summary>
+    public bool ScaleOnResize
+    {
+        get => Event is LightingClip { ScaleOnResize: true };
+        set
+        {
+            if (Event is LightingClip clip) Change(value ? "Scale envelopes on resize" : "Crop envelopes on resize", clip.ScaleOnResize, value, v => clip.ScaleOnResize = v, "scale");
+        }
     }
 
     // ---- audio ----

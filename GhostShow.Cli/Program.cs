@@ -84,11 +84,10 @@ static async Task<int> Demo(string path)
                 Name = "Sound", Kind = TrackKind.Audio,
                 Events = [new AudioEvent { Name = "Thunder", File = "audio/thunder.wav", Start = TimeSpan.FromSeconds(1.95) }],
             },
-            new TimelineTrack { Name = "Cues", Kind = TrackKind.Markers, Events = [new MarkerEvent { Name = "Lightning", Start = TimeSpan.FromSeconds(2) }] },
         ],
     };
 
-    LevelEventConversion.Upgrade(timeline);   // written as cues above for readability; stored as a lighting block per track
+    LevelEventConversion.Upgrade(timeline);   // written as cues above for readability; stored as a Level Control clip per track
     var project = new Project { Name = "Demo Haunt", Fixtures = [strobe, glow], Timelines = [timeline] };
     project.AddFolder(timeline.Folder);
     await ShowFolderStore.SaveAsync(project, path, previousFolder: null);
@@ -148,7 +147,6 @@ static async Task<int> Run(string[] args)
     var compiled = session.CompileTimeline(timeline, audio.GetLength);
     foreach (var issue in compiled.Issues) log.LogWarning("Timeline: {Issue}", issue.Message);
     player.Load(compiled);
-    player.MarkerReached += marker => log.LogInformation("Marker: {Marker}", marker.Name);
 
     var loop = new PlaybackLoop(player, loggerFactory.CreateLogger<PlaybackLoop>());
     using var cancel = new CancellationTokenSource();

@@ -7,7 +7,9 @@ namespace GhostShow.Tests.Timelines;
 /// <summary>Lighting tracks with channels: points on a line per channel, and how they play.</summary>
 public class ChannelLaneTests
 {
-    static CurvePoint P(double seconds, byte value, bool step = false) => new() { Time = S(seconds), Value = value, Step = step };
+    static CurvePoint P(double seconds, byte value, bool step = false) => new() { Time = S(seconds), Value = value, Curve = step ? CurveKind.Step : CurveKind.Linear };
+
+    static CurvePoint P(double seconds, byte value, CurveKind curve) => new() { Time = S(seconds), Value = value, Curve = curve };
 
     static ChannelLane Lane(LaneTarget target, params CurvePoint[] points) => new() { Target = target, Points = [.. points] };
 
@@ -136,7 +138,7 @@ public class ChannelLaneTests
         Assert.Empty(track.Events);
         var lane = Assert.Single(track.Channels);
         Assert.Equal(LaneTarget.Raw(1, 10), lane.Target);
-        Assert.Equal([(S(1), 50, true), (S(3), 200, false)], lane.Points.Select(p => (p.Time, (int)p.Value, p.Step)));
+        Assert.Equal([(S(1), 50, CurveKind.Step), (S(3), 200, CurveKind.Linear)], lane.Points.Select(p => (p.Time, (int)p.Value, p.Curve)));
     }
 
     [Fact]
@@ -187,73 +189,158 @@ public class ChannelLaneTests
     [Fact]
     public void A_timeline_without_lighting_events_is_left_alone()
     {
-        var timeline = Timeline(new TimelineTrack { Kind = TrackKind.Markers, Events = [new MarkerEvent { Name = "A" }] });
+        var timeline = Timeline(new TimelineTrack { Kind = TrackKind.Audio, Events = [new AudioEvent { Name = "A", File = "a.wav" }] });
 
         Assert.False(LevelEventConversion.Convert(timeline));
         Assert.Single(timeline.Tracks[0].Events);
     }
 
-    // ---- blocks ----
+    // ---- clips (Level Control): envelopes with start and end handles, carrying on from each other ----
 
-    static LightingClip Block(double start, double length, ChannelLane lane) =>
-        new() { Start = S(start), Length = S(length), Lanes = [lane] };
+    static LightingClip Clip(double start, double length, params ChannelLane[] lanes) =>
+        new() { Start = S(start), Length = S(length), Lanes = [.. lanes] };
 
-    static TimelineTrack BlockTrack(LaneTarget target, params LightingClip[] blocks) => new()
+    static TimelineTrack ClipTrack(ChannelLane channel, params LightingClip[] clips) => new()
     {
-        Name = "Lights", Kind = TrackKind.Lighting, Channels = [new ChannelLane { Target = target }], Events = [.. blocks],
+        Name = "Lights", Kind = TrackKind.Lighting, Channels = [channel], Events = [.. clips],
     };
 
-    [Fact]
-    public void A_block_plays_its_lines_at_its_position_and_the_last_level_holds_after_it()
-    {
-        var target = LaneTarget.Raw(1, 10);
-        var compiled = Compile(Timeline(BlockTrack(target, Block(2, 4, Lane(target, P(0, 0), P(4, 200))))));
+    static readonly LaneTarget Ch10 = LaneTarget.Raw(1, 10);
 
-        Assert.False(LevelsAt(compiled, 1.9).Controlled[9]);
+    [Fact]
+    public void A_clip_fades_from_its_start_level_through_its_handles_and_holds_its_end_level_after_it()
+    {
+        var compiled = Compile(Timeline(ClipTrack(new ChannelLane { Target = Ch10 }, Clip(2, 4, Lane(Ch10, P(4, 200))))));
+
+        Assert.False(LevelsAt(compiled, 1.9).Controlled[9]);   // starts at the first clip
+        Assert.Equal(0, At(compiled, 2, 10));                  // the channel's start level
         Assert.Equal(100, At(compiled, 4, 10));
         Assert.Equal(200, At(compiled, 30, 10));
         Assert.Equal(S(6).Ticks, compiled.Length);
     }
 
     [Fact]
-    public void Moving_a_block_moves_its_lines_and_a_later_block_takes_over_from_its_start()
+    public void A_clip_starts_where_the_previous_one_left_the_channel_and_one_without_an_envelope_holds_it()
     {
-        var target = LaneTarget.Raw(1, 10);
-        var first = Block(0, 10, Lane(target, P(0, 0), P(10, 250)));
-        var second = Block(4, 2, Lane(target, P(0, 50)));
-        var compiled = Compile(Timeline(BlockTrack(target, first, second)));
+        var up = Clip(0, 4, Lane(Ch10, P(4, 200)));
+        var holds = Clip(5, 2);
+        var down = Clip(8, 4, Lane(Ch10, P(4, 0)));
+        var compiled = Compile(Timeline(ClipTrack(new ChannelLane { Target = Ch10 }, down, holds, up)));   // track order doesn't matter
+
+        Assert.Equal(200, At(compiled, 4.5, 10));
+        Assert.Equal(200, At(compiled, 6, 10));
+        Assert.Equal(100, At(compiled, 10, 10));   // 200 → 0 over the clip
+    }
+
+    [Fact]
+    public void A_fixed_start_level_holds_from_the_timeline_start_and_the_first_clip_fades_from_it()
+    {
+        var channel = new ChannelLane { Target = Ch10, Start = ChannelStart.Fixed, StartLevel = 80 };
+        var compiled = Compile(Timeline(ClipTrack(channel, Clip(5, 4, Lane(Ch10, P(4, 0))))));
+
+        Assert.True(LevelsAt(compiled, 0).Controlled[9]);
+        Assert.Equal(80, At(compiled, 3, 10));
+        Assert.Equal(40, At(compiled, 7, 10));
+    }
+
+    [Fact]
+    public void A_later_clip_takes_over_from_its_start_carrying_on_from_where_the_earlier_one_had_got_to()
+    {
+        var first = Clip(0, 10, Lane(Ch10, P(10, 250)));
+        var second = Clip(4, 2, Lane(Ch10, P(2, 0)));
+        var compiled = Compile(Timeline(ClipTrack(new ChannelLane { Target = Ch10 }, first, second)));
 
         Assert.Equal(75, At(compiled, 3, 10));
-        Assert.Equal(50, At(compiled, 5, 10));   // the later block's level from its start on
+        Assert.Equal(50, At(compiled, 5, 10));   // from 100 (where the first had got to at 4 s) down to 0
+        Assert.Equal(0, At(compiled, 8, 10));    // the first one's rest doesn't play
     }
 
     [Fact]
-    public void Stretching_a_block_scales_its_points()
+    public void A_step_handle_holds_then_jumps_and_a_spline_curves_smoothly_without_overshooting()
     {
-        var target = LaneTarget.Raw(1, 10);
-        var block = Block(0, 4, Lane(target, P(0, 0), P(1, 100), P(4, 200)));
+        var steps = Compile(Timeline(ClipTrack(new ChannelLane { Target = Ch10 }, Clip(0, 4, Lane(Ch10, P(2, 200, CurveKind.Step), P(4, 200))))));
+        Assert.Equal(0, At(steps, 1.99, 10));
+        Assert.Equal(200, At(steps, 2, 10));
 
-        block.Stretch(S(8));
-
-        Assert.Equal([S(0), S(2), S(8)], block.Lanes[0].Points.Select(p => p.Time));
-        Assert.Equal(S(8), block.Length);
+        var lane = Lane(Ch10, P(2, 200, CurveKind.Spline), P(4, 0, CurveKind.Spline));
+        var spline = Compile(Timeline(ClipTrack(new ChannelLane { Target = Ch10 }, Clip(0, 4, lane))));
+        Assert.InRange(At(spline, 1, 10), 120, 130);   // above the straight line (100): it eases into the peak
+        Assert.Equal(200, At(spline, 2, 10));
+        for (double t = 0; t <= 4; t += 0.05) Assert.InRange(At(spline, t, 10), 0, 200);
+        var levels = TrackLevels.Resolve(ClipTrack(new ChannelLane { Target = Ch10 }, Clip(0, 4, lane)), new ChannelLane { Target = Ch10 });
+        foreach (var t in new[] { 0.3, 1, 2.5, 3.7 })
+            Assert.InRange(At(spline, t, 10) - levels.ValueAt(S(t))!.Value, -2, 2);   // what's drawn is what plays
     }
 
     [Fact]
-    public void Block_points_past_its_end_and_channels_not_on_the_track_do_not_play()
+    public void Resizing_scales_the_envelopes_or_crops_them()
     {
-        var target = LaneTarget.Raw(1, 10);
+        LightingClip Fresh(bool scale) => new() { Start = S(0), Length = S(4), ScaleOnResize = scale, Lanes = [Lane(Ch10, P(2, 200), P(4, 0))] };
+        static byte FromZero(LaneTarget _) => 0;
+        (double, int)[] Handles(LightingClip clip) => clip.Lanes[0].Points.Select(p => (p.Time.TotalSeconds, (int)p.Value)).ToArray();
+
+        var scaled = Fresh(scale: true);
+        scaled.ResizeEnd(S(8), FromZero);
+        Assert.Equal([(4.0, 200), (8, 0)], Handles(scaled));
+
+        var shorter = Fresh(scale: false);
+        shorter.ResizeEnd(S(3), FromZero);
+        Assert.Equal([(2.0, 200), (3, 100)], Handles(shorter));   // the end handle takes the level there
+
+        var longer = Fresh(scale: false);
+        longer.ResizeEnd(S(6), FromZero);
+        Assert.Equal([(2.0, 200), (4, 0), (6, 0)], Handles(longer));
+
+        var later = Fresh(scale: false);
+        later.ResizeStart(S(1));
+        Assert.Equal((S(1), S(3)), (later.Start, later.Length));
+        Assert.Equal([(1.0, 200), (3, 0)], Handles(later));   // handles keep their place on the timeline
+    }
+
+    [Fact]
+    public void Splitting_a_clip_gives_two_that_play_as_the_one_did()
+    {
+        var clip = Clip(1, 4, Lane(Ch10, P(2, 200), P(4, 0)));
+        var before = Compile(Timeline(ClipTrack(new ChannelLane { Target = Ch10 }, (LightingClip)clip.Clone())));
+
+        var after = clip.SplitAt(S(1), _ => 0)!;
+
+        Assert.Equal((S(1), S(1), S(2), S(3)), (clip.Start, clip.Length, after.Start, after.Length));
+        Assert.Equal([(S(1), 100)], clip.Lanes[0].Points.Select(p => (p.Time, (int)p.Value)));
+        Assert.Equal([(S(1), 200), (S(3), 0)], after.Lanes[0].Points.Select(p => (p.Time, (int)p.Value)));
+        var split = Compile(Timeline(ClipTrack(new ChannelLane { Target = Ch10 }, clip, after)));
+        for (double t = 0; t <= 6; t += 0.25) Assert.Equal(At(before, t, 10), At(split, t, 10));
+    }
+
+    [Fact]
+    public void Envelopes_of_channels_not_on_the_track_do_not_play_and_a_muted_clip_is_skipped()
+    {
         var other = LaneTarget.Raw(1, 11);
-        var block = new LightingClip { Start = S(0), Length = S(2), Lanes = [Lane(target, P(0, 10), P(3, 250)), Lane(other, P(0, 99))] };
+        var muted = Clip(2, 2, Lane(Ch10, P(2, 0)));
+        muted.Enabled = false;
+        var compiled = Compile(Timeline(ClipTrack(new ChannelLane { Target = Ch10 }, Clip(0, 2, Lane(Ch10, P(2, 90)), Lane(other, P(2, 99))), muted)));
 
-        var compiled = Compile(Timeline(BlockTrack(target, block)));
-
-        Assert.Equal(10, At(compiled, 5, 10));
+        Assert.Equal(90, At(compiled, 3, 10));
         Assert.False(LevelsAt(compiled, 1).Controlled[10]);
     }
 
     [Fact]
-    public void Upgrading_moves_track_points_into_one_block_that_plays_the_same()
+    public void Clips_from_before_envelope_rules_play_as_they_did()
+    {
+        // Version 3: the first point was a jump at its time, the level held after the last point, points past the end were ignored.
+        var old = Clip(2, 6, Lane(Ch10, P(1, 50), P(4, 200), P(7, 9)));
+        var timeline = Timeline(ClipTrack(new ChannelLane { Target = Ch10 }, old));
+
+        Assert.True(LevelEventConversion.ToEnvelopes(timeline));
+
+        Assert.Equal([(1.0, 50, CurveKind.Step), (4, 200, CurveKind.Linear), (6, 200, CurveKind.Linear)],
+                     old.Lanes[0].Points.Select(p => (p.Time.TotalSeconds, (int)p.Value, p.Curve)));
+        var compiled = Compile(timeline);
+        Assert.Equal((50, 125, 200), (At(compiled, 3, 10), At(compiled, 4.5, 10), At(compiled, 20, 10)));
+    }
+
+    [Fact]
+    public void Upgrading_moves_track_points_into_one_clip_that_plays_the_same()
     {
         var target = LaneTarget.Raw(1, 10);
         var track = new TimelineTrack { Kind = TrackKind.Lighting, Channels = [Lane(target, P(2, 0), P(5, 240))] };
@@ -263,8 +350,8 @@ public class ChannelLaneTests
         Assert.True(LevelEventConversion.Upgrade(timeline));
 
         Assert.Empty(track.Channels[0].Points);
-        var block = Assert.IsType<LightingClip>(Assert.Single(track.Events));
-        Assert.Equal((S(2), S(3)), (block.Start, block.Length));
+        var clip = Assert.IsType<LightingClip>(Assert.Single(track.Events));
+        Assert.Equal((S(2), S(3)), (clip.Start, clip.Length));
         var after = Compile(timeline);
         foreach (var t in new[] { 1.0, 2, 3.5, 5, 9 })
             Assert.Equal(At(before, t, 10), At(after, t, 10));

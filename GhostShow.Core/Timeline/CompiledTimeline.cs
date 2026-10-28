@@ -45,8 +45,6 @@ public sealed record AudioCue(Guid EventId, string Name, string Path, long Start
     }
 }
 
-public sealed record CompiledMarker(Guid EventId, string Name, long Time);
-
 /// <summary>Levels the timeline wants at one moment: per universe, a value and whether the timeline controls it.</summary>
 public sealed class LevelsFrame
 {
@@ -82,18 +80,20 @@ public sealed class CompiledTimeline
     readonly LevelStep[] _steps;   // sorted by Start, then track order, then event and level order
 
     internal CompiledTimeline(LevelStep[] steps, IReadOnlyList<int> universes, IReadOnlyList<AudioCue> audio,
-                              IReadOnlyList<CompiledMarker> markers, long length, bool loop, IReadOnlyList<TimelineIssue> issues)
+                              long length, bool loop, IReadOnlyList<TimelineIssue> issues,
+                              TimelinePlayback? playback = null)
     {
         _steps = steps;
+        Playback = playback ?? new TimelinePlayback();
+        Channels = steps.Select(s => (universes[s.Slot], s.Index + 1)).ToHashSet();
         Universes = universes;
         AudioCues = audio;
-        Markers = markers;
         Length = length;
         Loop = loop;
         Issues = issues;
     }
 
-    public static CompiledTimeline Empty { get; } = new([], [], [], [], 0, false, []);
+    public static CompiledTimeline Empty { get; } = new([], [], [], 0, false, []);
 
     /// <summary>Universe numbers the timeline drives, in slot order (see <see cref="LevelsFrame"/>).</summary>
     public IReadOnlyList<int> Universes { get; }
@@ -101,15 +101,18 @@ public sealed class CompiledTimeline
     /// <summary>Sorted by start.</summary>
     public IReadOnlyList<AudioCue> AudioCues { get; }
 
-    /// <summary>Sorted by time.</summary>
-    public IReadOnlyList<CompiledMarker> Markers { get; }
-
     /// <summary>In ticks.</summary>
     public long Length { get; }
 
     public bool Loop { get; }
 
     public IReadOnlyList<TimelineIssue> Issues { get; }
+
+    /// <summary>Priority, overriding and release (from the timeline).</summary>
+    public TimelinePlayback Playback { get; }
+
+    /// <summary>Every channel the timeline sets at some point, as (universe, address): what it can override.</summary>
+    public IReadOnlySet<(int Universe, int Address)> Channels { get; }
 
     public int LevelStepCount => _steps.Length;
 

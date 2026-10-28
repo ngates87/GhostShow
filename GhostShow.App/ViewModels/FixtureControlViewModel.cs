@@ -94,7 +94,8 @@ public sealed partial class FixtureControlViewModel : ObservableObject
         var selectedId = SelectedFixture?.Id;
         Fixtures.Clear();
         foreach (var fixture in _session.Engine.Fixtures) Fixtures.Add(fixture);
-        SelectedFixture = Fixtures.FirstOrDefault(f => f.Id == selectedId);
+        // Keep the same fixture; otherwise the first, so the screen opens on faders rather than "Pick a fixture".
+        SelectedFixture = Fixtures.FirstOrDefault(f => f.Id == selectedId) ?? Fixtures.FirstOrDefault();
         OnPropertyChanged(nameof(Heading));
     }
 }

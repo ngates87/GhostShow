@@ -27,7 +27,6 @@ public static class TimelineCompiler
         var issues = new List<TimelineIssue>();
         var steps = new List<(LevelStep Step, int Track, int Event, int Level, byte? From)>();
         var audio = new List<AudioCue>();
-        var markers = new List<CompiledMarker>();
         var universeSlots = new Dictionary<int, int>();
         long contentEnd = 0;
 
@@ -36,13 +35,23 @@ public static class TimelineCompiler
         {
             var track = timeline.Tracks[trackIndex];
             if (!track.Enabled) continue;
+            var channelLevels = TrackLevels.ResolveAll(track);
             for (int laneIndex = 0; laneIndex < track.Channels.Count; laneIndex++)
             {
                 var lane = track.Channels[laneIndex];
-                var laneSteps = CompileLane(lane, context, universeSlots, issues);
-                // Lanes sort after the track's events at equal times; within a lane, later points win.
+                bool hasPoints = lane.Points.Count > 0;
+                bool hasClips = laneIndex < channelLevels.Count && (channelLevels[laneIndex].Clips.Count > 0 || lane.Start == ChannelStart.Fixed);
+                if (!hasPoints && !hasClips) continue;
+                if (ResolveTarget(lane.Target, context, universeSlots, issues, lane.Id) is not { } channel) continue;
+                // A channel's steps sort after the track's events at equal times; within it, later steps win.
+                var laneSteps = new List<LevelStep>();
+                if (hasPoints)
+                {
+                    laneSteps.AddRange(LaneSteps(lane.Points, channel, TimeSpan.Zero, null, lane.Id, issues));
+                    contentEnd = Math.Max(contentEnd, lane.Points.Max(p => p.Time).Ticks);
+                }
+                if (hasClips) laneSteps.AddRange(ClipSteps(channelLevels[laneIndex], channel));
                 for (int i = 0; i < laneSteps.Count; i++) steps.Add((laneSteps[i], trackIndex, track.Events.Count + laneIndex, i, laneSteps[i].From));
-                if (laneSteps.Count > 0) contentEnd = Math.Max(contentEnd, lane.Points.Max(p => p.Time).Ticks);
             }
             for (int eventIndex = 0; eventIndex < track.Events.Count; eventIndex++)
             {
@@ -69,19 +78,8 @@ public static class TimelineCompiler
                         }
                         break;
                     case LightingClip clip:
-                        foreach (var lane in clip.Lanes)
-                        {
-                            // Only channels the track controls play (a channel removed from the track keeps nothing).
-                            var trackLane = track.Channels.FirstOrDefault(c => c.Target == lane.Target);
-                            if (trackLane is null) continue;
-                            var clipSteps = CompileLane(lane, context, universeSlots, issues, clip.Start, clip.Length, trackLane.Id);
-                            for (int i = 0; i < clipSteps.Count; i++) steps.Add((clipSteps[i], trackIndex, eventIndex, clip.Lanes.IndexOf(lane) * 100_000 + i, clipSteps[i].From));
-                        }
+                        // Played per channel, above (clips carry on from each other).
                         contentEnd = Math.Max(contentEnd, (clip.Start + clip.Length).Ticks);
-                        break;
-                    case MarkerEvent marker:
-                        markers.Add(new CompiledMarker(marker.Id, marker.Name ?? "Marker", marker.Start.Ticks));
-                        contentEnd = Math.Max(contentEnd, marker.Start.Ticks);
                         break;
                 }
             }
@@ -93,7 +91,7 @@ public static class TimelineCompiler
         long length = timeline.Length?.Ticks ?? contentEnd;
 
         return new CompiledTimeline(finalSteps, universes, audio.OrderBy(a => a.Start).ToArray(),
-                                    markers.OrderBy(m => m.Time).ToArray(), length, timeline.Loop, issues);
+                                    length, timeline.Loop, issues, timeline.Playback);
     }
 
     /// <summary>
@@ -160,20 +158,11 @@ public static class TimelineCompiler
         return result;
     }
 
-    /// <summary>
-    /// A lane's points as level steps, the same form lighting events compile to: the first point (and every step
-    /// point) is a jump at its time; every other point is a fade from the previous point's level over the gap.
-    /// </summary>
-    /// <param name="offset">Where the lane's time 0 is on the timeline (a block's start).</param>
-    /// <param name="end">Points after this (relative) time are left out (past a block's end).</param>
-    /// <param name="issueId">What a problem is reported against: the track's channel, so its row is marked.</param>
-    static List<LevelStep> CompileLane(ChannelLane lane, TimelineContext context, Dictionary<int, int> universeSlots, List<TimelineIssue> issues,
-                                       TimeSpan offset = default, TimeSpan? end = null, Guid? issueId = null)
+    /// <summary>Where a lighting channel is in DMX (universe slot, address), or null (reported) if it can't be played.</summary>
+    /// <param name="reportAs">What a problem is reported against: the track's channel, so its row is marked.</param>
+    static (int Slot, int Address)? ResolveTarget(LaneTarget target, TimelineContext context, Dictionary<int, int> universeSlots,
+                                                  List<TimelineIssue> issues, Guid reportAs)
     {
-        var result = new List<LevelStep>();
-        if (lane.Points.Count == 0) return result;
-        Guid reportAs = issueId ?? lane.Id;
-        var target = lane.Target;
         int universe = target.Universe, address;
         if (target.FixtureId is { } fixtureId)
         {
@@ -181,14 +170,14 @@ public static class TimelineCompiler
             {
                 string why = context.AllFixtureIds.Contains(fixtureId) ? "is disabled or has a patch error" : "isn't in the show (it may have been removed)";
                 issues.Add(new TimelineIssue(TimelineIssueSeverity.Error, reportAs, $"A lighting channel controls a fixture that {why}."));
-                return result;
+                return null;
             }
             universe = fixture.Universe;
             address = FixtureAddress(fixture, new Level(0, target.Channel, target.Control));
             if (!DmxUniverse.IsValidAddress(address))
             {
                 issues.Add(new TimelineIssue(TimelineIssueSeverity.Error, reportAs, $"A lighting channel on '{fixture.Name}': {DescribeLevel(new Level(0, target.Channel, target.Control), fixture)} doesn't map to a DMX channel."));
-                return result;
+                return null;
             }
         }
         else
@@ -197,31 +186,71 @@ public static class TimelineCompiler
             if (!context.Universes.Contains(universe) || !DmxUniverse.IsValidAddress(address))
             {
                 issues.Add(new TimelineIssue(TimelineIssueSeverity.Error, reportAs, $"Lighting channel {universe}/{address} isn't in a universe the show defines."));
-                return result;
+                return null;
             }
         }
         int slot = universeSlots.TryGetValue(universe, out var s) ? s : universeSlots[universe] = universeSlots.Count;
+        return (slot, address - 1);
+    }
 
-        var points = lane.Points.Where(p => end is null || p.Time <= end).OrderBy(p => p.Time)
-            .Select(p => new CurvePoint { Time = p.Time + offset, Value = p.Value, Step = p.Step }).ToList();   // stable: equal times keep list order
-        if (points.Count == 0) return result;
-        if (points[0].Time < TimeSpan.Zero)
+    /// <summary>
+    /// Points on a line as level steps, the same form lighting events compile to: the first point (and every step
+    /// point) is a jump at its time; a linear point is a fade from the previous point's level over the gap; a spline
+    /// point is a run of short fades along the curve.
+    /// </summary>
+    /// <param name="offset">Where the points' time 0 is on the timeline.</param>
+    /// <param name="end">Segments starting at or after this (relative) time are left out (where the next clip takes over).</param>
+    static IEnumerable<LevelStep> LaneSteps(IReadOnlyList<CurvePoint> unsorted, (int Slot, int Index) channel, TimeSpan offset, TimeSpan? end,
+                                            Guid reportAs, List<TimelineIssue>? issues)
+    {
+        var points = unsorted.OrderBy(p => p.Time).ToList();   // stable: equal times keep list order
+        if (points.Count == 0) yield break;
+        if (points[0].Time + offset < TimeSpan.Zero)
         {
-            issues.Add(new TimelineIssue(TimelineIssueSeverity.Error, reportAs, "A lighting channel has a point before 0."));
-            return result;
+            issues?.Add(new TimelineIssue(TimelineIssueSeverity.Error, reportAs, "A lighting channel has a point before 0."));
+            yield break;
         }
-        for (int i = 0; i < points.Count; i++)
+        LevelStep Jump(TimeSpan at, byte to) => new((at + offset).Ticks, 0, channel.Slot, channel.Index, to, to);
+        yield return Jump(points[0].Time, points[0].Value);
+        for (int i = 1; i < points.Count; i++)
         {
-            var point = points[i];
-            if (i == 0 || point.Step || point.Time == points[i - 1].Time)
-                result.Add(new LevelStep(point.Time.Ticks, 0, slot, address - 1, point.Value, point.Value));
+            var (a, b) = (points[i - 1], points[i]);
+            if (end is { } cut && a.Time >= cut) yield break;
+            if (b.Curve == CurveKind.Step || b.Time == a.Time)
+            {
+                if (end is { } stop && b.Time >= stop) yield break;
+                yield return Jump(b.Time, b.Value);
+            }
+            else if (b.Curve == CurveKind.Linear)
+                yield return new LevelStep((a.Time + offset).Ticks, (b.Time - a.Time).Ticks, channel.Slot, channel.Index, a.Value, b.Value);
             else
             {
-                var previous = points[i - 1];
-                result.Add(new LevelStep(previous.Time.Ticks, (point.Time - previous.Time).Ticks, slot, address - 1, previous.Value, point.Value));
+                var samples = Envelope.SampleSegment(points, i).ToList();
+                for (int k = 1; k < samples.Count; k++)
+                {
+                    var (from, to) = (samples[k - 1], samples[k]);
+                    if (end is { } stop && from.Time >= stop) yield break;
+                    yield return new LevelStep((from.Time + offset).Ticks, (to.Time - from.Time).Ticks, channel.Slot, channel.Index,
+                                               Envelope.Round(from.Value), Envelope.Round(to.Value));
+                }
             }
         }
-        return result;
+    }
+
+    /// <summary>
+    /// A track channel across its clips: held at its start level from 0 (if fixed), then each clip's envelope from its
+    /// start (a jump to its start level, which is where the channel already is, except for the first clip) until the
+    /// next clip takes over. After the last handle, the level holds.
+    /// </summary>
+    static IEnumerable<LevelStep> ClipSteps(TrackLevels levels, (int Slot, int Index) channel)
+    {
+        if (levels.Channel.Start == ChannelStart.Fixed)
+            yield return new LevelStep(0, 0, channel.Slot, channel.Index, levels.Channel.StartLevel, levels.Channel.StartLevel);
+        foreach (var clip in levels.Clips)
+        {
+            var end = clip.PlaysFor < clip.Clip.Length ? clip.PlaysFor : (TimeSpan?)null;
+            foreach (var step in LaneSteps(clip.Handles, channel, clip.Clip.Start, end, levels.Channel.Id, null)) yield return step;
+        }
     }
 
     static int RawAddress(Level level) => level.Channel ?? 0;

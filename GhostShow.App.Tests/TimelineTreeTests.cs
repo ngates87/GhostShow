@@ -202,19 +202,23 @@ public class TimelineTreeTests : IDisposable
     public void Duplicate_copies_with_new_ids_next_to_the_original_and_opens_it()
     {
         var main = Project.FindTimeline("Main")!;
-        var marker = _rig.AddMarker(1);
-        _rig.Editor.AddPoint(_rig.RedLane(), TimeSpan.FromSeconds(2), 9);
+        var sound = _rig.AddSound(1);
+        var red = _rig.RedLane();
+        _rig.Editor.SelectedTrack = _rig.Track(TrackKind.Lighting);
+        _rig.Editor.AddEventCommand.Execute(null);
+        _rig.Editor.AddHandle(main.Tracks[0].Events.OfType<LightingClip>().Single(), red.Target, TimeSpan.FromSeconds(2));
+        _rig.Editor.PointProperties!.Dmx = 9;
         Tree.SelectedNode = Node("Main");
 
         Tree.DuplicateCommand.Execute(null);
 
         var copy = Project.FindTimeline("Main copy")!;
         Assert.NotEqual(main.Id, copy.Id);
-        var copiedMarker = copy.Tracks.Single(t => t.Kind == TrackKind.Markers).Events.Single();
-        Assert.NotEqual(marker.Id, copiedMarker.Id);
-        Assert.Equal(marker.Start, copiedMarker.Start);
-        var copiedPoint = copy.Tracks[0].Events.OfType<LightingClip>().Single().Lanes.Single().Points.Single();
-        Assert.NotSame(main.Tracks[0].Events.OfType<LightingClip>().Single().Lanes.Single().Points.Single(), copiedPoint);   // editing the copy leaves the original alone
+        var copiedSound = copy.Tracks.Single(t => t.Kind == TrackKind.Audio).Events.Single();
+        Assert.NotEqual(sound.Id, copiedSound.Id);
+        Assert.Equal(sound.Start, copiedSound.Start);
+        var copiedPoint = copy.Tracks[0].Events.OfType<LightingClip>().Single().Lanes.Single().Points[0];
+        Assert.NotSame(main.Tracks[0].Events.OfType<LightingClip>().Single().Lanes.Single().Points[0], copiedPoint);   // editing the copy leaves the original alone
         Assert.Equal(9, copiedPoint.Value);
         Assert.Same(copy, _rig.Editor.SelectedTimeline);
     }
@@ -250,5 +254,49 @@ public class TimelineTreeTests : IDisposable
 
         Assert.True(Folder("Rooms").IsExpanded);
         Assert.Same(troll, ((TimelineNode)Tree.SelectedNode!).Timeline);
+    }
+}
+
+public class SetupGuideTests : IDisposable
+{
+    readonly TimelineRig _rig = new();
+
+    public void Dispose() => _rig.Dispose();
+
+    [Fact]
+    public void The_guide_shows_on_the_timeline_until_fixtures_are_patched_and_a_lighting_track_has_channels()
+    {
+        var settings = new Core.Storage.MachineSettings();
+        Core.Engine.ShowSession session = _rig.Session;
+        Page? went = null;
+        var guide = new SetupGuideViewModel(session, settings, page => went = page, () => { }) { OnTimeline = true };
+
+        guide.Refresh();
+        Assert.True(guide.IsVisible);
+        Assert.Equal([false, true, false], guide.Steps.Select(s => s.IsDone));   // fixtures are patched in the rig; no adapter, no channels
+
+        guide.Adapter.GoCommand.Execute(null);
+        Assert.Equal(Page.DmxSetup, went);
+
+        _rig.RedLane();   // the lighting track gets a channel
+        guide.Refresh();
+        Assert.False(guide.IsVisible);   // the adapter is optional
+
+        guide.OnTimeline = false;
+        guide.Refresh();
+        Assert.False(guide.IsVisible);
+    }
+
+    [Fact]
+    public void Dismissing_hides_the_guide_until_another_show_is_opened()
+    {
+        var guide = new SetupGuideViewModel(_rig.Session, new Core.Storage.MachineSettings(), _ => { }, () => { }) { OnTimeline = true };
+        guide.Refresh();
+
+        guide.DismissCommand.Execute(null);
+        Assert.False(guide.IsVisible);
+
+        guide.Reset();
+        Assert.True(guide.IsVisible);
     }
 }

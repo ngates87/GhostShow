@@ -126,6 +126,17 @@ public sealed class ShowEngine : IShowCommands
         }
     }
 
+    /// <summary>The manual levels of a universe (faders), without the timeline layer: what a released channel returns to.</summary>
+    public bool TryCopyManual(int universe, Span<byte> destination)
+    {
+        lock (_lock)
+        {
+            if (!_universes.TryGetValue(universe, out var dmx)) return false;
+            dmx.CopyTo(destination);
+            return true;
+        }
+    }
+
     /// <summary>
     /// Which channels of a universe the timeline controls (destination[i] is address i + 1), in one lock, so a screen
     /// of faders can mark them. False everywhere when nothing is playing.

@@ -93,9 +93,10 @@ public sealed partial class ChannelPickerViewModel : ObservableObject
     readonly Action<IReadOnlyList<LaneTarget>> _apply;
     readonly Action _cancel;
 
-    public ChannelPickerViewModel(TimelineTrack track, ShowSession session, TimelineEditorViewModel editor,
+    public ChannelPickerViewModel(TimelineTrack track, ShowSession session, TimelineEditorViewModel editor, Action? showFixtures,
                                   Action<IReadOnlyList<LaneTarget>> apply, Action cancel)
     {
+        _showFixtures = showFixtures;
         _track = track;
         _apply = apply;
         _cancel = cancel;
@@ -122,6 +123,15 @@ public sealed partial class ChannelPickerViewModel : ObservableObject
     }
 
     readonly IReadOnlyList<PatchedFixture> _patch;
+    readonly Action? _showFixtures;
+
+    /// <summary>"Patch fixtures first": closes the picker and goes to Lighting → Fixtures.</summary>
+    [RelayCommand]
+    void PatchFixtures()
+    {
+        _cancel();
+        _showFixtures?.Invoke();
+    }
     readonly List<Guid> _fixtureOrder;
 
     // ---- the map: where the picked channels are ----

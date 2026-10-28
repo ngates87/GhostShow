@@ -6,7 +6,7 @@ using Microsoft.Extensions.Logging;
 namespace GhostShow.Core.Playback;
 
 /// <summary>
-/// Runs <see cref="ShowPlayer.Tick"/> every 10 ms on a dedicated thread, independent of the UI.
+/// Runs <see cref="ShowPlayer.Tick"/> (or <see cref="PlaybackManager.Tick"/>) every 10 ms on a dedicated thread, independent of the UI.
 ///
 /// Why a dedicated thread: playback timing must not depend on UI rendering or thread-pool load, and one thread with
 /// a precise wait is simpler and steadier than timers. 100 Hz is well above DMX's ~40 frames/s, so a fade is
@@ -18,7 +18,7 @@ public sealed class PlaybackLoop
 {
     public static readonly TimeSpan Interval = TimeSpan.FromMilliseconds(10);
 
-    readonly ShowPlayer _player;
+    readonly Action _tick;
     readonly ILogger _logger;
     readonly ManualResetEventSlim _stop = new();
     readonly FrameTimingRecorder _timing = new();
@@ -27,9 +27,13 @@ public sealed class PlaybackLoop
     long _longestTick;   // Stopwatch ticks, since the last TakeLongestTick
     string? _lastError;
 
-    public PlaybackLoop(ShowPlayer player, ILogger logger)
+    public PlaybackLoop(ShowPlayer player, ILogger logger) : this(player.Tick, logger) { }
+
+    public PlaybackLoop(PlaybackManager manager, ILogger logger) : this(manager.Tick, logger) { }
+
+    PlaybackLoop(Action tick, ILogger logger)
     {
-        _player = player;
+        _tick = tick;
         _logger = logger;
     }
 
@@ -73,7 +77,7 @@ public sealed class PlaybackLoop
             long started = Stopwatch.GetTimestamp();
             try
             {
-                _player.Tick();
+                _tick();
                 _timing.RecordFrame();
             }
             catch (Exception ex)

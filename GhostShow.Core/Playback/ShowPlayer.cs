@@ -10,7 +10,7 @@ public readonly record struct PlaybackStatus(TransportState State, TimeSpan Posi
 
 /// <summary>
 /// Plays a <see cref="CompiledTimeline"/>: owns the transport and the show clock, and on every <see cref="Tick"/> sets
-/// the engine's timeline layer, reconciles audio and reports markers crossed.
+/// the engine's timeline layer and reconciles audio.
 ///
 /// Clock: position is derived from a monotonic clock (position = anchor + (now - anchorTime)), never accumulated
 /// from tick intervals, so late or missed ticks cause no drift; they just mean one update covers a longer interval.
@@ -23,12 +23,12 @@ public readonly record struct PlaybackStatus(TransportState State, TimeSpan Posi
 /// - Stop: releases the timeline layer (channels go back to their manual levels), stops all audio, returns to 0.
 /// - Pause: holds the current levels and pauses audio. Play resumes from the same position.
 /// - Seek: moves the position (anywhere from 0, including past the end); levels are evaluated at the new position (mid-fade gives the mid-fade value) and audio
-///   restarts at the matching file offset. Markers jumped over are not reported.
+///   restarts at the matching file offset.
 /// - End: a looping timeline wraps to 0; otherwise it pauses at the end holding the final look (Play starts over).
 /// </summary>
 public sealed class ShowPlayer
 {
-    readonly ShowEngine _engine;
+    readonly ShowEngine? _engine;   // null when a PlaybackManager merges this player's levels with others' (see Frame)
     readonly IAudioOutput _audio;
     readonly IPlaybackClock _clock;
     readonly Lock _lock = new();
@@ -38,16 +38,16 @@ public sealed class ShowPlayer
     TransportState _state;
     long _anchorPosition;     // the position at _anchorTime (or the position, when not playing)
     long _anchorTime;
-    int _jumps;               // bumped by seek, stop, restart: audio resyncs, markers jumped over aren't reported
-    int _edits;               // bumped by Load (a recompiled timeline): only changed sounds move, markers still reported
-    int _loops;               // bumped when a looping timeline wraps: audio restarts, markers still reported across the wrap
+    int _jumps;               // bumped by seek, stop, restart: audio resyncs
+    int _edits;               // bumped by Load (a recompiled timeline): only changed sounds move
+    int _loops;               // bumped when a looping timeline wraps: audio restarts
     bool _atEnd;
+    long _startedAt;          // when it last started playing from stopped: on equal priority, the later started wins
 
     // Playback-thread state: only touched by Tick.
     LevelsFrame? _frame;
     CompiledTimeline? _frameTimeline;
     TransportState _lastState;
-    long _lastPosition;
     int _seenJumps = -1, _seenEdits, _seenLoops, _seenAudioGeneration;
     readonly Dictionary<Guid, AudioCue> _activeAudio = new();
     readonly HashSet<Guid> _pausedAudio = new();
@@ -55,15 +55,26 @@ public sealed class ShowPlayer
     readonly HashSet<Guid> _dueAudio = new();
     readonly List<Guid> _scratch = new();
 
-    public ShowPlayer(ShowEngine engine, IAudioOutput audio, IPlaybackClock clock)
+    /// <param name="engine">Where the levels go. Null when a <see cref="PlaybackManager"/> merges several players'
+    /// levels: it reads <see cref="Frame"/> after each tick instead.</param>
+    public ShowPlayer(ShowEngine? engine, IAudioOutput audio, IPlaybackClock clock)
     {
         _engine = engine;
         _audio = audio;
         _clock = clock;
     }
 
-    /// <summary>Raised on the playback thread when playback crosses a marker. Handlers must be quick.</summary>
-    public event Action<CompiledMarker>? MarkerReached;
+    /// <summary>The levels from the last tick; null while stopped (the timeline controls nothing then).</summary>
+    public LevelsFrame? Frame { get; private set; }
+
+    /// <summary>Scales every sound's volume, e.g. while a higher-priority timeline ducks this one. Set by the playback thread.</summary>
+    public double VolumeScale { get; set; } = 1;
+
+    /// <summary>Clock time it last started playing from stopped (see <see cref="IPlaybackClock"/>).</summary>
+    public long StartedAt
+    {
+        get { lock (_lock) return _startedAt; }
+    }
 
     public PlaybackStatus Status
     {
@@ -99,6 +110,7 @@ public sealed class ShowPlayer
         lock (_lock)
         {
             if (_state == TransportState.Playing) return;
+            if (_state == TransportState.Stopped) _startedAt = _clock.Now;
             long position = _atEnd ? 0 : _anchorPosition;   // at the end, Play starts the show again
             _atEnd = false;
             if (position != _anchorPosition) _jumps++;
@@ -134,6 +146,7 @@ public sealed class ShowPlayer
     {
         lock (_lock)
         {
+            _startedAt = _clock.Now;
             _state = TransportState.Playing;
             _atEnd = false;
             Anchor(0);
@@ -155,36 +168,30 @@ public sealed class ShowPlayer
         }
     }
 
-    /// <summary>One playback update: levels, audio and markers for the current position. Called by one thread only.</summary>
+    /// <summary>One playback update: levels and audio for the current position. Called by one thread only.</summary>
     public void Tick()
     {
-        var (state, position, timeline, jumps, edits, loops, reachedEnd) = AdvanceTransport();
+        var (state, position, timeline, jumps, edits, loops) = AdvanceTransport();
         bool jumped = jumps != _seenJumps;
         bool wrapped = loops != _seenLoops;
 
         UpdateLevels(state, position, timeline);
         ReconcileAudio(state, position, timeline, resync: jumped || wrapped, edited: edits != _seenEdits);
-        // Markers crossed while playing, including on the update that reaches the end. An edit isn't a jump in time,
-        // so markers are still reported on the update that swaps in an edited timeline.
-        if ((state == TransportState.Playing || reachedEnd) && _lastState == TransportState.Playing && !jumped)
-            ReportMarkers(timeline, _lastPosition, position, wrapped);
 
         _lastState = state;
-        _lastPosition = position;
         _seenJumps = jumps;
         _seenEdits = edits;
         _seenLoops = loops;
     }
 
     /// <summary>Takes the transport snapshot for this tick, handling the end of the timeline (loop or hold).</summary>
-    (TransportState, long, CompiledTimeline, int Jumps, int Edits, int Loops, bool ReachedEnd) AdvanceTransport()
+    (TransportState, long, CompiledTimeline, int Jumps, int Edits, int Loops) AdvanceTransport()
     {
         lock (_lock)
         {
             long now = _clock.Now;
             long position = PositionAt(now);
             long length = _timeline.Length;
-            bool reachedEnd = false;
             if (_state == TransportState.Playing && position >= length)
             {
                 if (_timeline.Loop && length > 0)
@@ -194,16 +201,24 @@ public sealed class ShowPlayer
                     _anchorTime = now;
                     _loops++;
                 }
+                else if (_timeline.Playback.ReleaseAtEnd)
+                {
+                    // Let go of its channels (and sounds) instead of holding the final look: from this update it's
+                    // stopped at 0.
+                    position = length;
+                    _state = TransportState.Stopped;
+                    _anchorPosition = 0;
+                    _anchorTime = now;
+                }
                 else
                 {
                     position = length;
                     _state = TransportState.Paused;
                     _atEnd = true;
                     _anchorPosition = position;
-                    reachedEnd = true;
                 }
             }
-            return (_state, position, _timeline, _jumps, _edits, _loops, reachedEnd);
+            return (_state, position, _timeline, _jumps, _edits, _loops);
         }
     }
 
@@ -211,7 +226,8 @@ public sealed class ShowPlayer
     {
         if (state == TransportState.Stopped)
         {
-            if (_lastState != TransportState.Stopped) _engine.ReleaseTimeline();
+            if (_lastState != TransportState.Stopped) _engine?.ReleaseTimeline();
+            Frame = null;
             return;
         }
         if (_frameTimeline != timeline)
@@ -220,7 +236,8 @@ public sealed class ShowPlayer
             _frameTimeline = timeline;
         }
         timeline.EvaluateLevels(position, _frame!);
-        _engine.SetTimelineLevels(_frame!);
+        _engine?.SetTimelineLevels(_frame!);
+        Frame = _frame;
     }
 
     /// <summary>
@@ -257,7 +274,7 @@ public sealed class ShowPlayer
         foreach (var cue in timeline.AudioCues)
         {
             if (!_dueAudio.Contains(cue.EventId) || _failedAudio.Contains(cue.EventId)) continue;
-            double volume = cue.VolumeAt(position);
+            double volume = cue.VolumeAt(position) * VolumeScale;
             long? fileLength = _audio.GetLength(cue.Path)?.Ticks;
             var offset = TimeSpan.FromTicks(cue.FileOffsetAt(position, fileLength));
 
@@ -300,22 +317,6 @@ public sealed class ShowPlayer
         _audio.Stop(id);
         _activeAudio.Remove(id);
         _pausedAudio.Remove(id);
-    }
-
-    /// <summary>
-    /// Markers in (from, to], in the order playback crossed them: across a loop wrap, (from, end] then [0, to].
-    /// A marker exactly where playback starts isn't reported (it wasn't crossed).
-    /// </summary>
-    void ReportMarkers(CompiledTimeline timeline, long from, long to, bool wrapped)
-    {
-        if (!wrapped)
-        {
-            foreach (var marker in timeline.Markers)
-                if (marker.Time > from && marker.Time <= to) MarkerReached?.Invoke(marker);
-            return;
-        }
-        foreach (var marker in timeline.Markers) if (marker.Time > from) MarkerReached?.Invoke(marker);
-        foreach (var marker in timeline.Markers) if (marker.Time <= to) MarkerReached?.Invoke(marker);
     }
 
     long PositionAt(long now) => _state == TransportState.Playing ? _anchorPosition + (now - _anchorTime) : _anchorPosition;

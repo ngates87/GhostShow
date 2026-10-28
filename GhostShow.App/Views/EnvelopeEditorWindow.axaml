@@ -1,0 +1,128 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:GhostShow.App.ViewModels"
+        xmlns:controls="using:GhostShow.App.Controls"
+        xmlns:tl="using:GhostShow.Core.Timeline"
+        x:Class="GhostShow.App.Views.EnvelopeEditorWindow"
+        x:DataType="vm:EnvelopeEditorViewModel"
+        Title="{Binding Title}" Icon="avares://ghostshow-app/Assets/ghostshow.ico" Width="1100" Height="600" MinWidth="640" MinHeight="380"
+        Background="#141414" WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
+  <Window.Styles>
+    <Style Selector="StackPanel.toolbar > Button">
+      <Setter Property="Padding" Value="8,4" />
+    </Style>
+    <Style Selector="Border.separator">
+      <Setter Property="Width" Value="1" />
+      <Setter Property="Margin" Value="6,2" />
+      <Setter Property="Background" Value="{DynamicResource SystemControlForegroundBaseLowBrush}" />
+    </Style>
+    <Style Selector="Border.channel.active">
+      <Setter Property="Background" Value="#2D4A66" />
+    </Style>
+    <Style Selector="TextBlock.label">
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="Opacity" Value="0.75" />
+    </Style>
+  </Window.Styles>
+
+  <DockPanel Margin="8">
+    <!-- Tools -->
+    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="6" Margin="0,0,0,8" Classes="toolbar">
+      <Button Classes="icon" Command="{Binding PreviousClipCommand}" ToolTip.Tip="The previous clip on the track"><PathIcon Data="{StaticResource Icon.Previous}" /></Button>
+      <Button Classes="icon" Command="{Binding NextClipCommand}" ToolTip.Tip="The next clip on the track"><PathIcon Data="{StaticResource Icon.Next}" /></Button>
+      <Border Classes="separator" />
+      <Button Classes="icon" Command="{Binding ZoomOutCommand}" ToolTip.Tip="Zoom out (Ctrl+wheel)"><PathIcon Data="{StaticResource Icon.ZoomOut}" /></Button>
+      <Button Classes="icon" Command="{Binding ZoomInCommand}" ToolTip.Tip="Zoom in (Ctrl+wheel)"><PathIcon Data="{StaticResource Icon.ZoomIn}" /></Button>
+      <Button Classes="icon" Command="{Binding FitCommand}" ToolTip.Tip="Show the whole clip"><PathIcon Data="{StaticResource Icon.Fit}" /></Button>
+      <Border Classes="separator" />
+      <ToggleButton Content="Lock time" IsChecked="{Binding LockTime}" ToolTip.Tip="Dragging changes only levels" />
+      <ToggleButton Content="Lock level" IsChecked="{Binding LockLevel}" ToolTip.Tip="Dragging changes only times" />
+      <Border Classes="separator" />
+      <CheckBox Content="Update lamps while editing" IsChecked="{Binding UpdateLamps}"
+                ToolTip.Tip="While stopped or paused, selecting or moving a handle puts the playhead there, so the lights show the level" />
+      <Border Classes="separator" />
+      <Button Classes="icon" Command="{Binding Editor.UndoCommand}" ToolTip.Tip="{Binding Editor.UndoLabel}"><PathIcon Data="{StaticResource Icon.Undo}" /></Button>
+      <Button Classes="icon" Command="{Binding Editor.RedoCommand}" ToolTip.Tip="{Binding Editor.RedoLabel}"><PathIcon Data="{StaticResource Icon.Redo}" /></Button>
+    </StackPanel>
+
+    <!-- The selected handle(s) -->
+    <Border DockPanel.Dock="Bottom" Classes="card" Margin="0,8,0,0" Padding="10,6" MinHeight="46">
+      <Panel>
+        <TextBlock Opacity="0.6" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                   IsVisible="{Binding !Editor.SelectedPoints.Count}"
+                   Text="Click a channel on the left to make it active · double-click to add a handle (on a curve, or anywhere for the active channel) · drag handles (Shift: one direction) · right-click a handle for its curve" />
+        <ContentControl Content="{Binding Editor.PointProperties}">
+          <ContentControl.ContentTemplate>
+            <DataTemplate x:DataType="vm:PointPropertiesViewModel">
+              <StackPanel Orientation="Horizontal" Spacing="10" IsEnabled="{Binding CanEdit}">
+                <TextBlock Text="{Binding Heading}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                <TextBlock Text="{Binding Channel}" Opacity="0.75" VerticalAlignment="Center" />
+                <TextBlock Text="Time (s)" Classes="label" Margin="8,0,0,0" />
+                <NumericUpDown Value="{Binding TimeSeconds}" Minimum="0" Increment="0.1" FormatString="0.00#" Width="130" IsEnabled="{Binding CanEditTime}" />
+                <TextBlock Text="Level (%)" Classes="label" />
+                <NumericUpDown Value="{Binding Percent}" Minimum="0" Maximum="100" Increment="5" FormatString="0.#" Width="120" />
+                <TextBlock Text="DMX" Classes="label" />
+                <NumericUpDown Value="{Binding Dmx}" Minimum="0" Maximum="255" Increment="5" FormatString="0" Width="110" />
+                <TextBlock Text="Curve" Classes="label" />
+                <ComboBox ItemsSource="{x:Static vm:PointPropertiesViewModel.Curves}" SelectedItem="{Binding Curve}" Width="110" />
+                <Button Content="Delete" Command="{Binding DeleteCommand}" IsEnabled="{Binding CanDelete}" />
+              </StackPanel>
+            </DataTemplate>
+          </ContentControl.ContentTemplate>
+        </ContentControl>
+        <StackPanel Orientation="Horizontal" Spacing="10" IsVisible="{Binding HasSeveralSelected}">
+          <TextBlock Text="{Binding Editor.SelectionLabel}" FontWeight="SemiBold" VerticalAlignment="Center" />
+          <TextBlock Text="Curve for all" Classes="label" Margin="8,0,0,0" />
+          <Button Content="Step" Command="{Binding SetCurveCommand}" CommandParameter="{x:Static tl:CurveKind.Step}" />
+          <Button Content="Linear" Command="{Binding SetCurveCommand}" CommandParameter="{x:Static tl:CurveKind.Linear}" />
+          <Button Content="Spline" Command="{Binding SetCurveCommand}" CommandParameter="{x:Static tl:CurveKind.Spline}" />
+          <Button Content="Delete" Command="{Binding DeleteHandlesCommand}" />
+        </StackPanel>
+      </Panel>
+    </Border>
+
+    <!-- The channels: tick to show -->
+    <Border DockPanel.Dock="Left" Classes="card" Width="230" Margin="0,0,8,0" Padding="8">
+      <DockPanel>
+        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,6">
+          <Button DockPanel.Dock="Right" Content="Show all" Command="{Binding ShowAllCommand}" Padding="6,1" MinHeight="0" />
+          <TextBlock Text="Envelopes" FontWeight="SemiBold" VerticalAlignment="Center" />
+        </DockPanel>
+        <ScrollViewer>
+          <ItemsControl ItemsSource="{Binding Fixtures}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:EnvelopeFixtureViewModel">
+                <StackPanel Margin="0,0,0,6">
+                  <CheckBox Content="{Binding Name}" IsChecked="{Binding IsChecked}" IsThreeState="False" FontWeight="SemiBold" />
+                  <ItemsControl ItemsSource="{Binding Channels}" Margin="22,0,0,0">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="vm:EnvelopeChannelViewModel">
+                        <!-- The tick shows or hides it; a click on the name makes it the active channel (new handles go to it). -->
+                        <Border Classes.active="{Binding IsActive}" Classes="channel" CornerRadius="4" Margin="0,1">
+                          <DockPanel>
+                            <CheckBox DockPanel.Dock="Left" IsChecked="{Binding IsChecked}" MinWidth="0" Margin="4,0,0,0" ToolTip.Tip="Show or hide its envelope" />
+                            <Button Command="{Binding MakeActiveCommand}" Background="Transparent" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                    Padding="4,3" ToolTip.Tip="Make this the active channel: new handles go to it">
+                              <StackPanel Orientation="Horizontal" Spacing="6">
+                                <Border Width="10" Height="10" CornerRadius="5" Background="{Binding Color}" VerticalAlignment="Center" />
+                                <TextBlock Text="{Binding Label}" />
+                              </StackPanel>
+                            </Button>
+                          </DockPanel>
+                        </Border>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </StackPanel>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ScrollViewer>
+      </DockPanel>
+    </Border>
+
+    <Border Classes="card" Padding="0" ClipToBounds="True">
+      <controls:EnvelopePlot x:Name="Plot" Envelopes="{Binding}" />
+    </Border>
+  </DockPanel>
+</Window>

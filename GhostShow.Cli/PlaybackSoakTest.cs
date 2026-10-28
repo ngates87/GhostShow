@@ -15,22 +15,21 @@ using Microsoft.Extensions.Logging;
 /// Sustained playback test: plays a busy looping timeline for a set time, editing it while it plays, and writes a
 /// Markdown report.
 ///
-/// Show: 20 RGBW fixtures, a 60 s looping timeline with 2,000 lighting events (fades of 0-5 s), a marker every 5 s,
+/// Show: 20 RGBW fixtures, a 60 s looping timeline with 2,000 lighting events (fades of 0-5 s)
 /// and 4 sounds per loop (generated WAVs at 44.1 kHz mono and 48 kHz stereo, played on the audio null device, so
 /// decoding and mixing run for real but nothing is heard). Every 2 s one lighting point is moved in time and level, then the
 /// timeline is recompiled and swapped in, as editing during playback does.
 ///
 /// Measured over the whole run: playback update intervals (the recorder's 2.5 s window, read every second, so every
-/// interval is seen), the longest single update, show-clock drift against wall time, markers and audio starts
+/// interval is seen), the longest single update, show-clock drift against wall time, audio starts
 /// against the number expected, DMX frame timing, errors, and memory.
 /// </summary>
 sealed class PlaybackSoakTest(TimeSpan duration, ILoggerFactory loggerFactory)
 {
     const int FixtureCount = 20, EventCount = 2000, Universe = GhostShow.Core.Model.Project.FirstUniverse;
-    static readonly TimeSpan Length = TimeSpan.FromSeconds(60), MarkerSpacing = TimeSpan.FromSeconds(5);
+    static readonly TimeSpan Length = TimeSpan.FromSeconds(60);
     static readonly double[] SoundStarts = [3, 18.5, 31, 47];
 
-    long _markers;
     int _edits;
     double _worstIntervalMs, _worstP95Ms, _longestTickMs, _worstDriftMs;
     readonly List<string> _minutes = [];
@@ -67,7 +66,6 @@ sealed class PlaybackSoakTest(TimeSpan duration, ILoggerFactory loggerFactory)
         output.Start();
 
         var player = new ShowPlayer(engine, audio, new StopwatchClock());
-        player.MarkerReached += _ => Interlocked.Increment(ref _markers);
         var loop = new PlaybackLoop(player, loggerFactory.CreateLogger<PlaybackLoop>());
         var compiled = session.CompileTimeline(timeline, audioService.GetLength);
         if (compiled.Issues.Count > 0) throw new InvalidOperationException($"Soak timeline is invalid: {compiled.Issues[0]}");
@@ -128,22 +126,13 @@ sealed class PlaybackSoakTest(TimeSpan duration, ILoggerFactory loggerFactory)
     {
         var d = device.Snapshot();
         var memory = Memory.Measure(forceCollection: false);
-        string row = $"| {minute} | {Interlocked.Read(ref _markers)} / {ExpectedMarkers(playing.Elapsed)} | {audio.Starts} / {ExpectedSoundStarts(playing.Elapsed)} | " +
+        string row = $"| {minute} | {audio.Starts} / {ExpectedSoundStarts(playing.Elapsed)} | " +
                      $"{_worstP95Ms:0.0} / {_worstIntervalMs:0.0} ms | {_longestTickMs:0.00} ms | {_worstDriftMs:0.00} ms | " +
                      $"{d.Frames / playing.Elapsed.TotalSeconds:0.0} | {memory.ManagedMb:0.0} MB | {memory.WorkingSetMb:0} MB |";
         _minutes.Add(row);
-        Console.WriteLine($"{minute,4} min  markers {Interlocked.Read(ref _markers)}/{ExpectedMarkers(playing.Elapsed)}  sounds {audio.Starts}/{ExpectedSoundStarts(playing.Elapsed)}  " +
+        Console.WriteLine($"{minute,4} min  sounds {audio.Starts}/{ExpectedSoundStarts(playing.Elapsed)}  " +
                           $"update p95 {_worstP95Ms:0.0} max {_worstIntervalMs:0.0} ms  longest {_longestTickMs:0.00} ms  drift {_worstDriftMs:0.00} ms  " +
                           $"heap {memory.ManagedMb:0.0} MB  ws {memory.WorkingSetMb:0} MB");
-    }
-
-    /// <summary>Markers at 5, 10, ... 55 s and at 0 s, which is crossed when the loop wraps (not at the very start).</summary>
-    static long ExpectedMarkers(TimeSpan elapsed)
-    {
-        long perLoop = (long)(Length / MarkerSpacing);
-        long loops = elapsed.Ticks / Length.Ticks;
-        var into = TimeSpan.FromTicks(elapsed.Ticks % Length.Ticks);
-        return loops * perLoop + (long)(into / MarkerSpacing);
     }
 
     static long ExpectedSoundStarts(TimeSpan elapsed)
@@ -178,10 +167,8 @@ sealed class PlaybackSoakTest(TimeSpan duration, ILoggerFactory loggerFactory)
                 File = Path.Combine(folder, i % 2 == 0 ? "mono-44k.wav" : "stereo-48k.wav"),
                 Start = TimeSpan.FromSeconds(SoundStarts[i]), FadeIn = TimeSpan.FromSeconds(0.5), FadeOut = TimeSpan.FromSeconds(1),
             });
-        var markers = new TimelineTrack { Name = "Cues", Kind = TrackKind.Markers };
-        for (var t = TimeSpan.Zero; t < Length; t += MarkerSpacing) markers.Events.Add(new MarkerEvent { Name = $"M{t.TotalSeconds:0}", Start = t });
 
-        var timeline = new ShowTimeline { Name = "Soak", Length = Length, Loop = true, Tracks = [.. tracks, sounds, markers] };
+        var timeline = new ShowTimeline { Name = "Soak", Length = Length, Loop = true, Tracks = [.. tracks, sounds] };
         LevelEventConversion.Upgrade(timeline);   // as the editor stores lighting: blocks holding each channel's points
         session.Project.Timelines = [timeline];
         return timeline;
@@ -213,15 +200,14 @@ sealed class PlaybackSoakTest(TimeSpan duration, ILoggerFactory loggerFactory)
         report.AppendLine($"- Machine: {Environment.MachineName}, {RuntimeInformation.OSDescription}, {RuntimeInformation.OSArchitecture}, {Environment.ProcessorCount} logical CPUs");
         report.AppendLine($"- Runtime: {RuntimeInformation.FrameworkDescription}");
         report.AppendLine($"- Show: {FixtureCount} RGBW fixtures; {Length.TotalSeconds:0} s looping timeline with {EventCount:N0} lighting events, " +
-                          $"{SoundStarts.Length} sounds and {Length / MarkerSpacing:0} markers per loop; audio on the null device; DMX to the simulator");
+                          $"{SoundStarts.Length} sounds per loop; audio on the null device; DMX to the simulator");
         report.AppendLine($"- Live edits: {_edits} (one lighting point moved + recompile + swap every 2 s)");
         report.AppendLine();
         report.AppendLine("| Measure | Result |");
         report.AppendLine("|---|---|");
         report.AppendLine($"| Playback update interval, worst window p95 / max | {_worstP95Ms:0.0} / {_worstIntervalMs:0.0} ms (target 10 ms) |");
-        report.AppendLine($"| Longest single update (evaluate + audio + markers) | {_longestTickMs:0.00} ms |");
+        report.AppendLine($"| Longest single update (evaluate + audio) | {_longestTickMs:0.00} ms |");
         report.AppendLine($"| Show clock vs wall time, worst difference | {_worstDriftMs:0.00} ms |");
-        report.AppendLine($"| Markers reported / expected | {Interlocked.Read(ref _markers):N0} / {ExpectedMarkers(elapsed):N0} |");
         report.AppendLine($"| Sounds started / expected | {audio.Starts:N0} / {ExpectedSoundStarts(elapsed):N0} (failed: {audio.Failures}) |");
         report.AppendLine($"| Playback update errors | {loop.ErrorCount}{(loop.LastError is { } e ? $" (last: {e})" : "")} |");
         report.AppendLine($"| DMX frames | {d.Frames:N0} ({d.Frames / elapsed.TotalSeconds:0.0}/s), interval p95 {d.IntervalP95Ms:0.0} / max {d.IntervalMaxMs:0.0} ms, errors {d.Errors} |");
@@ -232,8 +218,8 @@ sealed class PlaybackSoakTest(TimeSpan duration, ILoggerFactory loggerFactory)
         report.AppendLine();
         report.AppendLine("Per minute (cumulative):");
         report.AppendLine();
-        report.AppendLine("| Minute | Markers / expected | Sounds / expected | Update p95 / max | Longest update | Clock drift | DMX frames/s | Heap | Working set |");
-        report.AppendLine("|---|---|---|---|---|---|---|---|---|");
+        report.AppendLine("| Minute | Sounds / expected | Update p95 / max | Longest update | Clock drift | DMX frames/s | Heap | Working set |");
+        report.AppendLine("|---|---|---|---|---|---|---|---|");
         foreach (var row in _minutes) report.AppendLine(row);
         return report.ToString();
     }

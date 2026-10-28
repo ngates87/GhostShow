@@ -14,18 +14,45 @@ namespace GhostShow.Core.Timeline;
 public static class LevelEventConversion
 {
     /// <summary>
-    /// Brings an older timeline's lighting up to date: lighting events become points (<see cref="Convert"/>), and points
-    /// on a track's channels become one block holding them (<see cref="ToClips"/>). Returns whether anything changed.
+    /// Brings an older timeline's lighting up to date: lighting events become points (<see cref="Convert"/>), points
+    /// on a track's channels become one clip holding them (<see cref="ToClips"/>), and clips from before envelope
+    /// rules get them (<see cref="ToEnvelopes"/>). Returns whether anything changed.
     /// </summary>
-    public static bool Upgrade(ShowTimeline timeline)
+    /// <param name="fromVersion">The timeline file version it was read from (0: older than timeline files).</param>
+    public static bool Upgrade(ShowTimeline timeline, int fromVersion = 0)
     {
         bool lanes = Convert(timeline);
         bool clips = ToClips(timeline);
-        return lanes || clips;
+        bool envelopes = fromVersion < 4 && ToEnvelopes(timeline);
+        return lanes || clips || envelopes;
     }
 
     /// <summary>
-    /// Moves points that sit directly on a track's channels (lighting before blocks) into one block per track,
+    /// Clips from before timeline version 4 had no start or end handles: a clip's first point was a jump at its time
+    /// (the channel held where it was until then), and after its last point the level held. Here the first point
+    /// becomes a step and each envelope gets its end handle, so the clip plays as before; points past the end, which
+    /// never played, go.
+    /// </summary>
+    public static bool ToEnvelopes(ShowTimeline timeline)
+    {
+        bool changed = false;
+        foreach (var clip in timeline.Tracks.SelectMany(t => t.Events).OfType<LightingClip>())
+        {
+            changed = true;
+            foreach (var lane in clip.Lanes)
+            {
+                lane.Sort();
+                lane.Points.RemoveAll(p => p.Time > clip.Length);
+                if (lane.Points.Count > 0) lane.Points[0].Curve = CurveKind.Step;
+            }
+            clip.Lanes.RemoveAll(l => l.Points.Count == 0);
+            clip.EnsureEndHandles();
+        }
+        return changed;
+    }
+
+    /// <summary>
+    /// Moves points that sit directly on a track's channels (lighting before clips) into one clip per track,
     /// spanning the first to the last point (at least 1 s), so the track plays exactly as before.
     /// </summary>
     public static bool ToClips(ShowTimeline timeline)
@@ -38,10 +65,10 @@ public static class LevelEventConversion
             changed = true;
             var start = lanes.Min(l => l.Points.Min(p => p.Time));
             var end = lanes.Max(l => l.Points.Max(p => p.Time));
-            var clip = new LightingClip { Name = "Lighting", Start = start, Length = end - start > TimeSpan.FromSeconds(1) ? end - start : TimeSpan.FromSeconds(1) };
+            var clip = new LightingClip { Start = start, Length = end - start > TimeSpan.FromSeconds(1) ? end - start : TimeSpan.FromSeconds(1) };
             foreach (var lane in lanes)
             {
-                clip.Lanes.Add(new ChannelLane { Target = lane.Target, Points = lane.Points.Select(p => new CurvePoint { Time = p.Time - start, Value = p.Value, Step = p.Step }).ToList() });
+                clip.Lanes.Add(new ChannelLane { Target = lane.Target, Points = lane.Points.Select(p => new CurvePoint { Time = p.Time - start, Value = p.Value, Curve = p.Curve }).ToList() });
                 lane.Points.Clear();
             }
             track.Events.Add(clip);
@@ -87,12 +114,12 @@ public static class LevelEventConversion
         {
             // Jump to where the fade starts, unless the line is already there at that moment.
             if (lane.Points.Count == 0 || lane.Points[^1].Time != start || lane.Points[^1].Value != from)
-                lane.Points.Add(new CurvePoint { Time = start, Value = from, Step = true });
+                lane.Points.Add(new CurvePoint { Time = start, Value = from, Curve = CurveKind.Step });
             lane.Points.Add(new CurvePoint { Time = start + fade, Value = level.To });
         }
         else
         {
-            lane.Points.Add(new CurvePoint { Time = start, Value = level.To, Step = true });
+            lane.Points.Add(new CurvePoint { Time = start, Value = level.To, Curve = CurveKind.Step });
         }
     }
 }

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using GhostShow.Core.Model;
 using GhostShow.Core.Timeline;
 
@@ -27,11 +28,12 @@ public static class ShowFolderStore
     public const string TimelineExtension = ".timeline.json";
 
     /// <summary>
-    /// Version of a timeline file's own format. 3: lighting is in blocks (<see cref="LightingClip"/>). 2: lighting
-    /// tracks had channels with points. 1: lighting events. Older forms are converted when read
-    /// (<see cref="LevelEventConversion.Upgrade"/>).
+    /// Version of a timeline file's own format. 5: no marker tracks (older files' are dropped, see
+    /// <see cref="LegacyMarkers"/>). 4: clips' envelopes have end handles and curve types, and carry on
+    /// from the previous clip. 3: lighting is in clips (<see cref="LightingClip"/>). 2: lighting tracks had channels
+    /// with points. 1: lighting events. Older forms are converted when read (<see cref="LevelEventConversion.Upgrade"/>).
     /// </summary>
-    public const int TimelineFileVersion = 3;
+    public const int TimelineFileVersion = 5;
 
     /// <summary>What a timeline file holds. Its name and folder come from where the file is.</summary>
     sealed class TimelineFile
@@ -40,6 +42,7 @@ public static class ShowFolderStore
         public Guid Id { get; set; }
         public TimeSpan? Length { get; set; }
         public bool Loop { get; set; }
+        public TimelinePlayback? Playback { get; set; }
         public List<TimelineTrack> Tracks { get; set; } = [];
     }
 
@@ -99,9 +102,15 @@ public static class ShowFolderStore
             string name = TimelineNames.LeafOf(relative)[..^TimelineExtension.Length];
 
             TimelineFile? content;
+            bool droppedMarkers;
             try
             {
-                content = JsonSerializer.Deserialize<TimelineFile>(await File.ReadAllTextAsync(file, cancellationToken), Json.Options);
+                var json = JsonNode.Parse(await File.ReadAllTextAsync(file, cancellationToken), documentOptions: new JsonDocumentOptions
+                {
+                    CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true,
+                });
+                droppedMarkers = LegacyMarkers.Drop(json);
+                content = json.Deserialize<TimelineFile>(Json.Options);
             }
             catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
             {
@@ -118,10 +127,11 @@ public static class ShowFolderStore
             var timeline = new ShowTimeline
             {
                 Id = content.Id, Name = name, Folder = folder, Length = content.Length, Loop = content.Loop, Tracks = content.Tracks,
+                Playback = content.Playback ?? new TimelinePlayback(),
                 SavedPath = relative, HasUnsavedChanges = false,
             };
-            // Older lighting events become points; the file is rewritten in the new form on the next save.
-            if (LevelEventConversion.Upgrade(timeline)) timeline.HasUnsavedChanges = true;
+            // Older lighting becomes clips with envelopes; the file is rewritten in the new form on the next save.
+            if (LevelEventConversion.Upgrade(timeline, content.Version) || droppedMarkers) timeline.HasUnsavedChanges = true;
             if (timeline.Id == Guid.Empty || !ids.Add(timeline.Id))
             {
                 // Typically a timeline file copied by hand: both copies had the same ID. The copy gets its own.
@@ -164,7 +174,7 @@ public static class ShowFolderStore
         var writes = project.Timelines
             .Where(t => t.HasUnsavedChanges || t.SavedPath is null || !PathsEqual(t.SavedPath, FileOf(t)))
             .Select(t => (Timeline: t, Path: FileOf(t), Json: JsonSerializer.Serialize(
-                new TimelineFile { Id = t.Id, Length = t.Length, Loop = t.Loop, Tracks = t.Tracks }, Json.Options)))
+                new TimelineFile { Id = t.Id, Length = t.Length, Loop = t.Loop, Playback = t.Playback, Tracks = t.Tracks }, Json.Options)))
             .ToList();
 
         await AtomicFile.WriteAllTextAsync(Path.Combine(folder, ShowFileName), showJson, cancellationToken);

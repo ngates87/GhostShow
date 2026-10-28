@@ -11,7 +11,7 @@ namespace GhostShow.App;
 /// - GHOSTSHOW_UI_LOAD_TEST=1: the app opens on the DMX monitor and a worker thread changes all 512 channels of the
 ///   first universe ~1,000 times a second.
 /// - GHOSTSHOW_UI_LOAD_TEST=timeline: the current show is replaced by a busy one (20 RGBW fixtures, a 60 s looping
-///   timeline with 2,000 fades and a marker every 5 s), the app opens on the Timeline screen and plays it, and every
+///   timeline with 2,000 fades), the app opens on the Timeline screen and plays it, and every
 ///   2 s a lighting point is moved through the editor (undoable edit, recompile and swap on the UI thread), as during
 ///   editing while playing.
 /// Either way, the UI-thread wait is logged every 30 s.
@@ -70,9 +70,7 @@ sealed class UiLoadTest(MainViewModel viewModel, AppServices services, ILogger l
                 Fade = TimeSpan.FromSeconds(random.Next(6)),
                 Levels = controls.Take(random.Next(1, 6)).Select(c => new Level((byte)random.Next(256), Control: c)).ToList(),
             });
-        var markers = new TimelineTrack { Name = "Cues", Kind = TrackKind.Markers };
-        for (int s = 0; s < 60; s += 5) markers.Events.Add(new MarkerEvent { Name = $"M{s}", Start = TimeSpan.FromSeconds(s) });
-        var timeline = new ShowTimeline { Name = "Load test", Length = TimeSpan.FromSeconds(60), Loop = true, Tracks = [.. tracks, markers] };
+        var timeline = new ShowTimeline { Name = "Load test", Length = TimeSpan.FromSeconds(60), Loop = true, Tracks = [.. tracks] };
         LevelEventConversion.Upgrade(timeline);   // lighting as the editor stores it: blocks holding each channel's points
         session.Project.Timelines = [timeline];
 

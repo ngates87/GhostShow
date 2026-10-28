@@ -142,5 +142,22 @@
       <Setter Property="HorizontalAlignment" Value="Stretch" />
       <Setter Property="HorizontalContentAlignment" Value="Left" />
     </Style>
+    <!-- Toolbar buttons that show an icon (a PathIcon from Icons.axaml), with a tooltip saying what they do. -->
+    <Style Selector="Button.icon, ToggleButton.icon">
+      <Setter Property="Padding" Value="7,5" />
+      <Setter Property="MinWidth" Value="0" />
+    </Style>
+    <Style Selector="Button.icon PathIcon, ToggleButton.icon PathIcon">
+      <Setter Property="Width" Value="16" />
+      <Setter Property="Height" Value="16" />
+    </Style>
   </Application.Styles>
+
+  <Application.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <ResourceInclude Source="avares://ghostshow-app/Icons.axaml" />
+      </ResourceDictionary.MergedDictionaries>
+    </ResourceDictionary>
+  </Application.Resources>
 </Application>

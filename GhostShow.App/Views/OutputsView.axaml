@@ -49,7 +49,7 @@
         </StackPanel>
         <TextBlock Text="{Binding DetectStatus}" TextWrapping="Wrap" />
       </StackPanel>
-      <ListBox ItemsSource="{Binding Adapters}">
+      <ListBox ItemsSource="{Binding Adapters}" IsVisible="{Binding !!Adapters.Count}" VerticalAlignment="Top">
         <ListBox.ItemTemplate>
           <DataTemplate x:DataType="x:Object">
             <TextBlock Text="{Binding}" TextWrapping="Wrap" />

@@ -155,18 +155,10 @@ public class TimelineEvaluationTests
     [Fact]
     public void Length_is_explicit_or_the_end_of_the_last_event()
     {
-        var timeline = Timeline(Lights(Raw(1, 1, to: 10, fade: 4), Raw(2, 1, to: 1)), new TimelineTrack { Kind = TrackKind.Markers, Events = [new MarkerEvent { Start = S(3) }] });
+        var timeline = Timeline(Lights(Raw(1, 1, to: 10, fade: 4), Raw(2, 1, to: 1)));
 
         Assert.Equal(T(5), Compile(timeline).Length);
         timeline.Length = S(30);
         Assert.Equal(T(30), Compile(timeline).Length);
-    }
-
-    [Fact]
-    public void Markers_are_sorted_by_time()
-    {
-        var compiled = Compile(Timeline(new TimelineTrack { Kind = TrackKind.Markers, Events = [new MarkerEvent { Name = "B", Start = S(2) }, new MarkerEvent { Name = "A", Start = S(1) }] }));
-
-        Assert.Equal(["A", "B"], compiled.Markers.Select(m => m.Name));
     }
 }

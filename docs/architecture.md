@@ -9,7 +9,7 @@ Phase 2 added timelines, show playback and audio. Timelines, playback and audio 
 
 | Project | Responsibility | Depends on |
 |---|---|---|
-| `GhostShow.Core` | Engine state and commands, universe model, fixture profiles/patching/validation, storage, diagnostics primitives, timeline model and compiler, show player and playback loop | `Microsoft.Extensions.Logging.Abstractions` only |
+| `GhostShow.Core` | Engine state and commands, universe model, fixture profiles/patching/validation, storage, diagnostics primitives, timeline model and compiler, players (one per timeline), the playback manager that merges them, and the playback loop | `Microsoft.Extensions.Logging.Abstractions` only |
 | `GhostShow.Dmx` | Output service, device interface, simulator, Open DMX / USB Pro / Art-Net drivers, adapter discovery | Core, `System.IO.Ports` |
 | `GhostShow.Audio` | Audio output (`AudioService`, implementing Core's `IAudioOutput`): devices, streaming WAV/MP3, mixing, device-loss recovery | Core, SoundFlow (MIT) |
 | `GhostShow.App` | Avalonia desktop UI | Core, Dmx, Audio (Dmx and Audio are used at startup and on their setup screens) |
@@ -43,8 +43,8 @@ read-only state, so it can be replaced without touching the engine.
 ## How output works
 
 ```
- UI / CLI / later: OSC, web, buttons          ShowPlayer (playback thread, 100 Hz)
-        │  IShowCommands: SetChannel,                │  SetTimelineLevels / ReleaseTimeline
+ UI / CLI / later: OSC, web, buttons          PlaybackManager (playback thread, 100 Hz): one ShowPlayer
+        │  IShowCommands: SetChannel,                │  per playing timeline, merged by priority → SetTimelineLevels
         │  SetFixtureControl, ClearUniverse, ...     │
         ▼                                            ▼
  ShowEngine ── manual layer + timeline layer per universe, and the fixture patch

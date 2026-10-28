@@ -15,7 +15,7 @@ namespace GhostShow.App.Tests;
 /// <summary>
 /// The timeline editor on a real session and player (audio on the null device, no playback thread: the player only
 /// moves when told to seek), with a patched 5-channel fixture (channels without functions), an RGB fixture
-/// (Intensity, Red, Green, Blue), and a marker track next to the default lighting and audio tracks.
+/// (Intensity, Red, Green, Blue), and the default lighting and audio tracks.
 /// </summary>
 sealed class TimelineRig : IDisposable
 {
@@ -47,12 +47,11 @@ sealed class TimelineRig : IDisposable
         Par = new FixtureInstance { Name = "Par 1", ProfileId = TestRig.Par.Id, ModeName = "5ch", StartAddress = 10 };
         Rgb = new FixtureInstance { Name = "Entry LED", ProfileId = RgbProfile.Id, ModeName = "4ch", StartAddress = 20 };
         Session.Project.Fixtures.AddRange([Par, Rgb]);
-        Session.Project.Timelines[0].Tracks.Add(new TimelineTrack { Name = "Cues", Kind = TrackKind.Markers });
         Session.Apply();
         Audio = new AudioService(NullLogger.Instance, useNullDevice: true);
-        Player = new ShowPlayer(Session.Engine, Audio, new StopwatchClock());
-        var services = new AppServices(Session, new OutputManager(Session.Engine, NullLoggerFactory.Instance), Player,
-                                       new PlaybackLoop(Player, NullLogger.Instance), Audio, new MachineSettings(),
+        Manager = new PlaybackManager(Session.Engine, Audio, new StopwatchClock());
+        var services = new AppServices(Session, new OutputManager(Session.Engine, NullLoggerFactory.Instance), Manager,
+                                       new PlaybackLoop(Manager, NullLogger.Instance), Audio, new MachineSettings(),
                                        new AppPaths(_configDirectory), new RecentEventsLog(), _probe);
         Playback = new PlaybackViewModel(services, NullLogger.Instance);
         Editor = new TimelineEditorViewModel(Session, Playback, () => Task.FromResult(PickedFile), () => Dirty = true);
@@ -62,7 +61,14 @@ sealed class TimelineRig : IDisposable
     public FixtureInstance Par { get; }
     public FixtureInstance Rgb { get; }
     public AudioService Audio { get; }
-    public ShowPlayer Player { get; }
+    public PlaybackManager Manager { get; }
+
+    // The open timeline's transport (what the toolbar controls).
+    Guid Open => Editor.SelectedTimeline!.Id;
+    public void Play() => Manager.Play(Open);
+    public void Seek(TimeSpan position) => Manager.Seek(Open, position);
+    public PlaybackStatus Status => Manager.StatusOf(Open);
+    public CompiledTimeline Compiled => Manager.TimelineOf(Open)!;
     public PlaybackViewModel Playback { get; }
     public TimelineEditorViewModel Editor { get; }
     public string? PickedFile { get; set; }
@@ -74,11 +80,15 @@ sealed class TimelineRig : IDisposable
 
     public TimelineTrack LightingTrack => Track(TrackKind.Lighting).Track;
 
-    /// <summary>Adds a marker at a time through the editor (as a double-click on its row would).</summary>
-    public TimelineEvent AddMarker(double seconds)
+    /// <summary>
+    /// Adds a sound at a time through the editor (as a double-click on its row would). The file isn't there, so its
+    /// length isn't known: it's a zero-length clip.
+    /// </summary>
+    public TimelineEvent AddSound(double seconds)
     {
-        Editor.AddEventAtAsync(Editor.Tracks.IndexOf(Track(TrackKind.Markers)), TimeSpan.FromSeconds(seconds)).GetAwaiter().GetResult();
-        return Events(TrackKind.Markers)[^1];
+        PickedFile ??= Path.GetFullPath("thunder.wav");
+        Editor.AddEventAtAsync(Editor.Tracks.IndexOf(Track(TrackKind.Audio)), TimeSpan.FromSeconds(seconds)).GetAwaiter().GetResult();
+        return Events(TrackKind.Audio)[^1];
     }
 
     /// <summary>Gives the lighting track the RGB fixture's Red channel and returns its lane.</summary>
@@ -91,7 +101,7 @@ sealed class TimelineRig : IDisposable
     /// <summary>What the engine outputs on a universe-1 address right now (after one playback update).</summary>
     public byte Output(int address)
     {
-        Player.Tick();
+        Manager.Tick();
         var frame = new byte[512];
         Session.Engine.TryCopyUniverse(1, frame, out _);
         return frame[address - 1];
@@ -119,33 +129,34 @@ public class TimelineEditorTests : IDisposable
     {
         Assert.Same(_rig.Session.Project.Timelines[0], Editor.SelectedTimeline);
         Assert.Same(Editor.SelectedTimeline, _rig.Playback.Timeline);
-        Assert.Equal([TrackKind.Lighting, TrackKind.Audio, TrackKind.Markers], Editor.Tracks.Select(t => t.Kind));
+        Assert.Equal([TrackKind.Lighting, TrackKind.Audio], Editor.Tracks.Select(t => t.Kind));
         Assert.False(_rig.Dirty);
     }
 
-    // ---- events (audio and markers) ----
+    // ---- clips on any track ----
 
     [Fact]
     public void Add_event_puts_it_at_the_playhead_on_the_selected_track_selects_it_and_is_undoable()
     {
         _rig.Playback.Seek(S(2));
-        Editor.SelectedTrack = _rig.Track(TrackKind.Markers);
+        _rig.PickedFile = Path.GetFullPath("thunder.wav");
+        Editor.SelectedTrack = _rig.Track(TrackKind.Audio);
         Editor.AddEventCommand.Execute(null);
 
-        var added = Assert.IsType<MarkerEvent>(Assert.Single(_rig.Events(TrackKind.Markers)));
+        var added = Assert.IsType<AudioEvent>(Assert.Single(_rig.Events(TrackKind.Audio)));
         Assert.Equal(S(2), added.Start);
         Assert.Equal([added.Id], Editor.Selection);
         Assert.Same(added, Editor.Properties?.Event);
         Assert.True(_rig.Dirty);
-        Assert.Equal("Undo Add marker", Editor.UndoLabel);
+        Assert.Equal("Undo Add audio clip", Editor.UndoLabel);
 
         Editor.UndoCommand.Execute(null);
-        Assert.Empty(_rig.Events(TrackKind.Markers));
+        Assert.Empty(_rig.Events(TrackKind.Audio));
         Assert.Empty(Editor.Selection);
         Assert.Null(Editor.Properties);
 
         Editor.RedoCommand.Execute(null);
-        Assert.Same(added, Assert.Single(_rig.Events(TrackKind.Markers)));
+        Assert.Same(added, Assert.Single(_rig.Events(TrackKind.Audio)));
     }
 
     [Fact]
@@ -166,8 +177,8 @@ public class TimelineEditorTests : IDisposable
     [Fact]
     public void Moving_a_selection_snaps_each_event_never_goes_before_zero_and_is_one_undo_step()
     {
-        var a = _rig.AddMarker(1);
-        var b = _rig.AddMarker(2);
+        var a = _rig.AddSound(1);
+        var b = _rig.AddSound(2);
         Editor.SelectEvent(a.Id, additive: false);
         Editor.SelectEvent(b.Id, additive: true);
         Editor.Snap = TimelineEditorViewModel.SnapOptions.Single(o => o.Interval == S(0.1));
@@ -180,18 +191,18 @@ public class TimelineEditorTests : IDisposable
 
         Editor.UndoCommand.Execute(null);
         Assert.Equal((S(1.5), S(2.5)), (a.Start, b.Start));
-        Assert.Equal("Undo Move 2 events", Editor.UndoLabel);
+        Assert.Equal("Undo Move 2 clips", Editor.UndoLabel);
     }
 
     [Fact]
     public void Ctrl_click_toggles_an_event_in_the_selection_and_properties_show_only_for_one()
     {
-        var a = _rig.AddMarker(1);
-        var b = _rig.AddMarker(2);
+        var a = _rig.AddSound(1);
+        var b = _rig.AddSound(2);
         Editor.SelectEvent(a.Id, additive: false);
         Editor.SelectEvent(b.Id, additive: true);
         Assert.Null(Editor.Properties);
-        Assert.Equal("2 events selected", Editor.SelectionLabel);
+        Assert.Equal("2 sounds selected", Editor.SelectionLabel);
 
         Editor.SelectEvent(a.Id, additive: true);
         Assert.Equal([b.Id], Editor.Selection);
@@ -201,15 +212,15 @@ public class TimelineEditorTests : IDisposable
     [Fact]
     public void Copy_and_paste_at_the_playhead_keeps_spacing_and_tracks()
     {
-        _rig.AddMarker(1);
-        _rig.AddMarker(1.5);
+        _rig.AddSound(1);
+        _rig.AddSound(1.5);
         Editor.SelectAllCommand.Execute(null);
         Editor.CopyCommand.Execute(null);
 
         _rig.Playback.Seek(S(4));
         Editor.PasteCommand.Execute(null);
 
-        var events = _rig.Events(TrackKind.Markers);
+        var events = _rig.Events(TrackKind.Audio);
         Assert.Equal([S(1), S(1.5), S(4), S(4.5)], events.Select(e => e.Start));
         Assert.Equal(4, events.Select(e => e.Id).Distinct().Count());   // copies, not the same events again
         Assert.Equal(events.Skip(2).Select(e => e.Id).ToHashSet(), Editor.Selection);   // the pasted ones are selected
@@ -218,36 +229,36 @@ public class TimelineEditorTests : IDisposable
     [Fact]
     public void Duplicate_places_copies_right_after_the_selection()
     {
-        var a = _rig.AddMarker(1);
-        var b = _rig.AddMarker(3);
+        var a = _rig.AddSound(1);
+        var b = _rig.AddSound(3);
         Editor.SelectEvent(a.Id, additive: false);
         Editor.SelectEvent(b.Id, additive: true);
 
         Editor.DuplicateCommand.Execute(null);
 
-        Assert.Equal([S(1), S(3), S(3), S(5)], _rig.Events(TrackKind.Markers).Select(e => e.Start));
+        Assert.Equal([S(1), S(3), S(3), S(5)], _rig.Events(TrackKind.Audio).Select(e => e.Start));
     }
 
     [Fact]
     public void Delete_and_undo_restores_events_in_their_original_order()
     {
-        var a = _rig.AddMarker(1);
-        var b = _rig.AddMarker(2);
-        var c = _rig.AddMarker(3);
+        var a = _rig.AddSound(1);
+        var b = _rig.AddSound(2);
+        var c = _rig.AddSound(3);
         Editor.SelectEvent(a.Id, additive: false);
         Editor.SelectEvent(c.Id, additive: true);
 
         Editor.DeleteCommand.Execute(null);
-        Assert.Equal([b], _rig.Events(TrackKind.Markers));
+        Assert.Equal([b], _rig.Events(TrackKind.Audio));
 
         Editor.UndoCommand.Execute(null);
-        Assert.Equal([a, b, c], _rig.Events(TrackKind.Markers));
+        Assert.Equal([a, b, c], _rig.Events(TrackKind.Audio));
     }
 
     [Fact]
     public void Typing_into_a_property_merges_into_one_undo_step()
     {
-        var e = _rig.AddMarker(1);
+        var e = _rig.AddSound(1);
         var properties = Editor.Properties!;
 
         properties.StartSeconds = 2;
@@ -309,9 +320,9 @@ public class TimelineEditorTests : IDisposable
 
         Assert.Null(Editor.ChannelPicker);
         Assert.Equal(["Entry LED · Red", "Entry LED · Green", "Entry LED · Blue", "U1 · 100", "U1 · 101"], row.Lanes.Select(l => l.Label));
-        Assert.True(row.IsExpanded);   // its first channels: expanded, ready for points
+        Assert.True(row.IsExpanded);   // its first channels: expanded, showing envelopes
         Assert.Equal("#FF5252", row.Lanes[0].Color);
-        Assert.Equal(TimelineEditorViewModel.TrackRowHeight + 5 * TimelineEditorViewModel.LaneRowHeight, row.Height);
+        Assert.Equal(TimelineEditorViewModel.ExpandedTrackHeight, row.Height);
 
         Editor.UndoCommand.Execute(null);
         Assert.Empty(_rig.LightingTrack.Channels);
@@ -342,10 +353,10 @@ public class TimelineEditorTests : IDisposable
     }
 
     [Fact]
-    public void Changing_channels_keeps_the_points_of_channels_that_stay()
+    public void Changing_channels_keeps_the_envelopes_of_channels_that_stay()
     {
         var red = _rig.RedLane();
-        var point = Editor.AddPoint(red, S(1), 200);
+        var handle = Handle(AddClip(0), red, 1, 200);
         Editor.EditChannels(_rig.Track(TrackKind.Lighting));
         var picker = Editor.ChannelPicker!;
         Assert.True(picker.Fixtures.Single(f => f.Name == "Entry LED").Channels[1].IsChecked);   // Red, already on the track
@@ -354,217 +365,186 @@ public class TimelineEditorTests : IDisposable
         picker.OkCommand.Execute(null);
 
         Assert.Same(red, _rig.LightingTrack.Channels[0]);
-        Assert.Same(point, _rig.LightingTrack.Events.OfType<LightingClip>().Single().LaneFor(red.Target)!.Points.Single());
+        Assert.Same(handle, Clip().LaneFor(red.Target)!.Points[0]);
         Assert.Equal(2, _rig.LightingTrack.Channels.Count);
     }
 
     [Fact]
-    public void Rows_line_up_tracks_and_expanded_channels_top_to_bottom()
+    public void Rows_are_one_per_track_and_a_lighting_track_is_taller_expanded()
     {
         _rig.RedLane();
         var lighting = _rig.Track(TrackKind.Lighting);
 
-        Assert.Equal([(0, 46.0, false), (46, 40, true), (86, 46, false), (132, 46, false)],
-                     Editor.Rows.Select(r => (r.Top, r.Height, r.Lane is not null)));
+        Assert.Equal([(0, 150.0), (150, 46)], Editor.Rows.Select(r => (r.Top, r.Height)));
         lighting.IsExpanded = false;
-        Assert.Equal(3, Editor.Rows.Count);
-        Assert.Equal(3 * TimelineEditorViewModel.TrackRowHeight, Editor.ContentHeight);
+        Assert.Equal([(0, 64.0), (64, 46)], Editor.Rows.Select(r => (r.Top, r.Height)));   // room for a preview of the envelopes
+        Assert.Equal(110, Editor.ContentHeight);
     }
 
-    // ---- lighting: blocks and points ----
+    // ---- lighting: Level Control clips and their envelopes ----
 
-    LightingClip Block(int index = 0) => _rig.LightingTrack.Events.OfType<LightingClip>().ElementAt(index);
+    LightingClip Clip(int index = 0) => _rig.LightingTrack.Events.OfType<LightingClip>().OrderBy(c => c.Start).ElementAt(index);
 
-    /// <summary>A channel's points in every block, as (time on the timeline, level).</summary>
-    IEnumerable<(TimeSpan, int)> Line(ChannelLane trackLane) =>
-        _rig.LightingTrack.Events.OfType<LightingClip>().OrderBy(c => c.Start)
-            .SelectMany(c => (c.LaneFor(trackLane.Target)?.Points ?? []).Select(p => (c.Start + p.Time, (int)p.Value)));
-
-    [Fact]
-    public void Double_clicking_a_channel_outside_any_block_starts_a_block_holding_the_point()
+    /// <summary>A Level Control clip added at a time on the lighting track (as Add does at the playhead).</summary>
+    LightingClip AddClip(double start, double length = 4)
     {
-        var red = _rig.RedLane();
-
-        var point = Editor.AddPoint(red, S(2), 120);
-
-        var block = Assert.IsType<LightingClip>(Assert.Single(_rig.LightingTrack.Events));
-        Assert.Equal((S(2), LightingClip.DefaultLength), (block.Start, block.Length));
-        Assert.Same(point, Assert.Single(block.LaneFor(red.Target)!.Points));
-        Assert.Equal(TimeSpan.Zero, point.Time);   // relative to the block
-        Assert.Equal(S(2), Editor.AbsoluteTime(point));
-        Assert.Equal("Undo Add lighting block", Editor.UndoLabel);
-    }
-
-    [Fact]
-    public void Points_inside_a_block_play_as_a_line_and_edits_apply_to_the_output_straight_away()
-    {
-        var red = _rig.RedLane();
-        Editor.AddPoint(red, S(0), 0);
-        var end = Editor.AddPoint(red, S(4), 200);   // inside the block started at 0 (4 s long)
-        Assert.Single(_rig.LightingTrack.Events);
-        _rig.Player.Play();
-        _rig.Playback.Seek(S(2));
-
-        Assert.Equal(100, _rig.Output(21));   // Red of the fixture at 20
-
-        Editor.SelectPoint(end, additive: false);
-        Editor.PointProperties!.Dmx = 100;
-        _rig.Player.Seek(S(2));
-        Assert.Equal(50, _rig.Output(21));
-        Assert.Equal(4, Editor.PointProperties.TimeSeconds);   // shown as time on the timeline
-    }
-
-    [Fact]
-    public void Moving_a_block_moves_its_lines()
-    {
-        var red = _rig.RedLane();
-        Editor.AddPoint(red, S(0), 0);
-        Editor.AddPoint(red, S(4), 200);
-        Editor.SelectEvent(Block().Id, additive: false);
-
-        Editor.MoveSelection(S(10));
-
-        Assert.Equal([(S(10), 0), (S(14), 200)], Line(red));
-        _rig.Player.Play();
-        _rig.Playback.Seek(S(12));
-        Assert.Equal(100, _rig.Output(21));
-    }
-
-    [Fact]
-    public void Dragging_a_block_s_edges_stretches_its_lines_and_the_left_edge_keeps_the_end()
-    {
-        var red = _rig.RedLane();
-        Editor.AddPoint(red, S(0), 0);
-        Editor.AddPoint(red, S(2), 100);
-        Editor.AddPoint(red, S(4), 200);
-        var block = Block();
-
-        Editor.ResizeEvent(block.Id, S(8));   // right edge: twice as long
-        Assert.Equal([(S(0), 0), (S(4), 100), (S(8), 200)], Line(red));
-
-        Editor.ResizeEventStart(block.Id, S(4));   // left edge in by 4 s: same end, half as long
-        Assert.Equal((S(4), S(4)), (block.Start, block.Length));
-        Assert.Equal([(S(4), 0), (S(6), 100), (S(8), 200)], Line(red));
-
-        Editor.UndoCommand.Execute(null);
-        Editor.UndoCommand.Execute(null);
-        Assert.Equal([(S(0), 0), (S(2), 100), (S(4), 200)], Line(red));
-        Assert.Equal(LightingClip.DefaultLength, block.Length);
-    }
-
-    [Fact]
-    public void A_block_s_length_in_the_properties_panel_stretches_it_too()
-    {
-        var red = _rig.RedLane();
-        Editor.AddPoint(red, S(0), 0);
-        Editor.AddPoint(red, S(4), 200);
-        Editor.SelectEvent(Block().Id, additive: false);
-
-        Editor.Properties!.BlockLengthSeconds = 2;
-
-        Assert.Equal([(S(0), 0), (S(2), 200)], Line(red));
-        Assert.Equal("Lighting block", Editor.Properties.Kind);
-    }
-
-    [Fact]
-    public void Add_event_on_a_lighting_track_adds_a_block_holding_each_channel_where_it_is()
-    {
-        var red = _rig.RedLane();
-        Editor.AddPoint(red, S(0), 0);
-        Editor.AddPoint(red, S(4), 200);
-        _rig.Playback.Seek(S(6));
+        _rig.Playback.Seek(S(start));
         Editor.SelectedTrack = _rig.Track(TrackKind.Lighting);
-
         Editor.AddEventCommand.Execute(null);
+        var clip = _rig.LightingTrack.Events.OfType<LightingClip>().Single(c => c.Start == S(start));
+        if (length != 4) Editor.ResizeEvent(clip.Id, S(length));
+        return clip;
+    }
 
-        var added = Block(1);
-        Assert.Equal(S(6), added.Start);
-        Assert.Equal(200, Assert.Single(added.LaneFor(red.Target)!.Points).Value);   // held from the first block
-        Assert.Equal([added.Id], Editor.Selection);
+    /// <summary>Adds a handle on a channel's envelope (right-click → Add Envelope Handle) and sets its level, as dragging it up would.</summary>
+    CurvePoint Handle(LightingClip clip, ChannelLane channel, double at, byte level)
+    {
+        var handle = Editor.AddHandle(clip, channel.Target, S(at))!;
+        Editor.PointProperties!.Dmx = level;
+        return handle;
+    }
+
+    CurvePoint EndHandle(LightingClip clip, ChannelLane channel) => clip.LaneFor(channel.Target)!.Points[^1];
+
+    /// <summary>A clip's envelope for a channel, as (time on the timeline, level), without the start handle.</summary>
+    static IEnumerable<(TimeSpan, int)> Envelope(LightingClip clip, ChannelLane channel) =>
+        (clip.LaneFor(channel.Target)?.Points ?? []).Select(p => (clip.Start + p.Time, (int)p.Value));
+
+    [Fact]
+    public void Add_on_a_lighting_track_adds_a_Level_Control_clip_holding_every_channel_where_it_is()
+    {
+        var red = _rig.RedLane();
+        var first = AddClip(0);
+        Editor.SelectPoint(Editor.AddHandle(first, red.Target, S(2))!, additive: false);
+        Editor.SelectPoint(EndHandle(first, red), additive: false);
+        Editor.PointProperties!.Dmx = 200;
+
+        var second = AddClip(6);
+
+        Assert.Equal(("Level Control", S(6), LightingClip.DefaultLength), (second.Name, second.Start, second.Length));
+        Assert.Empty(second.Lanes);   // no envelopes yet: every channel holds its level through it
+        Assert.Equal([second.Id], Editor.Selection);
+        Assert.Equal("Undo Add Level Control clip", Editor.UndoLabel);
+        _rig.Play();
+        _rig.Playback.Seek(S(8));
+        Assert.Equal(200, _rig.Output(21));
     }
 
     [Fact]
-    public void Copy_and_paste_of_a_block_makes_an_independent_copy()
+    public void A_new_handle_keeps_the_level_until_it_is_dragged_and_edits_play_straight_away()
     {
         var red = _rig.RedLane();
-        var original = Editor.AddPoint(red, S(0), 50);
-        Editor.SelectEvent(Block().Id, additive: false);
-        Editor.CopyCommand.Execute(null);
-        _rig.Playback.Seek(S(10));
+        var clip = AddClip(0);
 
-        Editor.PasteCommand.Execute(null);
-        Block(1).Lanes[0].Points[0].Value = 99;
+        var handle = Editor.AddHandle(clip, red.Target, S(2))!;
 
-        Assert.Equal(S(10), Block(1).Start);
-        Assert.Equal(50, original.Value);
+        Assert.Equal([(S(2), 0), (S(4), 0)], Envelope(clip, red));   // and an end handle, holding the start level
+        Assert.Equal(S(2), handle.Time);
+        Assert.Same(handle, Editor.PointProperties?.Point);
+        Assert.Equal(2, Editor.PointProperties!.TimeSeconds);   // shown as time on the timeline
+        Assert.Equal("Undo Add envelope handle", Editor.UndoLabel);
+        _rig.Play();
+        _rig.Playback.Seek(S(1));
+        Assert.Equal(0, _rig.Output(21));
+
+        Editor.PointProperties.Dmx = 200;
+        _rig.Seek(S(1));
+        Assert.Equal(100, _rig.Output(21));   // up from the start level to the handle...
+        _rig.Seek(S(3));
+        Assert.Equal(100, _rig.Output(21));   // ...and back down to the end handle
     }
 
     [Fact]
-    public void Dragging_points_moves_them_in_time_snapped_and_kept_within_their_block_and_level_clamped()
+    public void A_handle_added_on_a_curve_takes_its_curve_type()
     {
         var red = _rig.RedLane();
-        var a = Editor.AddPoint(red, S(1), 100);   // block 1-5
-        var b = Editor.AddPoint(red, S(2), 240);
+        var clip = AddClip(0);
+        var first = Handle(clip, red, 1, 100);
+        Editor.SetCurve([EndHandle(clip, red)], CurveKind.Spline);
+
+        var second = Editor.AddHandle(clip, red.Target, S(3))!;
+
+        Assert.Equal(CurveKind.Spline, second.Curve);
+        Assert.Equal(CurveKind.Linear, first.Curve);
+    }
+
+    [Fact]
+    public void Handles_move_snapped_and_stay_between_their_neighbours_and_an_end_handle_only_changes_level()
+    {
+        var red = _rig.RedLane();
+        var clip = AddClip(1);
+        var a = Handle(clip, red, 2, 100);
+        var b = Handle(clip, red, 3, 240);
         Editor.SelectPoint(a, additive: false);
         Editor.SelectPoint(b, additive: true);
         Editor.Snap = TimelineEditorViewModel.SnapOptions.Single(o => o.Interval == S(0.5));
 
-        Editor.MoveSelectedPoints(S(0.7), +30);
-        Assert.Equal([(S(1.5), 130), (S(2.5), 255)], Line(red));
+        Editor.MoveSelectedPoints(S(0.7), +30, anchor: a);   // a lands on the grid at 2.5 s; b keeps its distance
+        Assert.Equal([(S(2.5), 130), (S(3.5), 255), (S(5), 0)], Envelope(clip, red));
 
-        Editor.MoveSelectedPoints(S(10), 0);   // can't leave the block
-        Assert.Equal([(S(5), 130), (S(5), 255)], Line(red));
+        Editor.MoveSelectedPoints(S(10), 0, anchor: a);   // no further than the end handle
+        Assert.Equal([(S(4), 130), (S(5), 255), (S(5), 0)], Envelope(clip, red));
+
+        var end = EndHandle(clip, red);
+        Editor.SelectPoint(end, additive: false);
+        Editor.MoveSelectedPoints(S(-2), +50);
+        Assert.Equal((S(4), 50), (end.Time, (int)end.Value));
 
         Editor.UndoCommand.Execute(null);
         Editor.UndoCommand.Execute(null);
-        Assert.Equal([(S(1), 100), (S(2), 240)], Line(red));
+        Editor.UndoCommand.Execute(null);
+        Assert.Equal([(S(2), 100), (S(3), 240), (S(5), 0)], Envelope(clip, red));
     }
 
     [Fact]
-    public void A_point_dragged_past_another_keeps_the_line_in_time_order()
+    public void A_handle_can_t_be_dragged_past_its_neighbour()
     {
         var red = _rig.RedLane();
-        var a = Editor.AddPoint(red, S(1), 10);
-        var b = Editor.AddPoint(red, S(2), 20);
+        var clip = AddClip(0);
+        var a = Handle(clip, red, 1, 10);
+        var b = Handle(clip, red, 2, 20);
         Editor.SelectPoint(a, additive: false);
 
         Editor.MoveSelectedPoints(S(2), 0);
 
-        Assert.Equal([b, a], Block().LaneFor(red.Target)!.Points);
-        Editor.UndoCommand.Execute(null);
-        Assert.Equal([a, b], Block().LaneFor(red.Target)!.Points);
+        Assert.Equal(b.Time, a.Time);
+        Assert.Equal([a, b, EndHandle(clip, red)], clip.LaneFor(red.Target)!.Points);
     }
 
     [Fact]
-    public void Step_and_delete_are_undoable_and_delete_clears_the_point_selection()
+    public void Curve_types_and_delete_are_undoable_and_an_end_handle_can_t_be_deleted()
     {
         var red = _rig.RedLane();
-        var a = Editor.AddPoint(red, S(1), 10);
-        var b = Editor.AddPoint(red, S(2), 20);
-        var lane = Block().LaneFor(red.Target)!;
-        Editor.SetStep(b, true);
-        Assert.True(b.Step);
-        Assert.Equal("Undo Make point a step", Editor.UndoLabel);
+        var clip = AddClip(0);
+        var a = Handle(clip, red, 1, 10);
+        var b = Handle(clip, red, 2, 20);
+        var lane = clip.LaneFor(red.Target)!;
+        Editor.SetCurve([b], CurveKind.Step);
+        Assert.Equal(CurveKind.Step, b.Curve);
+        Assert.Equal("Undo Make handle step", Editor.UndoLabel);
 
         Editor.SelectPoint(b, additive: false);
         Editor.DeleteCommand.Execute(null);
-        Assert.Equal([a], lane.Points);
+        Assert.Equal([a, lane.Points[^1]], lane.Points);
         Assert.Empty(Editor.SelectedPoints);
         Assert.Null(Editor.PointProperties);
 
+        Editor.SelectPoint(lane.Points[^1], additive: false);
+        Assert.False(Editor.PointProperties!.CanDelete);
+        Editor.DeleteCommand.Execute(null);
+        Assert.Equal(2, lane.Points.Count);
+
         Editor.UndoCommand.Execute(null);
-        Assert.Equal([a, b], lane.Points);
+        Assert.Equal([a, b, lane.Points[^1]], lane.Points);
         Editor.UndoCommand.Execute(null);
-        Assert.False(b.Step);
+        Assert.Equal(CurveKind.Linear, b.Curve);
     }
 
     [Fact]
-    public void Typing_a_point_s_level_merges_into_one_undo_step_and_percent_and_dmx_agree()
+    public void Typing_a_handle_s_level_merges_into_one_undo_step_and_percent_and_dmx_agree()
     {
         var red = _rig.RedLane();
-        var a = Editor.AddPoint(red, S(1), 10);
-        Editor.AddPoint(red, S(2), 0);
-        Editor.SelectPoint(a, additive: false);
+        var a = Handle(AddClip(0), red, 1, 10);
         var properties = Editor.PointProperties!;
 
         properties.Percent = 5;
@@ -578,38 +558,212 @@ public class TimelineEditorTests : IDisposable
     }
 
     [Fact]
-    public void Selecting_a_point_clears_selected_events_and_the_other_way_round()
+    public void Selecting_a_handle_clears_selected_clips_and_the_other_way_round()
     {
-        var marker = _rig.AddMarker(1);
+        var sound = _rig.AddSound(1);
         var red = _rig.RedLane();
-        var point = Editor.AddPoint(red, S(1), 0);
-        Assert.Empty(Editor.Selection);
+        var handle = Editor.AddHandle(AddClip(0), red.Target, S(1))!;
 
-        Editor.SelectEvent(marker.Id, additive: false);
+        Editor.SelectEvent(sound.Id, additive: false);
         Assert.Empty(Editor.SelectedPoints);
         Assert.Null(Editor.PointProperties);
 
-        Editor.SelectPoint(point, additive: false);
+        Editor.SelectPoint(handle, additive: false);
         Assert.Empty(Editor.Selection);
         Assert.NotNull(Editor.PointProperties);
     }
 
     [Fact]
-    public void Taking_a_channel_off_the_track_removes_its_lines_from_blocks_and_undo_brings_them_back()
+    public void A_clip_starts_where_the_previous_clip_left_the_channel_and_follows_it_when_that_changes()
     {
         var red = _rig.RedLane();
-        Editor.AddPoint(red, S(1), 77);
-        var block = Block();
+        var first = AddClip(0);
+        Editor.AddHandle(first, red.Target, S(2));
+        Editor.SelectPoint(EndHandle(first, red), additive: false);
+        Editor.PointProperties!.Dmx = 200;
+        var second = AddClip(6);
+        Handle(second, red, 8, 0);
 
-        Editor.SetTrackChannels(_rig.LightingTrack, []);
-        Assert.Empty(block.Lanes);
+        Assert.Equal(200, Editor.LevelsOf(_rig.LightingTrack)[0].Find(second)!.StartLevel);
+        _rig.Play();
+        _rig.Playback.Seek(S(7));
+        Assert.Equal(100, _rig.Output(21));   // 200 → 0 between 6 and 8 s
 
-        Editor.UndoCommand.Execute(null);
-        Assert.Equal(77, block.LaneFor(red.Target)!.Points.Single().Value);
+        Editor.SelectPoint(EndHandle(first, red), additive: false);
+        Editor.PointProperties.Dmx = 100;
+        _rig.Seek(S(7));
+        Assert.Equal(50, _rig.Output(21));
     }
 
     [Fact]
-    public void Dragging_an_audio_block_s_left_edge_trims_into_the_file_keeping_its_end()
+    public void Moving_a_clip_moves_its_envelopes()
+    {
+        var red = _rig.RedLane();
+        var clip = AddClip(0);
+        Handle(clip, red, 2, 200);
+        Editor.SelectEvent(clip.Id, additive: false);
+
+        Editor.MoveSelection(S(10));
+
+        Assert.Equal([(S(12), 200), (S(14), 0)], Envelope(clip, red));
+        _rig.Play();
+        _rig.Playback.Seek(S(11));
+        Assert.Equal(100, _rig.Output(21));
+    }
+
+    [Fact]
+    public void Resizing_a_clip_scales_its_envelopes_or_with_scaling_off_crops_them()
+    {
+        var red = _rig.RedLane();
+        var clip = AddClip(0);
+        Handle(clip, red, 2, 200);
+
+        Editor.ResizeEvent(clip.Id, S(8));   // right edge: twice as long, scaled
+        Assert.Equal([(S(4), 200), (S(8), 0)], Envelope(clip, red));
+        Editor.ResizeEventStart(clip.Id, S(4));   // left edge in by 4 s: the same end, half as long
+        Assert.Equal([(S(6), 200), (S(8), 0)], Envelope(clip, red));
+        Editor.UndoCommand.Execute(null);
+        Editor.UndoCommand.Execute(null);
+        Assert.Equal([(S(2), 200), (S(4), 0)], Envelope(clip, red));
+
+        Editor.SelectEvent(clip.Id, additive: false);
+        Editor.Properties!.ScaleOnResize = false;
+        Editor.Properties.ClipLengthSeconds = 3;   // the properties panel resizes the same way
+        Assert.Equal([(S(2), 200), (S(3), 100)], Envelope(clip, red));
+        Assert.Equal("Undo Crop clip", Editor.UndoLabel);
+        Assert.Equal("Level Control", Editor.Properties.Kind);
+    }
+
+    [Fact]
+    public void Splitting_at_the_playhead_gives_two_clips_that_play_as_the_one_did_and_undo_joins_them()
+    {
+        var red = _rig.RedLane();
+        var clip = AddClip(0);
+        Handle(clip, red, 2, 200);
+        _rig.Play();
+        var before = new[] { 0.5, 1.5, 2.5, 3.5 }.Select(t => { _rig.Seek(S(t)); return _rig.Output(21); }).ToList();
+        _rig.Manager.Stop(Editor.SelectedTimeline!.Id);   // so the playhead stays exactly where it's put
+        Editor.SelectEvent(clip.Id, additive: false);
+        _rig.Playback.Seek(S(1));
+
+        Editor.SplitCommand.Execute(null);
+
+        Assert.Equal([(S(0), S(1)), (S(1), S(3))], _rig.LightingTrack.Events.OfType<LightingClip>().Select(c => (c.Start, c.Length)));
+        _rig.Play();
+        Assert.Equal(before, new[] { 0.5, 1.5, 2.5, 3.5 }.Select(t => { _rig.Seek(S(t)); return _rig.Output(21); }));
+        Assert.Equal([Clip(1).Id], Editor.Selection);
+        Editor.UndoCommand.Execute(null);
+        Assert.Equal([(S(2), 200), (S(4), 0)], Envelope(Assert.IsType<LightingClip>(Assert.Single(_rig.LightingTrack.Events)), red));
+    }
+
+    [Fact]
+    public void A_locked_clip_can_t_be_moved_resized_split_deleted_or_edited_until_unlocked()
+    {
+        var red = _rig.RedLane();
+        var clip = AddClip(0);
+        var handle = Handle(clip, red, 2, 200);
+        Editor.SelectEvent(clip.Id, additive: false);
+        Editor.LockCommand.Execute(null);
+        Assert.True(clip.Locked);
+
+        Editor.MoveSelection(S(5));
+        Editor.ResizeEvent(clip.Id, S(8));
+        _rig.Playback.Seek(S(1));
+        Editor.SplitCommand.Execute(null);
+        Editor.DeleteCommand.Execute(null);
+        Assert.Null(Editor.AddHandle(clip, red.Target, S(1)));
+        Editor.SelectPoint(handle, additive: false);
+        Editor.MoveSelectedPoints(S(0.5), 10);
+
+        Assert.Equal((S(0), S(4)), (clip.Start, clip.Length));
+        Assert.Same(clip, Assert.Single(_rig.LightingTrack.Events));
+        Assert.Equal((S(2), 200), (handle.Time, (int)handle.Value));
+
+        Editor.SelectEvent(clip.Id, additive: false);
+        Editor.LockCommand.Execute(null);
+        Editor.MoveSelection(S(5));
+        Assert.Equal(S(5), clip.Start);
+    }
+
+    [Fact]
+    public void Linked_clips_move_together_until_unlinked()
+    {
+        _rig.RedLane();
+        var clip = AddClip(0);
+        var sound = _rig.AddSound(6);
+        Editor.SelectEvent(clip.Id, additive: false);
+        Editor.SelectEvent(sound.Id, additive: true);
+        Assert.True(Editor.CanLink);
+        Editor.LinkClipsCommand.Execute(null);
+
+        Editor.SelectEvent(clip.Id, additive: false);
+        Editor.MoveSelection(S(2));
+        Assert.Equal((S(2), S(8)), (clip.Start, sound.Start));
+
+        Editor.UnlinkClipsCommand.Execute(null);
+        Editor.MoveSelection(S(2));
+        Assert.Equal((S(4), S(8)), (clip.Start, sound.Start));
+    }
+
+    [Fact]
+    public void A_channel_starts_at_its_level_at_the_first_clip_or_holds_it_from_the_start_when_fixed()
+    {
+        var red = _rig.RedLane();
+        var clip = AddClip(2);
+        Handle(clip, red, 4, 0);
+        Editor.EditTrackProperties(_rig.Track(TrackKind.Lighting));
+        var channel = Editor.TrackProperties!.Channels.Single();
+        Assert.Equal("Entry LED · Red", channel.Label);
+
+        channel.Percent = 100;
+        Assert.Equal(255, red.StartLevel);
+        _rig.Play();
+        _rig.Playback.Seek(S(3));
+        Assert.InRange(_rig.Output(21), 127, 128);   // half way from 255 to 0 between 2 and 4 s
+        _rig.Seek(S(1));
+        _rig.Output(21);   // one playback update
+        Assert.False(_rig.Session.Engine.IsTimelineControlled(1, 21));   // left alone before the first clip
+
+        channel.SourceIndex = 1;   // fixed level
+        Assert.Equal(ChannelStart.Fixed, red.Start);
+        _rig.Seek(S(1));
+        Assert.Equal(255, _rig.Output(21));
+        Editor.UndoCommand.Execute(null);
+        Assert.Equal(ChannelStart.FirstClip, red.Start);
+    }
+
+    [Fact]
+    public void Copy_and_paste_of_a_clip_makes_an_independent_copy()
+    {
+        var red = _rig.RedLane();
+        var original = Handle(AddClip(0), red, 1, 50);
+        Editor.SelectEvent(Clip().Id, additive: false);
+        Editor.CopyCommand.Execute(null);
+        _rig.Playback.Seek(S(10));
+
+        Editor.PasteCommand.Execute(null);
+        Clip(1).Lanes[0].Points[0].Value = 99;
+
+        Assert.Equal(S(10), Clip(1).Start);
+        Assert.Equal(50, original.Value);
+    }
+
+    [Fact]
+    public void Taking_a_channel_off_the_track_removes_its_envelopes_from_clips_and_undo_brings_them_back()
+    {
+        var red = _rig.RedLane();
+        var clip = AddClip(0);
+        Handle(clip, red, 1, 77);
+
+        Editor.SetTrackChannels(_rig.LightingTrack, []);
+        Assert.Empty(clip.Lanes);
+
+        Editor.UndoCommand.Execute(null);
+        Assert.Equal(77, clip.LaneFor(red.Target)!.Points[0].Value);
+    }
+
+    [Fact]
+    public void Dragging_an_audio_clip_s_left_edge_trims_into_the_file_keeping_its_end()
     {
         _rig.PickedFile = Path.GetFullPath("thunder.wav");
         Editor.SelectedTrack = _rig.Track(TrackKind.Audio);
@@ -628,7 +782,7 @@ public class TimelineEditorTests : IDisposable
     public void A_channel_whose_fixture_is_removed_is_marked_and_skipped()
     {
         var red = _rig.RedLane();
-        Editor.AddPoint(red, S(0), 255);
+        Handle(AddClip(0), red, 1, 255);
         _rig.Session.Project.Fixtures.Remove(_rig.Rgb);
         _rig.Session.Apply();
 
@@ -640,9 +794,142 @@ public class TimelineEditorTests : IDisposable
     public void Edits_during_playback_never_move_the_playhead()
     {
         var red = _rig.RedLane();
+        var clip = AddClip(0);
         _rig.Playback.Seek(S(0.5));
-        Editor.AddPoint(red, S(3), 99);
-        Assert.Equal(S(0.5), _rig.Player.Status.Position);
+        Editor.AddHandle(clip, red.Target, S(3));
+        Assert.Equal(S(0.5), _rig.Status.Position);
+    }
+
+    // ---- the Envelope Editor ----
+
+    [Fact]
+    public void The_envelope_editor_shows_a_clip_s_channels_by_fixture_and_follows_the_selection()
+    {
+        _rig.RedLane();
+        Editor.SetTrackChannels(_rig.LightingTrack, [LaneTarget.FixtureControl(_rig.Rgb.Id, ChannelFunction.Red), LaneTarget.FixtureChannel(_rig.Par.Id, 2), LaneTarget.Raw(1, 300)]);
+        var first = AddClip(0);
+        var second = AddClip(6);
+        var sound = _rig.AddSound(3);
+
+        Editor.OpenEnvelopeEditor(first);
+        var envelopes = Editor.EnvelopeEditor!;
+
+        Assert.Same(first, envelopes.Clip);
+        Assert.Equal([first.Id], Editor.Selection);
+        Assert.Equal(["Entry LED", "Par 1", "Raw DMX channels"], envelopes.Fixtures.Select(f => f.Name));
+        Assert.Equal(["Red"], envelopes.Fixtures[0].Channels.Select(c => c.Label));
+        Assert.StartsWith("Envelope Editor · Level Control · Lighting", envelopes.Title);
+
+        Editor.SelectEvent(second.Id, additive: false);
+        Assert.Same(second, envelopes.Clip);
+        Editor.SelectEvent(sound.Id, additive: false);   // not a lighting clip: it stays
+        Assert.Same(second, envelopes.Clip);
+        Editor.SelectPoint(Editor.AddHandle(first, LaneTarget.Raw(1, 300), S(1))!, additive: false);   // a handle in another clip
+        Assert.Same(first, envelopes.Clip);
+
+        Editor.SelectEvent(first.Id, additive: false);
+        Editor.DeleteCommand.Execute(null);
+        Assert.Null(envelopes.Clip);   // deleted: nothing to show
+
+        Editor.CloseEnvelopeEditor();
+        Assert.Null(Editor.EnvelopeEditor);
+    }
+
+    [Fact]
+    public void Unticked_channels_are_hidden_and_a_fixture_s_tick_covers_its_channels()
+    {
+        _rig.RedLane();
+        Editor.SetTrackChannels(_rig.LightingTrack, [LaneTarget.FixtureControl(_rig.Rgb.Id, ChannelFunction.Red), LaneTarget.FixtureControl(_rig.Rgb.Id, ChannelFunction.Blue)]);
+        Editor.OpenEnvelopeEditor(AddClip(0));
+        var envelopes = Editor.EnvelopeEditor!;
+        var rgb = envelopes.Fixtures.Single();
+
+        rgb.Channels[1].IsChecked = false;
+        Assert.Null(rgb.IsChecked);
+        Assert.Equal([ChannelFunction.Red], envelopes.ShownLevels.Select(l => l.Channel.Target.Control!.Value));
+
+        rgb.IsChecked = false;
+        Assert.Empty(envelopes.ShownLevels);
+        envelopes.ShowAllCommand.Execute(null);
+        Assert.Equal(2, envelopes.ShownLevels.Count);
+    }
+
+    [Fact]
+    public void Adding_a_handle_in_the_envelope_editor_can_set_its_level_and_is_one_edit_per_change()
+    {
+        var red = _rig.RedLane();
+        var clip = AddClip(0);
+        Editor.OpenEnvelopeEditor(clip);
+
+        var handle = Editor.EnvelopeEditor!.AddHandle(red.Target, S(2), level: 200)!;
+
+        Assert.Equal((S(2), 200), (handle.Time, (int)handle.Value));
+        Editor.UndoCommand.Execute(null);   // the level
+        Assert.Equal(0, handle.Value);
+        Editor.UndoCommand.Execute(null);   // the handle
+        Assert.Empty(clip.Lanes);
+    }
+
+    [Fact]
+    public void With_update_lamps_on_selecting_a_handle_shows_its_level_on_the_lights()
+    {
+        var red = _rig.RedLane();
+        var clip = AddClip(0);
+        var handle = Handle(clip, red, 2, 200);
+        Editor.OpenEnvelopeEditor(clip);
+        var envelopes = Editor.EnvelopeEditor!;
+        Assert.Equal(TransportState.Stopped, _rig.Status.State);
+
+        envelopes.UpdateLamps = true;
+        Editor.SelectPoint(handle, additive: false);
+
+        Assert.Equal((TransportState.Paused, S(2)), (_rig.Status.State, _rig.Status.Position));
+        Assert.Equal(200, _rig.Output(21));
+    }
+
+    [Fact]
+    public void New_handles_go_to_the_active_channel_which_follows_the_list_and_the_selected_handle()
+    {
+        _rig.RedLane();
+        var red = LaneTarget.FixtureControl(_rig.Rgb.Id, ChannelFunction.Red);
+        var blue = LaneTarget.FixtureControl(_rig.Rgb.Id, ChannelFunction.Blue);
+        Editor.SetTrackChannels(_rig.LightingTrack, [red, blue]);
+        var clip = AddClip(0);
+        Editor.OpenEnvelopeEditor(clip);
+        var envelopes = Editor.EnvelopeEditor!;
+        Assert.Equal(red, envelopes.ActiveTarget);   // the first shown
+
+        var blueRow = envelopes.Fixtures.Single().Channels[1];
+        blueRow.MakeActiveCommand.Execute(null);
+        Assert.True(blueRow.IsActive);
+        Assert.Equal(blue, envelopes.ActiveLevels?.Channel.Target);
+
+        Editor.SelectPoint(Editor.AddHandle(clip, red, S(1))!, additive: false);   // a red handle selected: red is active
+        Assert.Equal(red, envelopes.ActiveTarget);
+
+        envelopes.Fixtures.Single().Channels[0].IsChecked = false;   // hiding the active channel: another becomes active
+        Assert.Equal(blue, envelopes.ActiveTarget);
+    }
+
+    [Fact]
+    public void The_view_fits_the_clip_zooms_around_a_time_and_steps_between_clips()
+    {
+        _rig.RedLane();
+        var first = AddClip(0, length: 10);
+        var second = AddClip(12);
+        Editor.OpenEnvelopeEditor(first);
+        var envelopes = Editor.EnvelopeEditor!;
+
+        Assert.True(envelopes.ViewStart < TimeSpan.Zero && envelopes.ViewStart + envelopes.ViewLength > S(10));
+        envelopes.ZoomAround(S(5), 0.5);
+        var at = envelopes.ViewStart + envelopes.ViewLength * ((5 - (-0.6)) / 11.2);   // 5 s stays where it was on screen
+        Assert.InRange((at - S(5)).Duration().TotalMilliseconds, 0, 1);
+
+        envelopes.NextClipCommand.Execute(null);
+        Assert.Same(second, envelopes.Clip);
+        Assert.Equal([second.Id], Editor.Selection);
+        envelopes.PreviousClipCommand.Execute(null);
+        Assert.Same(first, envelopes.Clip);
     }
 
     // ---- tracks and tabs ----
@@ -651,26 +938,27 @@ public class TimelineEditorTests : IDisposable
     public void Track_add_move_and_remove_are_undoable()
     {
         var timeline = Editor.SelectedTimeline!;
-        Editor.AddTrackCommand.Execute(TrackKind.Audio);
-        Assert.Equal([TrackKind.Lighting, TrackKind.Audio, TrackKind.Markers, TrackKind.Audio], Editor.Tracks.Select(t => t.Kind));
-        Assert.Equal("Audio 2", Editor.SelectedTrack?.Name);
+        string[] names = [.. timeline.Tracks.Select(t => t.Name)];
+        Editor.AddTrackCommand.Execute(TrackKind.Lighting);
+        Assert.Equal([TrackKind.Lighting, TrackKind.Audio, TrackKind.Lighting], Editor.Tracks.Select(t => t.Kind));
+        Assert.Equal("Lighting 2", Editor.SelectedTrack?.Name);
 
         Editor.MoveTrackUpCommand.Execute(null);
-        Assert.Equal([TrackKind.Lighting, TrackKind.Audio, TrackKind.Audio, TrackKind.Markers], timeline.Tracks.Select(t => t.Kind));
+        Assert.Equal([TrackKind.Lighting, TrackKind.Lighting, TrackKind.Audio], timeline.Tracks.Select(t => t.Kind));
 
         Editor.RemoveTrackCommand.Execute(null);
-        Assert.Equal([TrackKind.Lighting, TrackKind.Audio, TrackKind.Markers], Editor.Tracks.Select(t => t.Kind));
+        Assert.Equal(names, Editor.Tracks.Select(t => t.Name));
 
         Editor.UndoCommand.Execute(null);
         Editor.UndoCommand.Execute(null);
-        Assert.Equal([TrackKind.Lighting, TrackKind.Audio, TrackKind.Markers, TrackKind.Audio], Editor.Tracks.Select(t => t.Kind));
+        Assert.Equal([TrackKind.Lighting, TrackKind.Audio, TrackKind.Lighting], Editor.Tracks.Select(t => t.Kind));
     }
 
     [Fact]
     public void Each_open_timeline_keeps_its_own_undo_history_across_tab_switches()
     {
         var main = Editor.SelectedTimeline!;
-        _rig.AddMarker(1);
+        _rig.AddSound(1);
         Editor.Tree.NewTimelineCommand.Execute(null);   // opens the new one in a tab
         var other = Editor.SelectedTimeline!;
         Assert.NotSame(main, other);
@@ -678,10 +966,10 @@ public class TimelineEditorTests : IDisposable
 
         Editor.SelectedTab = Editor.Tabs.Single(t => t.Timeline == main);
 
-        Assert.Equal("Undo Add marker", Editor.UndoLabel);
+        Assert.Equal("Undo Add audio clip", Editor.UndoLabel);
         Assert.Same(main, _rig.Playback.Timeline);
         Editor.UndoCommand.Execute(null);
-        Assert.Empty(_rig.Events(TrackKind.Markers));
+        Assert.Empty(_rig.Events(TrackKind.Audio));
     }
 
     [Fact]
@@ -693,7 +981,7 @@ public class TimelineEditorTests : IDisposable
         Editor.RefreshTitles();
         Editor.SelectedTab = Editor.Tabs[0];
 
-        _rig.AddMarker(1);
+        _rig.AddSound(1);
 
         Assert.EndsWith(" *", Editor.Tabs[0].Title);
         Assert.False(other.Title.EndsWith('*'));
@@ -713,6 +1001,70 @@ public class TimelineEditorTests : IDisposable
         Editor.CloseTabCommand.Execute(Editor.SelectedTab);
         Assert.Null(Editor.SelectedTimeline);
         Assert.Null(_rig.Playback.Timeline);
+    }
+
+    // ---- several timelines at once ----
+
+    [Fact]
+    public void Switching_tabs_leaves_the_first_timeline_playing_and_the_playing_list_shows_both()
+    {
+        var main = Editor.SelectedTimeline!;
+        Editor.LengthSeconds = 10;   // something to play (an empty timeline ends at once)
+        _rig.Play();
+        Editor.Tree.NewTimelineCommand.Execute(null);   // a second timeline, now in focus
+        var second = Editor.SelectedTimeline!;
+        second.Length = S(10);
+        Editor.Playback.Recompile();
+        _rig.Play();
+        _rig.Manager.Tick();
+        _rig.Playback.Tick();
+
+        Assert.Equal(TransportState.Playing, _rig.Manager.StatusOf(main.Id).State);
+        Assert.Equal(TransportState.Playing, _rig.Status.State);
+        Assert.Equal(2, _rig.Playback.Running.Count);
+        Assert.True(_rig.Playback.Running.Single(r => r.Id == second.Id).IsFocused);
+
+        _rig.Playback.Running.Single(r => r.Id == main.Id).OpenCommand.Execute(null);
+        Assert.Same(main, Editor.SelectedTimeline);
+
+        _rig.Playback.StopAllCommand.Execute(null);
+        _rig.Manager.Tick();
+        _rig.Playback.Tick();
+        Assert.Empty(_rig.Playback.Running);
+    }
+
+    [Fact]
+    public void Playback_settings_are_undoable_edits_summarised_on_the_button()
+    {
+        Assert.Equal("Normal", Editor.PlaybackSummary);
+
+        Editor.Priority = 10;
+        Editor.PauseOverridden = true;
+        Editor.ReleaseFadeSeconds = 2;
+        Editor.DuckPercent = 25;
+        Editor.ReleaseAtEnd = true;
+
+        Assert.Equal(new TimelinePlayback(10, true, S(2), 0.25, true), Editor.SelectedTimeline!.Playback);
+        Assert.Equal("Priority 10 · pauses others · ducks to 25% · releases at end · 2 s release", Editor.PlaybackSummary);
+        Assert.Equal(10, _rig.Compiled.Playback.Priority);   // the player has it straight away
+
+        Editor.UndoCommand.Execute(null);
+        Assert.False(Editor.ReleaseAtEnd);
+    }
+
+    [Fact]
+    public void A_deleted_timeline_stops()
+    {
+        var main = Editor.SelectedTimeline!;
+        _rig.Play();
+        _rig.Manager.Tick();
+        Editor.Tree.SelectedNode = Editor.Tree.AllNodes().OfType<TimelineNode>().Single(n => n.Timeline == main);
+
+        Editor.Tree.DeleteCommand.Execute(null);
+        _rig.Manager.Tick();
+
+        Assert.False(_rig.Manager.IsLoaded(main.Id));
+        Assert.Empty(_rig.Manager.Running);
     }
 
     [Fact]

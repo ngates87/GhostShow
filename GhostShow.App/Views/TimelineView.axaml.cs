@@ -20,6 +20,7 @@ public partial class TimelineView : UserControl
     const double DragThreshold = 6;
 
     TimelineEditorViewModel? _editor;
+    EnvelopeEditorWindow? _envelopeWindow;
     PointerPressedEventArgs? _pressed;
     TimelineTreeNode? _pressedNode;
     Point _pressedAt;
@@ -27,7 +28,7 @@ public partial class TimelineView : UserControl
     public TimelineView()
     {
         InitializeComponent();
-        // Tunnel, so Space plays and pauses even when a button has focus (which would otherwise "click" it).
+        // Tunnel, so the editor's shortcuts (Delete, arrows, Ctrl+C...) get there before a focused control uses the key.
         AddHandler(KeyDownEvent, OnShortcut, RoutingStrategies.Tunnel);
         LanesScroll.AddHandler(PointerWheelChangedEvent, OnWheel, RoutingStrategies.Tunnel);
 
@@ -47,6 +48,45 @@ public partial class TimelineView : UserControl
             if (e.Source is TextBox { DataContext: TimelineTreeNode { IsEditing: true } node }) _editor?.Tree.CommitRename(node);
         }, RoutingStrategies.Bubble, handledEventsToo: true);
         TimelineTree.AddHandler(TextBox.LoadedEvent, (_, _) => FocusRenameBox(), RoutingStrategies.Bubble);
+
+        // Track names: double-click to rename in place; Enter or leaving the box saves, Esc cancels.
+        TrackHeaders.AddHandler(DoubleTappedEvent, (_, e) =>
+        {
+            if (e.Source is TextBlock { Classes: var classes, DataContext: TrackRowViewModel row } && classes.Contains("trackName")) StartTrackRename(row);
+        });
+        TrackHeaders.AddHandler(KeyDownEvent, OnTrackHeaderKey, RoutingStrategies.Tunnel);
+        TrackHeaders.AddHandler(LostFocusEvent, (_, e) =>
+        {
+            if (e.Source is TextBox { DataContext: TrackRowViewModel { IsRenaming: true } row }) row.CommitRename();
+        }, RoutingStrategies.Bubble, handledEventsToo: true);
+    }
+
+    void StartTrackRename(TrackRowViewModel row)
+    {
+        row.StartRenameCommand.Execute(null);
+        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+        {
+            var box = TrackHeaders.GetVisualDescendants().OfType<TextBox>().FirstOrDefault(t => t.DataContext == row && t.IsEffectivelyVisible);
+            box?.Focus();
+            box?.SelectAll();
+        });
+    }
+
+    void OnTrackHeaderKey(object? sender, KeyEventArgs e)
+    {
+        if (e.Source is TextBox { DataContext: TrackRowViewModel { IsRenaming: true } renaming })
+        {
+            if (e.Key == Key.Enter) renaming.CommitRename();
+            else if (e.Key == Key.Escape) renaming.CancelRename();
+            else return;
+            TrackHeaders.Focus();
+            e.Handled = true;
+        }
+        else if (e.Key == Key.F2 && _editor?.SelectedTrack is { } selected)
+        {
+            StartTrackRename(selected);
+            e.Handled = true;
+        }
     }
 
     protected override void OnDataContextChanged(EventArgs e)
@@ -56,13 +96,50 @@ public partial class TimelineView : UserControl
         {
             _editor.Playback.PropertyChanged -= OnPlaybackChanged;
             _editor.Tree.PropertyChanged -= OnTreeChanged;
+            _editor.PropertyChanged -= OnEditorChanged;
+            _editor.EnvelopeEditorRequested -= ShowEnvelopeEditor;
         }
         _editor = DataContext as TimelineEditorViewModel;
         if (_editor is not null)
         {
             _editor.Playback.PropertyChanged += OnPlaybackChanged;
             _editor.Tree.PropertyChanged += OnTreeChanged;
+            _editor.PropertyChanged += OnEditorChanged;
+            _editor.EnvelopeEditorRequested += ShowEnvelopeEditor;
         }
+    }
+
+    /// <summary>The Envelope Editor's window: opened (owned by the main window, so it stays in front of it) or brought forward.</summary>
+    void ShowEnvelopeEditor()
+    {
+        if (_editor?.EnvelopeEditor is not { } envelopes) return;
+        if (_envelopeWindow is { } open)
+        {
+            open.Activate();
+            return;
+        }
+        var window = _envelopeWindow = new EnvelopeEditorWindow { DataContext = envelopes };
+        window.Closed += (_, _) =>
+        {
+            _envelopeWindow = null;
+            _editor?.CloseEnvelopeEditor();
+        };
+        if (TopLevel.GetTopLevel(this) is Window owner) window.Show(owner);
+        else window.Show();
+    }
+
+    /// <summary>The window, while open (for tests).</summary>
+    public EnvelopeEditorWindow? EnvelopeWindow => _envelopeWindow;
+
+    /// <summary>A timeline just opened (or switched to): show all of it.</summary>
+    void OnEditorChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(TimelineEditorViewModel.EnvelopeEditor) && _editor?.EnvelopeEditor is null) _envelopeWindow?.Close();
+        if (e.PropertyName != nameof(TimelineEditorViewModel.SelectedTimeline)) return;
+        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+        {
+            if (_editor is { SelectedTimeline: not null } editor && LanesScroll.Viewport.Width > 0) editor.ZoomToFit(LanesScroll.Viewport.Width);
+        }, Avalonia.Threading.DispatcherPriority.Background);
     }
 
     // ---- the timeline tree ----
@@ -153,13 +230,16 @@ public partial class TimelineView : UserControl
         // its own keys (Delete, F2, Enter).
         var focused = TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement();
         if (focused is TextBox) return;
-        if (focused is Visual visual && visual.GetSelfAndVisualAncestors().Contains(TimelineTree) && e.Key != Key.Space) return;
+        if (focused is Visual visual && (visual.GetSelfAndVisualAncestors().Contains(TimelineTree) || visual.GetSelfAndVisualAncestors().Contains(TrackHeaders))) return;
 
         bool ctrl = e.KeyModifiers.HasFlag(KeyModifiers.Control) || e.KeyModifiers.HasFlag(KeyModifiers.Meta);
         bool shift = e.KeyModifiers.HasFlag(KeyModifiers.Shift);
         Action? action = (e.Key, ctrl, shift) switch
         {
-            (Key.Space, false, _) => () => editor.Playback.PlayPauseCommand.Execute(null),
+            (Key.Left, false, _) => () => editor.Nudge(-1, 0, fine: shift),
+            (Key.Right, false, _) => () => editor.Nudge(+1, 0, fine: shift),
+            (Key.Up, false, _) when editor.SelectedPoints.Count > 0 => () => editor.Nudge(0, +1, fine: shift),
+            (Key.Down, false, _) when editor.SelectedPoints.Count > 0 => () => editor.Nudge(0, -1, fine: shift),
             (Key.Z, true, false) => () => editor.UndoCommand.Execute(null),
             (Key.Z, true, true) or (Key.Y, true, _) => () => editor.RedoCommand.Execute(null),
             (Key.C, true, _) => () => editor.CopyCommand.Execute(null),
@@ -168,6 +248,7 @@ public partial class TimelineView : UserControl
             (Key.A, true, _) => () => editor.SelectAllCommand.Execute(null),
             (Key.Delete or Key.Back, false, _) => () => editor.DeleteCommand.Execute(null),
             (Key.Escape, false, _) => editor.ClearSelection,
+            (Key.Home, false, _) => () => editor.Playback.ToStartCommand.Execute(null),
             _ => null,
         };
         if (action is null) return;

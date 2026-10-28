@@ -50,7 +50,7 @@ public class ShowFolderStoreTests : IDisposable
         var block = new LightingClip
         {
             Name = "Flash", Start = TimeSpan.FromSeconds(1.5), Length = TimeSpan.FromSeconds(2),
-            Lanes = [new ChannelLane { Target = red.Target, Points = [new CurvePoint { Time = TimeSpan.Zero, Value = 3 }, new CurvePoint { Time = TimeSpan.FromSeconds(0.5), Value = 255, Step = true }] }],
+            Lanes = [new ChannelLane { Target = red.Target, Points = [new CurvePoint { Time = TimeSpan.Zero, Value = 3 }, new CurvePoint { Time = TimeSpan.FromSeconds(0.5), Value = 255, Curve = CurveKind.Step }, new CurvePoint { Time = TimeSpan.FromSeconds(2), Value = 9, Curve = CurveKind.Spline }] }],
         };
         var sound = new AudioEvent { File = "audio/z.wav", Start = TimeSpan.FromSeconds(2), Volume = 0.8, FadeIn = TimeSpan.FromSeconds(1), Loop = true };
         var lightning = new ShowTimeline
@@ -59,7 +59,7 @@ public class ShowFolderStoreTests : IDisposable
             Tracks =
             [
                 new TimelineTrack { Name = "Lights", Kind = TrackKind.Lighting, Color = "#FF0000", Channels = [red, new ChannelLane { Target = LaneTarget.Raw(3, 512) }], Events = [block] },
-                new TimelineTrack { Name = "Sound", Kind = TrackKind.Audio, Enabled = false, Events = [sound, new MarkerEvent { Name = "Scare" }] },
+                new TimelineTrack { Name = "Sound", Kind = TrackKind.Audio, Enabled = false, Events = [sound] },
             ],
         };
         var project = Show(lightning, Timeline("Lobby"));
@@ -90,12 +90,11 @@ public class ShowFolderStoreTests : IDisposable
         Assert.Equal((red.Id, "#FF0000"), (lanes[0].Id, lanes[0].Color));
         var reloadedBlock = Assert.IsType<LightingClip>(Assert.Single(timeline.Tracks[0].Events));
         Assert.Equal((block.Id, "Flash", TimeSpan.FromSeconds(1.5), TimeSpan.FromSeconds(2)), (reloadedBlock.Id, reloadedBlock.Name, reloadedBlock.Start, reloadedBlock.Length));
-        Assert.Equal([(TimeSpan.Zero, (byte)3, false), (TimeSpan.FromSeconds(0.5), (byte)255, true)],
-                     Assert.Single(reloadedBlock.Lanes).Points.Select(p => (p.Time, p.Value, p.Step)));
+        Assert.Equal([(TimeSpan.Zero, (byte)3, CurveKind.Linear), (TimeSpan.FromSeconds(0.5), (byte)255, CurveKind.Step), (TimeSpan.FromSeconds(2), (byte)9, CurveKind.Spline)],
+                     Assert.Single(reloadedBlock.Lanes).Points.Select(p => (p.Time, p.Value, p.Curve)));
         Assert.False(timeline.Tracks[1].Enabled);
         var reloadedSound = Assert.IsType<AudioEvent>(timeline.Tracks[1].Events[0]);
         Assert.Equal(("audio/z.wav", 0.8, TimeSpan.FromSeconds(1), true), (reloadedSound.File, reloadedSound.Volume, reloadedSound.FadeIn, reloadedSound.Loop));
-        Assert.Equal("Scare", Assert.IsType<MarkerEvent>(timeline.Tracks[1].Events[1]).Name);
     }
 
     [Fact]
@@ -118,7 +117,54 @@ public class ShowFolderStoreTests : IDisposable
         Assert.Equal([(byte)0, (byte)200], Assert.Single(block.Lanes).Points.Select(p => p.Value));
 
         await Save(project);
-        Assert.Contains("\"version\": 3", await File.ReadAllTextAsync(TimelineFile("Room.timeline.json"), Token));
+        Assert.Contains("\"version\": 5", await File.ReadAllTextAsync(TimelineFile("Room.timeline.json"), Token));
+    }
+
+    [Fact]
+    public async Task Marker_tracks_in_older_timeline_files_are_dropped()
+    {
+        Directory.CreateDirectory(TimelineFile(""));
+        await File.WriteAllTextAsync(Path.Combine(_show, "show.json"), """{ "version": 5, "name": "Old" }""", Token);
+        await File.WriteAllTextAsync(TimelineFile("Room.timeline.json"), """
+            { "version": 4, "id": "6f0e9d1c-1c49-4a0e-9a53-2b1d2b8f6a11",
+              "tracks": [ { "name": "Cues", "kind": "Markers", "events": [ { "type": "marker", "name": "Scare", "start": "00:00:02" } ] },
+                          { "name": "Sound", "kind": "Audio", "events": [ { "type": "marker", "name": "Stray" }, { "type": "audio", "file": "a.wav" } ] } ] }
+            """, Token);
+
+        var result = await Load();
+        var timeline = Assert.Single(result.Project!.Timelines);
+
+        Assert.Empty(result.Warnings!);
+        Assert.Equal("Sound", Assert.Single(timeline.Tracks).Name);
+        Assert.IsType<AudioEvent>(Assert.Single(timeline.Tracks[0].Events));
+        Assert.True(timeline.HasUnsavedChanges);   // rewritten without them on the next save
+    }
+
+    [Fact]
+    public async Task A_version_3_timeline_file_gets_envelope_rules_and_its_steps_read_as_step_curves()
+    {
+        Directory.CreateDirectory(TimelineFile(""));
+        await File.WriteAllTextAsync(Path.Combine(_show, "show.json"), """{ "version": 5, "name": "Old" }""", Token);
+        await File.WriteAllTextAsync(TimelineFile("Room.timeline.json"), """
+            { "version": 3, "id": "6f0e9d1c-1c49-4a0e-9a53-2b1d2b8f6a11",
+              "tracks": [ { "name": "L", "kind": "Lighting", "channels": [ { "target": { "universe": 1, "channel": 5 } } ],
+                            "events": [ { "type": "lighting", "start": "00:00:01", "length": "00:00:04",
+                                          "lanes": [ { "target": { "universe": 1, "channel": 5 },
+                                                       "points": [ { "time": "00:00:00.5", "value": 40 }, { "time": "00:00:02", "value": 200, "step": true }, { "time": "00:00:09", "value": 1 } ] } ] } ] } ] }
+            """, Token);
+
+        var project = (await Load()).Project!;
+        var timeline = Assert.Single(project.Timelines);
+
+        Assert.True(timeline.HasUnsavedChanges);
+        var clip = Assert.IsType<LightingClip>(Assert.Single(timeline.Tracks[0].Events));
+        // The first point was a jump (now a step); the point past the end never played; an end handle holds the last level.
+        Assert.Equal([(0.5, (byte)40, CurveKind.Step), (2, 200, CurveKind.Step), (4, 200, CurveKind.Linear)],
+                     Assert.Single(clip.Lanes).Points.Select(p => (p.Time.TotalSeconds, p.Value, p.Curve)));
+        await Save(project);
+        var saved = await File.ReadAllTextAsync(TimelineFile("Room.timeline.json"), Token);
+        Assert.DoesNotContain("\"step\"", saved);
+        Assert.Contains("\"curve\": \"Step\"", saved);
     }
 
     [Fact]

@@ -95,7 +95,9 @@ public static class ProjectStore
             // Single-file shows kept their timelines inside; from version 5 they are separate files.
             try
             {
-                if (GetIgnoringCase(obj, "timelines")?.Deserialize<List<ShowTimeline>>(Json.Options) is { Count: > 0 } timelines)
+                var stored = GetIgnoringCase(obj, "timelines");
+                foreach (var timeline in (stored as JsonArray ?? [])) LegacyMarkers.Drop(timeline);
+                if (stored?.Deserialize<List<ShowTimeline>>(Json.Options) is { Count: > 0 } timelines)
                     project.Timelines = timelines;
             }
             catch (JsonException ex)

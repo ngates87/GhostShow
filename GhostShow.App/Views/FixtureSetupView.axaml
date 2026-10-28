@@ -259,7 +259,8 @@
           <ProgressBar IsIndeterminate="True" Width="60" VerticalAlignment="Center" IsVisible="{Binding Library.DownloadCommand.IsRunning}" />
         </StackPanel>
       </StackPanel>
-      <ListBox ItemsSource="{Binding Issues}">
+      <!-- Only when there are problems: an empty list was a large grey box. -->
+      <ListBox ItemsSource="{Binding Issues}" IsVisible="{Binding !!Issues.Count}">
         <ListBox.ItemTemplate>
           <DataTemplate x:DataType="fx:PatchIssue">
             <Button Classes="link" Command="{Binding $parent[ListBox].((vm:FixtureSetupViewModel)DataContext).SelectIssueCommand}"

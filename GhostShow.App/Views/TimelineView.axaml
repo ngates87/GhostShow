@@ -59,6 +59,29 @@
                    IsVisible="{Binding Tree.Message, Converter={x:Static ObjectConverters.IsNotNull}}" />
         <TextBlock DockPanel.Dock="Bottom" Opacity="0.6" FontSize="11" TextWrapping="Wrap" Margin="2,6,0,0"
                    Text="Double-click to open · F2 rename · drag to move into a folder · files follow on Save" />
+        <!-- What's playing: several timelines can play at once -->
+        <StackPanel DockPanel.Dock="Bottom" Spacing="4" Margin="0,8,0,0" IsVisible="{Binding !!Playback.Running.Count}">
+          <DockPanel>
+            <Button DockPanel.Dock="Right" Content="Stop all" Command="{Binding Playback.StopAllCommand}" Padding="6,1" MinHeight="0" />
+            <TextBlock Text="Playing" FontWeight="SemiBold" VerticalAlignment="Center" />
+          </DockPanel>
+          <ItemsControl ItemsSource="{Binding Playback.Running}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:RunningRowViewModel">
+                <DockPanel Margin="0,1">
+                  <Button DockPanel.Dock="Right" Content="■" Command="{Binding StopCommand}" Padding="6,0" MinHeight="0" ToolTip.Tip="Stop it (it releases its channels)" />
+                  <Button Command="{Binding OpenCommand}" Background="Transparent" Padding="2,0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                          ToolTip.Tip="Open it in the editor">
+                    <StackPanel>
+                      <TextBlock Text="{Binding Name}" FontWeight="{Binding IsFocused, Converter={x:Static vm:Converters.BoldWhen}}" TextTrimming="CharacterEllipsis" />
+                      <TextBlock Text="{Binding Detail}" FontSize="11" Opacity="0.65" />
+                    </StackPanel>
+                  </Button>
+                </DockPanel>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </StackPanel>
         <TreeView x:Name="TimelineTree" ItemsSource="{Binding Tree.Roots}" SelectedItem="{Binding Tree.SelectedNode}"
                   DragDrop.AllowDrop="True" Background="Transparent">
           <TreeView.Styles>
@@ -114,7 +137,35 @@
     <DockPanel DockPanel.Dock="Top" Margin="0,0,0,6">
       <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6" Classes="toolbar"
                   IsVisible="{Binding SelectedTimeline, Converter={x:Static ObjectConverters.IsNotNull}}">
-        <CheckBox Content="Loop" IsChecked="{Binding Loop}" ToolTip.Tip="Start again from the beginning at the end" />
+        <Button ToolTip.Tip="How this timeline plays alongside others: priority, overriding, release">
+          <TextBlock MaxWidth="320" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding PlaybackSummary}"><Run Text="⚙ Playback: " /><Run Text="{Binding PlaybackSummary}" /></TextBlock>
+          <Button.Flyout>
+            <Flyout Placement="BottomEdgeAlignedRight">
+              <StackPanel Spacing="8" Width="340">
+                <TextBlock Text="Playing alongside other timelines" FontWeight="SemiBold" />
+                <TextBlock TextWrapping="Wrap" Opacity="0.75" FontSize="12"
+                           Text="Several timelines can play at once. Where two set the same channel, the higher priority wins (equal: the one started last). A timeline with a higher priority overrides lower ones: only on the channels it uses." />
+                <Grid ColumnDefinitions="*,120" RowDefinitions="Auto,8,Auto,8,Auto,8,Auto,8,Auto">
+                  <TextBlock Text="Priority" VerticalAlignment="Center" />
+                  <NumericUpDown Grid.Column="1" Value="{Binding Priority}" Minimum="-100" Maximum="1000" Increment="1" FormatString="0"
+                                 ToolTip.Tip="0 for ordinary timelines (ambients); e.g. 10 for scares, 100 for an emergency look" />
+                  <TextBlock Grid.Row="2" Text="What it overrides" VerticalAlignment="Center" />
+                  <ToggleSwitch Grid.Row="2" Grid.Column="1" IsChecked="{Binding PauseOverridden}" OnContent="Pauses" OffContent="Keeps running"
+                                ToolTip.Tip="Pauses: lower timelines sharing a channel pause, and resume where they were when this ends. Keeps running: they carry on underneath, out of sight." />
+                  <TextBlock Grid.Row="4" Text="Release fade (s)" VerticalAlignment="Center" />
+                  <NumericUpDown Grid.Row="4" Grid.Column="1" Value="{Binding ReleaseFadeSeconds}" Minimum="0" Increment="0.5" FormatString="0.0#"
+                                 ToolTip.Tip="When it stops, its channels fade back to what's underneath over this time (0: snap)" />
+                  <TextBlock Grid.Row="6" Text="Other sounds while it plays (%)" VerticalAlignment="Center" TextWrapping="Wrap" />
+                  <NumericUpDown Grid.Row="6" Grid.Column="1" Value="{Binding DuckPercent}" Minimum="0" Maximum="100" Increment="5" FormatString="0"
+                                 ToolTip.Tip="Lower-priority timelines' sounds play at this volume while this one plays (100: untouched)" />
+                  <TextBlock Grid.Row="8" Text="At the end" VerticalAlignment="Center" />
+                  <ToggleSwitch Grid.Row="8" Grid.Column="1" IsChecked="{Binding ReleaseAtEnd}" OnContent="Releases" OffContent="Holds"
+                                ToolTip.Tip="Releases: lets go of its channels when it ends (not looping), so what's underneath comes back. Holds: keeps its final look." />
+                </Grid>
+              </StackPanel>
+            </Flyout>
+          </Button.Flyout>
+        </Button>
         <TextBlock Text="Length (s)" Classes="label" Margin="8,0,0,0" />
         <NumericUpDown Value="{Binding LengthSeconds}" Minimum="0" Increment="1" FormatString="0.##" Width="120"
                        ToolTip.Tip="0 = until the last event ends" />
@@ -145,26 +196,37 @@
           <MenuFlyout>
             <MenuItem Header="Lighting track" Command="{Binding AddTrackCommand}" CommandParameter="{x:Static tl:TrackKind.Lighting}" />
             <MenuItem Header="Audio track" Command="{Binding AddTrackCommand}" CommandParameter="{x:Static tl:TrackKind.Audio}" />
-            <MenuItem Header="Marker track" Command="{Binding AddTrackCommand}" CommandParameter="{x:Static tl:TrackKind.Markers}" />
           </MenuFlyout>
         </Button.Flyout>
       </Button>
-      <Button Content="Remove track" Command="{Binding RemoveTrackCommand}" />
-      <Button Content="↑" Command="{Binding MoveTrackUpCommand}" ToolTip.Tip="Move track up" />
-      <Button Content="↓" Command="{Binding MoveTrackDownCommand}" ToolTip.Tip="Move track down (lower tracks win ties)" />
+      <Button Command="{Binding AddEventCommand}" MinWidth="90"
+              ToolTip.Tip="Add to the selected track at the playhead (or double-click a row, or right-click → Add here)">
+        <TextBlock Text="{Binding AddLabel}" />
+      </Button>
       <Border Classes="separator" />
-      <Button Content="Add event" Command="{Binding AddEventCommand}" ToolTip.Tip="Add an event to the selected track at the playhead (or double-click a lane)" />
-      <Button Content="Duplicate" Command="{Binding DuplicateCommand}" ToolTip.Tip="Ctrl+D" />
-      <Button Content="Copy" Command="{Binding CopyCommand}" ToolTip.Tip="Ctrl+C" />
-      <Button Content="Paste" Command="{Binding PasteCommand}" ToolTip.Tip="Ctrl+V: at the playhead" />
-      <Button Content="Delete" Command="{Binding DeleteCommand}" ToolTip.Tip="Delete" />
+      <Button Classes="icon" Command="{Binding OpenEnvelopesCommand}"
+              ToolTip.Tip="Envelope Editor: edit the selected lighting clip's envelopes (or double-click the clip)">
+        <StackPanel Orientation="Horizontal" Spacing="5"><PathIcon Data="{StaticResource Icon.Envelope}" /><TextBlock Text="Envelopes" /></StackPanel>
+      </Button>
+      <Button Classes="icon" Command="{Binding SplitCommand}" ToolTip.Tip="Split the selected clips (or the selected track's) at the playhead">
+        <PathIcon Data="{StaticResource Icon.Split}" />
+      </Button>
+      <Button Classes="icon" Command="{Binding LockCommand}" ToolTip.Tip="Lock or unlock the selected clips (locked clips can't be moved or edited)">
+        <PathIcon Data="{StaticResource Icon.Lock}" />
+      </Button>
+      <Button Classes="icon" Command="{Binding LinkClipsCommand}" IsEnabled="{Binding CanLink}" ToolTip.Tip="Link the selected clips: they move together">
+        <PathIcon Data="{StaticResource Icon.Link}" />
+      </Button>
+      <Button Classes="icon" Command="{Binding UnlinkClipsCommand}" IsEnabled="{Binding CanUnlink}" ToolTip.Tip="Unlink the selected clips">
+        <PathIcon Data="{StaticResource Icon.Unlink}" />
+      </Button>
       <Border Classes="separator" />
-      <Button Content="↶" Command="{Binding UndoCommand}" ToolTip.Tip="{Binding UndoLabel}" />
-      <Button Content="↷" Command="{Binding RedoCommand}" ToolTip.Tip="{Binding RedoLabel}" />
+      <Button Classes="icon" Command="{Binding UndoCommand}" ToolTip.Tip="{Binding UndoLabel}"><PathIcon Data="{StaticResource Icon.Undo}" /></Button>
+      <Button Classes="icon" Command="{Binding RedoCommand}" ToolTip.Tip="{Binding RedoLabel}"><PathIcon Data="{StaticResource Icon.Redo}" /></Button>
       <Border Classes="separator" />
-      <Button Content="−" Command="{Binding ZoomOutCommand}" ToolTip.Tip="Zoom out (Ctrl+wheel)" />
-      <Button Content="+" Command="{Binding ZoomInCommand}" ToolTip.Tip="Zoom in (Ctrl+wheel)" />
-      <Button Content="Fit" Click="OnZoomToFit" ToolTip.Tip="Show the whole timeline" />
+      <Button Classes="icon" Command="{Binding ZoomOutCommand}" ToolTip.Tip="Zoom out (Ctrl+wheel)"><PathIcon Data="{StaticResource Icon.ZoomOut}" /></Button>
+      <Button Classes="icon" Command="{Binding ZoomInCommand}" ToolTip.Tip="Zoom in (Ctrl+wheel)"><PathIcon Data="{StaticResource Icon.ZoomIn}" /></Button>
+      <Button Classes="icon" Click="OnZoomToFit" ToolTip.Tip="Show the whole timeline"><PathIcon Data="{StaticResource Icon.Fit}" /></Button>
       <TextBlock Text="Snap" Classes="label" Margin="8,0,0,0" />
       <ComboBox ItemsSource="{x:Static vm:TimelineEditorViewModel.SnapOptions}" SelectedItem="{Binding Snap}" MinWidth="90" />
     </StackPanel>
@@ -181,19 +243,39 @@
         </ItemsControl>
       </ScrollViewer>
     </Border>
-    <DockPanel DockPanel.Dock="Bottom" Margin="0,6,0,0">
-      <TextBlock DockPanel.Dock="Right" Text="{Binding Playback.LastMarker, StringFormat='Last marker: {0}'}" Opacity="0.75"
-                 IsVisible="{Binding Playback.LastMarker, Converter={x:Static ObjectConverters.IsNotNull}}" />
-      <TextBlock Text="{Binding SelectionLabel}" Opacity="0.75" />
+    <!-- The transport, under the timeline (VenueMagic's place for it) -->
+    <DockPanel DockPanel.Dock="Bottom" Margin="0,6,0,0" IsVisible="{Binding SelectedTimeline, Converter={x:Static ObjectConverters.IsNotNull}}">
+      <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Spacing="4" Margin="0,0,16,0">
+        <Button Classes="icon" Command="{Binding Playback.ToStartCommand}" ToolTip.Tip="Back to the start (Home)">
+          <PathIcon Data="{StaticResource Icon.ToStart}" />
+        </Button>
+        <Button Classes="icon" Command="{Binding Playback.PlayPauseCommand}" ToolTip.Tip="Play or pause (Space)" Padding="12,5">
+          <Panel>
+            <PathIcon Data="{StaticResource Icon.Play}" IsVisible="{Binding !Playback.IsPlaying}" />
+            <PathIcon Data="{StaticResource Icon.Pause}" IsVisible="{Binding Playback.IsPlaying}" />
+          </Panel>
+        </Button>
+        <Button Classes="icon" Command="{Binding Playback.StopCommand}" ToolTip.Tip="Stop: audio stops and the lights go back to their manual levels">
+          <PathIcon Data="{StaticResource Icon.Stop}" />
+        </Button>
+        <ToggleButton Classes="icon" IsChecked="{Binding Loop}" ToolTip.Tip="Loop: start again from the beginning at the end">
+          <PathIcon Data="{StaticResource Icon.Loop}" />
+        </ToggleButton>
+        <StackPanel VerticalAlignment="Center" Margin="10,0,0,0">
+          <TextBlock Text="{Binding Playback.TimeLabel}" FontFamily="monospace" FontSize="15" />
+          <TextBlock Text="{Binding Playback.StateLabel}" FontSize="11" Opacity="0.7" />
+        </StackPanel>
+      </StackPanel>
+      <TextBlock Text="{Binding SelectionLabel}" Opacity="0.75" IsVisible="{Binding !ShowPropertiesHint}" VerticalAlignment="Center" />
+      <TextBlock Opacity="0.6" IsVisible="{Binding ShowPropertiesHint}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
+                 Text="Double-click a row to add a clip · drag to move · drag edges to resize · double-click a lighting clip to edit its envelopes · ▸ shows them on the track" />
     </DockPanel>
 
     <!-- The properties panel: the channel picker while it's open, else the selected point or event -->
-    <Border DockPanel.Dock="Right" Width="320" Margin="8,0,0,0" Classes="card">
+    <!-- Only there while something is selected (or the channel picker is open), so the lanes get the room otherwise. -->
+    <Border DockPanel.Dock="Right" Width="320" Margin="8,0,0,0" Classes="card" IsVisible="{Binding !ShowPropertiesHint}">
       <ScrollViewer>
         <Panel>
-          <TextBlock TextWrapping="Wrap" Opacity="0.7" IsVisible="{Binding ShowPropertiesHint}"
-                     Text="Select an event or a point to edit it here.&#10;&#10;Lighting: right-click a lighting track → Channels… to choose what it controls. Expand the track (▸) and double-click a channel's row to add a point; drag points to move them (time and level); right-click a point to make it a step or delete it.&#10;&#10;Audio and markers: double-click a lane to add one; drag to move; drag an audio block's right edge to change its length." />
-
           <!-- Channels for a lighting track -->
           <ContentControl Content="{Binding ChannelPicker}">
             <ContentControl.ContentTemplate>
@@ -217,8 +299,11 @@
                     <Button Content="OK" Command="{Binding OkCommand}" Classes="accent" MinWidth="70" />
                   </StackPanel>
                   <StackPanel Spacing="4">
-                    <TextBlock Text="No fixtures are patched yet (Lighting → Fixtures). Raw DMX channels work without them."
-                               Opacity="0.7" TextWrapping="Wrap" IsVisible="{Binding !HasFixtures}" />
+                    <StackPanel Spacing="6" IsVisible="{Binding !HasFixtures}">
+                      <TextBlock Text="No fixtures are patched yet. Patch them first, or use raw DMX channels below."
+                                 Opacity="0.8" TextWrapping="Wrap" />
+                      <Button Content="Patch fixtures →" Command="{Binding PatchFixturesCommand}" />
+                    </StackPanel>
                     <ItemsControl ItemsSource="{Binding Fixtures}">
                       <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="vm:FixtureChoiceViewModel">
@@ -272,24 +357,73 @@
             </ContentControl.ContentTemplate>
           </ContentControl>
 
-          <!-- A point on a lighting channel -->
+          <!-- A track's properties -->
+          <ContentControl Content="{Binding TrackProperties}" IsVisible="{Binding ChannelPicker, Converter={x:Static ObjectConverters.IsNull}}">
+            <ContentControl.ContentTemplate>
+              <DataTemplate x:DataType="vm:TrackPropertiesViewModel">
+                <StackPanel Spacing="6">
+                  <DockPanel>
+                    <Button DockPanel.Dock="Right" Content="×" Command="{Binding CloseCommand}" Padding="6,0" MinHeight="0" Background="Transparent" ToolTip.Tip="Close" />
+                    <TextBlock Text="{Binding Heading}" Classes="heading" />
+                  </DockPanel>
+                  <TextBlock Text="Name" Classes="label" />
+                  <TextBox Text="{Binding Name}" />
+                  <StackPanel Spacing="6" IsVisible="{Binding IsLighting}">
+                    <CheckBox Content="Draw levels between clips" IsChecked="{Binding DrawLevelsBetweenClips}"
+                              ToolTip.Tip="Expanded, each channel's held level is drawn as a line between clips" />
+                    <DockPanel Margin="0,8,0,0">
+                      <Button DockPanel.Dock="Right" Content="Channels…" Command="{Binding EditChannelsCommand}" Padding="6,1" MinHeight="0" />
+                      <TextBlock Text="Starting levels" FontWeight="SemiBold" VerticalAlignment="Center" />
+                    </DockPanel>
+                    <TextBlock TextWrapping="Wrap" Opacity="0.7" FontSize="12"
+                               Text="Where each channel is before its first clip. The first clip's envelope starts there; every later clip starts where the one before left the channel." />
+                    <TextBlock Text="No channels yet." Opacity="0.7" IsVisible="{Binding !HasChannels}" />
+                    <ItemsControl ItemsSource="{Binding Channels}">
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:ChannelStartViewModel">
+                          <StackPanel Spacing="4" Margin="0,6,0,0">
+                            <DockPanel>
+                              <Border DockPanel.Dock="Left" Width="10" Height="10" CornerRadius="5" Background="{Binding Color}" Margin="0,0,6,0" VerticalAlignment="Center" />
+                              <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Label}" />
+                            </DockPanel>
+                            <ComboBox ItemsSource="{x:Static vm:ChannelStartViewModel.Sources}" SelectedIndex="{Binding SourceIndex}" HorizontalAlignment="Stretch"
+                                      ToolTip.Tip="Start of the first clip: the timeline leaves the channel alone until then. Fixed level: held at the level from the timeline's start." />
+                            <Grid ColumnDefinitions="Auto,*">
+                              <TextBlock Text="Level (%)" Classes="label" Margin="0,0,8,0" />
+                              <NumericUpDown Grid.Column="1" Value="{Binding Percent}" Minimum="0" Maximum="100" Increment="5" FormatString="0.#"
+                                             ToolTip.Tip="The starting level" />
+                            </Grid>
+                          </StackPanel>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </StackPanel>
+                </StackPanel>
+              </DataTemplate>
+            </ContentControl.ContentTemplate>
+          </ContentControl>
+
+          <!-- An envelope handle -->
           <ContentControl Content="{Binding PointProperties}" IsVisible="{Binding ChannelPicker, Converter={x:Static ObjectConverters.IsNull}}">
             <ContentControl.ContentTemplate>
               <DataTemplate x:DataType="vm:PointPropertiesViewModel">
                 <StackPanel Spacing="6">
-                  <TextBlock Text="Point" Classes="heading" />
+                  <TextBlock Text="{Binding Heading}" Classes="heading" />
                   <TextBlock Text="{Binding Channel}" Opacity="0.75" TextWrapping="Wrap" />
-                  <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,6,Auto,6,Auto" Margin="0,4,0,0">
+                  <TextBlock Text="{Binding ClipName, StringFormat='in {0}'}" Opacity="0.6" FontSize="12" />
+                  <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,6,Auto,6,Auto,6,Auto" Margin="0,4,0,0" IsEnabled="{Binding CanEdit}">
                     <TextBlock Text="Time (s)" Classes="label" Margin="0,0,8,0" />
-                    <NumericUpDown Grid.Column="1" Value="{Binding TimeSeconds}" Minimum="0" Increment="0.1" FormatString="0.00#" />
+                    <NumericUpDown Grid.Column="1" Value="{Binding TimeSeconds}" Minimum="0" Increment="0.1" FormatString="0.00#" IsEnabled="{Binding CanEditTime}"
+                                   ToolTip.Tip="On the timeline. A handle stays between its neighbours; an end handle stays at the clip's end." />
                     <TextBlock Grid.Row="2" Text="Level (%)" Classes="label" Margin="0,0,8,0" />
                     <NumericUpDown Grid.Row="2" Grid.Column="1" Value="{Binding Percent}" Minimum="0" Maximum="100" Increment="5" FormatString="0.#" />
                     <TextBlock Grid.Row="4" Text="DMX (0–255)" Classes="label" Margin="0,0,8,0" />
                     <NumericUpDown Grid.Row="4" Grid.Column="1" Value="{Binding Dmx}" Minimum="0" Maximum="255" Increment="5" FormatString="0" />
+                    <TextBlock Grid.Row="6" Text="Curve" Classes="label" Margin="0,0,8,0" />
+                    <ComboBox Grid.Row="6" Grid.Column="1" ItemsSource="{x:Static vm:PointPropertiesViewModel.Curves}" SelectedItem="{Binding Curve}" HorizontalAlignment="Stretch"
+                              ToolTip.Tip="How the level gets here from the previous handle: Linear fades, Step holds then jumps, Spline curves smoothly" />
                   </Grid>
-                  <CheckBox Content="Step (jump here instead of fading)" IsChecked="{Binding Step}"
-                            ToolTip.Tip="Unchecked: the level fades from the previous point to this one. Checked: it holds, then jumps here." />
-                  <Button Content="Delete point" Command="{Binding DeleteCommand}" />
+                  <Button Content="Delete handle" Command="{Binding DeleteCommand}" IsEnabled="{Binding CanDelete}" />
                 </StackPanel>
               </DataTemplate>
             </ContentControl.ContentTemplate>
@@ -302,21 +436,25 @@
                   <TextBlock Text="{Binding Kind}" Classes="heading" />
                   <TextBlock Text="Name" Classes="label" />
                   <TextBox Text="{Binding Name}" PlaceholderText="(automatic)" />
-                  <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto" Margin="0,4,0,0">
+                  <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto" Margin="0,4,0,0" IsEnabled="{Binding IsUnlocked}">
                     <TextBlock Text="Starts at (s)" Classes="label" Margin="0,0,8,0" />
                     <NumericUpDown Grid.Column="1" Value="{Binding StartSeconds}" Minimum="0" Increment="0.1" FormatString="0.00#" />
                   </Grid>
-                  <CheckBox Content="Enabled" IsChecked="{Binding Enabled}" />
+                  <CheckBox Content="Enable playback" IsChecked="{Binding Enabled}" />
+                  <CheckBox Content="Lock clip" IsChecked="{Binding Locked}"
+                            ToolTip.Tip="A locked clip can't be moved, resized, split, deleted or edited" />
 
-                  <!-- Lighting block -->
-                  <StackPanel Spacing="6" IsVisible="{Binding IsLightingBlock}">
-                    <Grid ColumnDefinitions="Auto,*">
+                  <!-- Level Control (lighting) clip -->
+                  <StackPanel Spacing="6" IsVisible="{Binding IsLightingClip}">
+                    <Grid ColumnDefinitions="Auto,*" IsEnabled="{Binding IsUnlocked}">
                       <TextBlock Text="Length (s)" Classes="label" Margin="0,0,8,0" />
-                      <NumericUpDown Grid.Column="1" Value="{Binding BlockLengthSeconds}" Minimum="0.05" Increment="0.5" FormatString="0.00#"
-                                     ToolTip.Tip="Changing the length stretches the block's lines to fit (as dragging its edge does)" />
+                      <NumericUpDown Grid.Column="1" Value="{Binding ClipLengthSeconds}" Minimum="0.05" Increment="0.5" FormatString="0.00#"
+                                     ToolTip.Tip="Changing the length scales or crops the envelopes (as dragging the clip's edge does)" />
                     </Grid>
+                    <CheckBox Content="Scale envelopes on resize" IsChecked="{Binding ScaleOnResize}"
+                              ToolTip.Tip="On: resizing the clip scales its envelopes with it. Off: resizing crops them (handles keep their times)." />
                     <TextBlock TextWrapping="Wrap" Opacity="0.7"
-                               Text="Expand the track (▸) to edit the block's lines: double-click a channel's row to add a point. Drag the block to move it with its lines; drag an edge to stretch it." />
+                               Text="Double-click the clip (or Envelopes…) to edit its envelopes in the Envelope Editor. Expand the track (▸) to see them on the timeline, where you can also drag handles or right-click the clip → Add Envelope Handle. Each envelope starts where the previous clip left the channel." />
                   </StackPanel>
 
                   <!-- Audio -->
@@ -361,40 +499,54 @@
     <Border Classes="card" Padding="0" IsVisible="{Binding SelectedTimeline, Converter={x:Static ObjectConverters.IsNotNull}}">
       <ScrollViewer HorizontalScrollBarVisibility="Disabled">
         <Grid ColumnDefinitions="180,*">
-          <ListBox Classes="tracks" ItemsSource="{Binding Tracks}" SelectedItem="{Binding SelectedTrack}"
+          <ListBox x:Name="TrackHeaders" Classes="tracks" ItemsSource="{Binding Tracks}" SelectedItem="{Binding SelectedTrack}"
                    Margin="0,26,0,0" Background="Transparent">
             <ListBox.ItemTemplate>
               <DataTemplate x:DataType="vm:TrackRowViewModel">
-                <!-- Same heights as the canvas rows (TimelineEditorViewModel.TrackRowHeight / LaneRowHeight). -->
-                <Grid RowDefinitions="46,*" Height="{Binding Height}" Background="Transparent">
-                  <Grid.ContextMenu>
+                <!-- Same height as the canvas row (TimelineEditorViewModel.HeightOf). -->
+                <DockPanel Height="{Binding Height}" Background="Transparent" ClipToBounds="True">
+                  <DockPanel.ContextMenu>
                     <ContextMenu>
                       <MenuItem Header="Channels…" Command="{Binding EditChannelsCommand}" IsVisible="{Binding IsLighting}" />
                       <MenuItem Header="{Binding ExpandGlyph, StringFormat='{}{0} Expand / collapse'}" Command="{Binding ToggleExpandedCommand}" IsVisible="{Binding IsLighting}" />
+                      <MenuItem Header="Properties…" Command="{Binding EditPropertiesCommand}" />
+                      <Separator />
+                      <MenuItem Header="Rename" InputGesture="F2" Command="{Binding StartRenameCommand}" />
+                      <MenuItem Header="{Binding MuteLabel}" Command="{Binding ToggleMuteCommand}" />
+                      <MenuItem Header="Move up" Command="{Binding MoveUpCommand}" />
+                      <MenuItem Header="Move down" Command="{Binding MoveDownCommand}" ToolTip.Tip="Lower tracks win ties" />
+                      <Separator />
+                      <MenuItem Header="Remove track" Command="{Binding RemoveCommand}" />
                     </ContextMenu>
-                  </Grid.ContextMenu>
-                  <DockPanel VerticalAlignment="Center">
+                  </DockPanel.ContextMenu>
+                  <DockPanel DockPanel.Dock="Top" Height="{x:Static vm:TimelineEditorViewModel.CollapsedTrackHeight}">
                     <Button DockPanel.Dock="Left" Content="{Binding ExpandGlyph}" Command="{Binding ToggleExpandedCommand}" IsVisible="{Binding IsLighting}"
-                            Padding="3,0" MinHeight="0" MinWidth="0" Background="Transparent" ToolTip.Tip="Show each channel on its own row (to edit points)" />
-                    <CheckBox DockPanel.Dock="Right" IsChecked="{Binding Enabled}" ToolTip.Tip="Unchecked: the track is muted (not played)" MinWidth="0" />
-                    <StackPanel>
-                      <TextBox Text="{Binding Name}" Padding="4,2" MinHeight="0" FontSize="12" Background="Transparent" BorderThickness="0" />
-                      <TextBlock Text="{Binding KindLabel}" FontSize="10" Opacity="0.6" Margin="4,0,0,0" IsVisible="{Binding !IsLighting}" />
-                      <TextBlock Text="{Binding ChannelSummary}" FontSize="10" Opacity="0.6" Margin="4,0,0,0" IsVisible="{Binding IsLighting}"
-                                 TextTrimming="CharacterEllipsis" />
-                    </StackPanel>
+                            Padding="3,0" MinHeight="0" MinWidth="0" Background="Transparent" VerticalAlignment="Center"
+                            ToolTip.Tip="Expand: show each clip's envelopes (to edit them)" />
+                    <CheckBox DockPanel.Dock="Right" IsChecked="{Binding Enabled}" ToolTip.Tip="Unchecked: the track is muted (not played)" MinWidth="0" VerticalAlignment="Center" />
+                    <Button DockPanel.Dock="Right" Content="⚙" Command="{Binding EditChannelsCommand}" IsVisible="{Binding IsLighting}" VerticalAlignment="Center"
+                            Padding="4,0" MinHeight="0" MinWidth="0" Background="Transparent" ToolTip.Tip="Channels this track controls…" />
+                    <!-- The name: double-click or F2 to rename (a plain text box here was too easy to edit by accident). -->
+                    <Panel VerticalAlignment="Center">
+                      <TextBlock Classes="trackName" Text="{Binding Name}" Padding="4,2" FontSize="12" IsVisible="{Binding !IsRenaming}"
+                                 TextTrimming="CharacterEllipsis" Background="Transparent" />
+                      <TextBox Classes="trackRename" Text="{Binding EditName}" Padding="4,1" MinHeight="0" FontSize="12" IsVisible="{Binding IsRenaming}" />
+                    </Panel>
                   </DockPanel>
-                  <ItemsControl Grid.Row="1" ItemsSource="{Binding Lanes}" IsVisible="{Binding IsExpanded}">
+                  <TextBlock DockPanel.Dock="Top" Text="{Binding Subtitle}" FontSize="10" Opacity="0.6" Margin="22,-6,0,2"
+                             IsVisible="{Binding ShowSubtitle}" TextTrimming="CharacterEllipsis" />
+                  <!-- Expanded: which colour is which channel -->
+                  <ItemsControl ItemsSource="{Binding Lanes}" IsVisible="{Binding IsExpanded}" Margin="22,0,0,0">
                     <ItemsControl.ItemTemplate>
                       <DataTemplate x:DataType="vm:LaneRowViewModel">
-                        <DockPanel Height="40" Margin="14,0,0,0">
-                          <Border DockPanel.Dock="Left" Width="10" Height="10" CornerRadius="5" Background="{Binding Color}" Margin="0,0,6,0" VerticalAlignment="Center" />
-                          <TextBlock Text="{Binding Label}" FontSize="11" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Label}" />
+                        <DockPanel Height="16">
+                          <Border DockPanel.Dock="Left" Width="8" Height="8" CornerRadius="4" Background="{Binding Color}" Margin="0,0,5,0" VerticalAlignment="Center" />
+                          <TextBlock Text="{Binding Label}" FontSize="10" Opacity="0.85" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Label}" />
                         </DockPanel>
                       </DataTemplate>
                     </ItemsControl.ItemTemplate>
                   </ItemsControl>
-                </Grid>
+                </DockPanel>
               </DataTemplate>
             </ListBox.ItemTemplate>
           </ListBox>

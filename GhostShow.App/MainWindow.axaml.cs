@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using GhostShow.App.Dialogs;
 using GhostShow.App.ViewModels;
@@ -14,6 +15,15 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         Closing += OnClosing;
+        // Space plays and pauses on every screen (as on show consoles), except while typing in a field. Tunnel, so a
+        // focused button doesn't take Space as a click first.
+        AddHandler(KeyDownEvent, (_, e) =>
+        {
+            if (e.Key != Key.Space || e.KeyModifiers != KeyModifiers.None || DataContext is not MainViewModel { IsShowOpen: true } viewModel) return;
+            if (FocusManager?.GetFocusedElement() is TextBox) return;
+            viewModel.Playback.PlayPauseCommand.Execute(null);
+            e.Handled = true;
+        }, Avalonia.Interactivity.RoutingStrategies.Tunnel);
         DataContextChanged += (_, _) =>
         {
             if (DataContext is MainViewModel viewModel) viewModel.ExitRequested += Close;

@@ -71,6 +71,12 @@ public sealed partial class MainViewModel : ObservableObject
         Diagnostics = new DiagnosticsViewModel(services, Playback);
         Timeline = new TimelineEditorViewModel(session, Playback, PickAudioFileAsync, MarkDirty);
         Audio = new AudioViewModel(services.Audio, session, settings, SaveSettingsAsync);
+        Guide = new SetupGuideViewModel(session, settings, page => CurrentPage = page, () =>
+        {
+            CurrentPage = Page.Timeline;
+            if (Timeline.Tracks.FirstOrDefault(t => t.IsLighting) is { } lighting) Timeline.EditChannels(lighting);
+        });
+        Timeline.ShowFixtures = () => CurrentPage = Page.Fixtures;
 
         _unsavedChanges = new UnsavedChangesGuard(() => IsDirty, () => ShowName, Save, savePrompt);
         _tick = new DispatcherTimer(TickInterval, DispatcherPriority.Background, (_, _) => Tick());
@@ -88,6 +94,7 @@ public sealed partial class MainViewModel : ObservableObject
     public PlaybackViewModel Playback { get; }
     public TimelineEditorViewModel Timeline { get; }
     public AudioViewModel Audio { get; }
+    public SetupGuideViewModel Guide { get; }
     public ProfileLibraryViewModel Library { get; }
     public OutputsViewModel Outputs { get; }
     public FixtureSetupViewModel Fixtures { get; }
@@ -238,6 +245,8 @@ public sealed partial class MainViewModel : ObservableObject
     {
         if (CurrentPage == Page.DmxSetup) _ = Outputs.WatchAdaptersAsync();   // scan as soon as the screen opens
         if (CurrentPage == Page.Home) RefreshRecentShows();   // a recent show may have been moved or reconnected since
+        Guide.OnTimeline = CurrentPage == Page.Timeline;
+        Guide.Refresh();
         if (CurrentPage == Page.Audio)
         {
             _ = Audio.RefreshDevicesCommand.ExecuteAsync(null);
@@ -270,7 +279,7 @@ public sealed partial class MainViewModel : ObservableObject
         _tick.Stop();
         // Order matters: stop the show (audio stops, timeline releases the lights), stop the playback thread, close
         // audio, then stop DMX outputs, which send their blackout last.
-        _services.Player.Stop();
+        _services.Playback.StopAllNow();
         await Task.Delay(PlaybackLoop.Interval * 3);
         _services.PlaybackLoop.Stop(TimeSpan.FromSeconds(2));
         _services.Audio.Dispose();
@@ -281,7 +290,7 @@ public sealed partial class MainViewModel : ObservableObject
     [RelayCommand]
     void Blackout()
     {
-        _services.Player.Stop();   // otherwise the timeline would put its levels straight back
+        _services.Playback.StopAllNow();   // otherwise the timelines would put their levels straight back
         _session.Engine.Blackout();
         StatusMessage = "Blackout: playback stopped and every manual level set to 0.";
     }
@@ -437,7 +446,9 @@ public sealed partial class MainViewModel : ObservableObject
         IsDirty = false;
         Fixtures.Reload();
         Outputs.Reload();
-        Timeline.Reload();   // loads the new show's first timeline into the player (stopping the old one)
+        Playback.Reset();    // the old show's timelines stop at once
+        Timeline.Reload();   // focuses the new show's first timeline
+        Guide.Reset();
         await Outputs.ApplyOutputsAsync();
         OnPropertyChanged(nameof(Title));
         OnPropertyChanged(nameof(ShowFile));
@@ -490,6 +501,7 @@ public sealed partial class MainViewModel : ObservableObject
         if (CurrentPage == Page.Diagnostics) Diagnostics.Tick();
         if (CurrentPage == Page.Audio) Audio.Tick();
         RefreshWarnings();
+        Guide.Refresh();
     }
 
     void RefreshWarnings()

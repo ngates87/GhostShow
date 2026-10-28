@@ -24,7 +24,7 @@ results conservative.
 | Saving doesn't block output | 360 saves during each soak, no effect on frame timing; JSON is built on the caller's thread, the write is async and atomic | yes |
 | Timeline playback: every update far below its 10 ms interval | Evaluating 10,000 events: 45 µs per update, no allocation. Longest single update in the 30 min playback soak: 6.7 ms (opening a sound file) | yes |
 | Show clock doesn't drift | Position derives from a monotonic clock, never accumulated; worst difference from wall time over 30 min of playback with 899 live edits: 0.16 ms | yes |
-| Markers and sounds happen exactly once | 30 min soak: 360/360 markers, 120/120 sound starts | yes |
+| Sounds happen exactly once | 30 min soak: 120/120 sound starts (and 360/360 markers, before markers were removed) | yes |
 | Editing while playing stays responsive | Recompile on every edit: 52 µs (100 events), 10 ms (10,000). UI thread wait while playing 2,000 events and editing every 2 s: p95 0.2–0.6 ms, max 46.5 ms after startup | yes |
 | Large shows open and save quickly | 10,000 events (8.7 MB of JSON): open 84 ms, save 30 ms | yes |
 | Shutdown within a defined timeout | Each output sends 0.5 s of blackout, then disconnects; `StopAsync` gives up after 3 s and logs it if a driver hangs (tested). Every soak run stopped cleanly | yes |
@@ -107,7 +107,8 @@ serial writer.
 `ghostshow soak-playback --minutes 30`. Full report: [results/soak-playback-30min.md](results/soak-playback-30min.md).
 
 **Load:** 20 RGBW fixtures; a 60 s looping timeline with 2,000 lighting events (0–5 s fades), 4 sounds per loop
-(WAVs at 44.1 kHz mono and 48 kHz stereo, decoded and mixed on the audio null device) and a marker every 5 s. Every
+(WAVs at 44.1 kHz mono and 48 kHz stereo, decoded and mixed on the audio null device) and, in these runs, a
+marker every 5 s (markers have since been removed; the test no longer counts them). Every
 2 s one event is moved and its fade changed, and the timeline is recompiled and swapped in while playing (899 edits).
 DMX goes to the simulator.
 
@@ -121,6 +122,11 @@ DMX goes to the simulator.
 | Playback errors | 0 |
 | DMX frames | 40.0/s, interval p95 25.1 / max 49.6 ms, 0 errors |
 | Heap after full GC, start → end | 1.2 → 1.5 MB |
+
+**Re-run with lighting as blocks** (2026-10-27 15:13, the report linked above; the timeline's 2,000 lighting events
+converted to blocks, a point moved every 2 s): 360/360 markers, 120/120 sound starts, clock within 0.14 ms, longest
+update 8.0 ms, heap 1.3 → 1.4 MB. The worst update interval (64 ms) and DMX frame interval (65 ms) happened while
+builds and test runs were using the same machine; p95 stayed at 10.1 ms and 25.1 ms.
 
 **What the first run found.** The first 30-minute run reported 359 of 360 markers and 121 of 120 sound starts.
 Both were races with live edits: swapping in an edited timeline was treated like a seek, so a marker crossed on that
@@ -173,7 +179,26 @@ Timeline screen (playhead moving, lanes scrolling to follow it) while an event i
 | First 30 s (startup, building the test show, first layout of the Timeline screen) | 0.1 / 0.2 / 91.8 ms |
 | Each later 60 s window | 0.1 / 0.2–0.6 / 16–46 ms |
 
+**Expanded lighting tracks** (envelopes drawn inside clips, every channel overlaid). Whole-window frames in the
+headless renderer (CPU Skia, 1400×820) after a forced redraw of the timeline, median of 15; the window without the
+timeline's drawing costs about 25 ms of each:
+
+| Show | Frame |
+|---|---|
+| 4 tracks × 12 channels × 30 clips (3 handles each, Linear and Spline), all expanded, the whole show in view | 71 ms |
+| The same, zoomed in (70 px/s) | 47 ms |
+| The load test's 2,000 events as 4 tracks of ~196 channels (785 envelopes, 9,876 handles), all expanded | 227 ms |
+| The same, collapsed | 25 ms |
+
+The timeline's own drawing code takes 9–18 ms of that; the rest is rasterising the paths. To keep it down, each
+channel's handles are one shape, colours' pens and brushes are made once, nothing outside the view is drawn in
+detail, and handles that would overlap aren't drawn (selected ones always are). The timeline only redraws on an
+edit, a scroll or a zoom, not as the playhead moves. Not measured with the real window's GPU renderer.
+
 ## Known limitations
+
+- **Very wide lighting tracks are slow to redraw when expanded** (a quarter of a second for ~200 channels on one
+  track, in the headless renderer): every channel is drawn over every clip. Collapsed, they cost nothing extra.
 
 - **Only Linux measured.** Windows' default timer resolution (~15.6 ms) may make the output thread's sleep coarser
   and frame timing less regular; measure with `ghostshow soak` on each new platform before a show.

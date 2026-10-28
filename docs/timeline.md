@@ -1,7 +1,7 @@
 # Timelines and playback
 
 A show has any number of **timelines**, organised in folders. A timeline has **tracks**, and tracks hold **events**
-at times. Playing a timeline drives lighting levels, plays sounds and reports markers, all from one show clock.
+at times. Playing a timeline drives lighting levels and plays sounds, both from one show clock.
 
 ## The show folder
 
@@ -41,15 +41,15 @@ To export or back up a show, copy or zip the whole folder.
 | Thing | Fields | Notes |
 |---|---|---|
 | `ShowTimeline` | Name, Length (optional), Loop, Tracks | No length: the timeline ends when its last event does. Loop: at the end it starts again from 0 |
-| `TimelineTrack` | Name, Kind (Lighting, Audio, Markers), Enabled, Events (blocks), Channels (lighting) | A disabled (muted) track is ignored when playing. Track order matters for ties (below) |
-| `ChannelLane` | Target, Points, Color | On a track: a channel it controls. In a block: that channel's level over the block |
-| `LightingClip` | Start, Length, Name, Lanes | A lighting block: the levels of the track's channels over a stretch of time, as points relative to its start |
+| `TimelineTrack` | Name, Kind (Lighting, Audio), Enabled, Events (clips), Channels (lighting), DrawLevelsBetweenClips | A disabled (muted) track is ignored when playing. Track order matters for ties (below) |
+| `ChannelLane` | Target, Points, Color; on a track also Start (FirstClip or Fixed) and StartLevel | On a track: a channel it controls, and where it is before the first clip. In a clip: that channel's envelope |
+| `LightingClip` | Start, Length, Name, Lanes, ScaleOnResize | VenueMagic's Level Control clip: an envelope per channel, handles timed from the clip's start (rules below) |
 | `LaneTarget` | A fixture and its control (Intensity, Red, …) or channel number; or a universe and DMX address | Fixture targets follow the fixture when it's re-addressed |
-| `CurvePoint` | Time, Value (0–255), Step | A level at a time. The level fades from the previous point to this one, or, for a step, holds and then jumps here |
+| `CurvePoint` | Time, Value (0–255), Curve (Linear, Step, Spline) | An envelope handle: a level at a time. Curve says how the level gets here from the previous handle |
 | `AudioEvent` | Start, File, Length (optional), Offset, Volume, FadeIn, FadeOut, Loop | Plays from Offset into the file; for Length if set, otherwise to the end of the file (forever, if looping) |
-| `MarkerEvent` | Start, Name | A named point. Reported when playback crosses it |
 
-Every event has an ID, a name (optional; a description is generated when there's none) and Enabled.
+Every event (clip) has an ID, a name (optional; a description is generated when there's none), Enabled, Locked
+(can't be moved, resized, split, deleted or edited) and a link group (linked clips move together).
 Times are stored as `TimeSpan` (100 ns resolution) and shown in seconds.
 
 ## What plays: the rules
@@ -58,11 +58,23 @@ Before playing, a timeline is **compiled** (`TimelineCompiler`): validated, reso
 flattened into sorted per-channel steps (`CompiledTimeline`). Playback then only evaluates the compiled form.
 
 - **A lighting track controls the channels you give it** (right-click the track → Channels…). Their levels are in
-  **blocks** on the track: each block holds a line of points per channel, relative to its start, so moving a block
-  moves its lines and stretching it stretches them. Within a block the level fades in a straight line between
-  points, or holds and jumps at a step point; a block's first point is a jump. Between and after blocks, each channel
-  holds the last level it was given; before its first point anywhere, the timeline leaves it alone (manual control
-  shows).
+  **Level Control clips** on the track, which work as in VenueMagic: a clip has an **envelope** per channel (a
+  channel without one holds its level through the clip), made of **handles** timed from the clip's start, so moving
+  a clip moves its envelopes.
+  - Every envelope starts with a **start handle** at the clip's start whose level is where the previous clip left
+    the channel: clips carry on from each other. The first clip starts from the channel's **starting level** (track
+    properties): with "Start of the first clip" the timeline leaves the channel alone until then; with "Fixed level"
+    it holds the channel at that level from the timeline's start.
+  - Every envelope ends with an **end handle** at the clip's end: its level can change, its time can't. Handles in
+    between can't pass their neighbours.
+  - From one handle to the next the level follows the later handle's **curve**: Linear (a straight fade), Step (hold,
+    then jump) or Spline (a smooth curve through the handles that never overshoots them; played as short fades about
+    40 ms apart).
+  - After a clip each channel holds its end level until the next clip. A clip that starts while another is still
+    playing takes over from its start (carrying on from where that one had got to); a disabled clip is skipped.
+  - Resizing a clip **scales** its envelopes, or with "Scale envelopes on resize" off, **crops** them: made shorter,
+    the handles past the new end go and the end handle takes the level there; made longer, the old end handle stays
+    and a new one holds its level. Splitting a clip gives two that play exactly as the one did.
 - **A fixture channel follows the fixture.** It names the fixture's control or channel, so re-addressing or moving
   a fixture to another universe needs no change to the timeline. A control the fixture's mode doesn't have (e.g.
   Red on a dimmer), or a fixture removed from the show, is reported and skipped.
@@ -98,16 +110,37 @@ of the UI and of the DMX output threads.
   | Pause | Holds the current levels; pauses sounds |
   | Stop | Releases the lights (manual levels return), stops all sounds, returns to 0 |
   | Restart | Plays from 0 |
-  | Seek | Moves anywhere from 0 (also past the end). Levels jump to their values there, mid-fade included; sounds restart at the matching place in the file. Markers jumped over are not reported |
-  | End | Looping: wraps to 0 (sounds restart; markers are reported across the wrap). Not looping: pauses at the end holding the final look |
+  | Seek | Moves anywhere from 0 (also past the end). Levels jump to their values there, mid-fade included; sounds restart at the matching place in the file |
+  | End | Looping: wraps to 0 (sounds restart). Not looping: pauses at the end holding the final look |
 
 - **Sounds are reconciled, not triggered.** Every tick, the player works out which sounds should be playing at the
   current position, at what point in the file and at what volume (fades), and makes the audio output match. So a
   late tick, a seek, pause and resume, an edit, or the audio device coming back after being unplugged are all
   handled the same way, and a sound is never started twice. A sound that fails (missing or undecodable file) is
   not retried until the next seek, stop or loop.
-- **Markers** are reported once when playback crosses them, in order, including on the update that reaches the end
-  and across a loop wrap. The Timeline screen shows the last one.
+
+## Several timelines at once
+
+Any number of timelines can play at the same time: a room's ambient loop, and a scare started on top of it. Each
+has its own transport and position (`PlaybackManager` runs one player per timeline on the playback thread and merges
+them on every update). The toolbar's transport controls the timeline open in the editor; switching tabs doesn't stop
+anything. The **Playing** list (under the timeline tree) shows everything playing or paused, with a Stop button each,
+and **Stop all**; Playback → Stop All Timelines does the same. Blackout, New, Open and closing stop everything at
+once.
+
+Each timeline's **⚙ Playback** settings (next to Loop and Length) say how it plays alongside others:
+
+| Setting | Effect |
+|---|---|
+| Priority | On a channel two timelines set, the higher priority wins; on equal priority, the one started most recently. 0 for ordinary timelines; e.g. 10 for scares, 100 for an emergency look. A timeline overrides lower ones only on the channels it uses |
+| What it overrides: Keeps running / Pauses | Keeps running: lower-priority timelines carry on underneath, out of sight, and are wherever they've got to when this one ends. Pauses: when this starts, lower-priority timelines that share a channel with it pause, and resume from where they were when it ends (timelines on other channels aren't touched) |
+| Release fade | When it stops (or releases at its end), its channels fade from where it left them to whatever is underneath: a lower timeline, or the manual level. 0 snaps back |
+| Other sounds while it plays | Lower-priority timelines' sounds play at this volume (100% = untouched) |
+| At the end: Holds / Releases | Holds: a non-looping timeline keeps its final look. Releases: it lets go at its end, so what's underneath comes back by itself (what an override usually wants) |
+
+A typical haunt room: the ambient loop at priority 0, looping; each scare at priority 10, set to pause what it
+overrides (or keep it running), to release at its end with a 1–2 s release fade, and to duck the ambient's sounds.
+Trigger the scare and the room's ambient comes back on its own when it's done.
 
 ### Editing while playing
 
@@ -144,46 +177,94 @@ same files. The Audio screen lists every sound the show uses and whether it was 
 - **Tabs:** the open timelines. The selected tab is the one edited and the one the transport plays (one at a time,
   for now; switching tabs stops playback). Closing a tab doesn't remove the timeline. Loop and Length (0 = until the
   last event ends) are beside the tabs.
-- **Tracks** on the left: rename, mute (checkbox), add (Lighting, Audio, Marker), remove, reorder.
-- **Lighting tracks:** right-click the track's name → **Channels…** opens a picker in the right-hand panel, with the
+- **Tracks** on the left: rename, mute (checkbox), add (Lighting, Audio), remove, reorder.
+- **Toolbar:** Add track, a **+** button that adds to the selected track (+ Level Control, + Sound…),
+  Split (at the playhead), Lock, Link and Unlink, undo/redo, zoom and snap. Everything else is on right-click menus
+  and the Edit menu.
+- **Track headers:** double-click a name (or F2) to rename it. Right-click for Channels… (lighting), expand,
+  Properties…, rename, mute, move up/down and remove. ⚙ on a lighting track opens its channels. **Properties…**
+  shows the track in the right-hand panel: its name, "Draw levels between clips", and each channel's starting level.
+- **Lighting tracks:** right-click the track's name (or ⚙) → **Channels…** opens a picker in the right-hand panel, with the
   universe's patch map at the top (picked channels outlined in gold; click a fixture on the map to tick all of it):
   tick a fixture for all its channels, or expand it to tick single ones (shown by function: Intensity, Red, …); add
   raw DMX channels (universe, from–to) for anything unpatched. OK applies it as one undoable change; channels that
-  stay keep their points, and a channel taken off the track takes its lines out of every block.
-  - The track's row shows its **blocks**, each with its lines in miniature. Double-click an empty part of the row (or
-    **Add event**) to add a block holding each channel at the level it has there. Drag a block to move it with its
-    lines; drag either edge to **stretch** it (the left edge keeps the end in place); copy, paste, duplicate and
-    delete it like any event. Double-click a block (or **▸**) to expand the track.
-  - Expanded, each channel has its own row, with the blocks shaded: double-click inside a block to add a point to
-    it (time snapped, level where you clicked), or outside to start a new block there; click a point to select it
-    (Ctrl+click adds); drag to move the selected points in time (kept within their block) and level; right-click a
-    point to switch it between fading in and a step (hold, then jump), or delete it.
-  - The properties panel shows the selected block's name, start and length (changing the length stretches it), or
-    the selected point's time on the timeline, level (% and DMX) and step.
-- **Audio and marker tracks:** audio blocks span the time they play, with fades drawn as a volume outline (dashed
-  while the file's length isn't known); markers are flags. Double-click an empty part of the row to add one; drag to
-  move (snapped to the Snap setting); drag an audio block's right edge to change its length, or its left edge to
+  stay keep their envelopes, and a channel taken off the track takes its envelope out of every clip.
+  - **Collapsed**, the track is a row of clips, each showing a preview of its envelopes (lines only), with each
+    channel's held level drawn between them (turn off with "Draw levels between clips" in the track's properties). Double-click an empty part of the row (or **+ Level
+    Control**) to add a clip there; it holds every channel where it is, so it changes nothing until edited. Drag a
+    clip to move it (with the clips linked to it); drag either edge to resize it (the left edge keeps the end in
+    place); copy, paste, duplicate and delete it like any clip. **▸** expands the track; **double-click a clip** (or
+    right-click → Envelope Editor…, or **Envelopes…** on the toolbar) opens the Envelope Editor.
+  - **Expanded**, the track is tall and each clip draws its envelopes inside itself, every channel in its colour
+    (the header lists which colour is which), with the held levels drawn as lines between clips. **Right-click a
+    clip → Add Envelope Handle ▸** a channel to add a handle there, at the envelope's level (nothing changes until
+    you drag it); or **double-click an envelope's line** to add one there (double-clicking elsewhere on the clip
+    opens the Envelope Editor). Click a handle to select it (Ctrl+click adds); drag to move the selected handles in time (not past
+    their neighbours; an end handle only up and down) and level; right-click a handle for its curve (Step, Linear,
+    Spline) or to delete it. Handles are squares, end handles diamonds; a start handle is a ring, or a filled dot on
+    the first clip when the channel starts there, which you can drag up and down to set its starting level.
+  - The **Envelope Editor** is its own window (like VenueMagic's), for editing one clip's envelopes at a good size.
+    On the left, the track's channels by fixture: untick one to hide its envelope (ticking a fixture covers all its
+    channels); click a channel's name to make it the **active channel** (highlighted, drawn on top and thicker;
+    selecting a handle makes its channel active too). The plot shows the clip from 0% to 100% with the timeline's
+    time on its ruler, and, dimmed, what the channels play just before and after it; the playhead shows when it's
+    inside. **Double-click** to add a handle: on a curve, to that channel at the curve's level; anywhere else in the
+    clip, to the active channel right where you clicked (right-click offers the same, and other channels). Click,
+    Ctrl+click or drag a box to select handles; drag them (Shift keeps to one direction; **Lock time** / **Lock level** keep one fixed); right-click one
+    for its curve or Delete. Along the bottom: the selected handle's time, level, DMX and curve, or for several, one
+    curve for them all. ◀ ▶ go to the track's previous and next clip; −, + and Fit zoom (Ctrl+wheel zooms around the
+    pointer, the wheel pans). **Update lamps while editing**: while stopped or paused, selecting or moving a handle
+    puts the playhead there, paused, so the lights show the level. Keys: Delete, arrows (nudge), Ctrl+A (all
+    handles shown), Ctrl+Z / Ctrl+Y, Esc, Space (play/pause). The window follows the timeline: selecting another
+    lighting clip, or a handle in one, shows that clip. Every edit is the same as on the timeline: undoable, and it
+    plays straight away.
+  - Right-click a clip also for Split at playhead, Lock/Unlock, Link/Unlink (with several selected), Duplicate, Copy
+    and Delete. Locked clips show a padlock; linked ones a chain.
+  - The properties panel shows the selected clip's name, start, Enable playback, Lock clip, length and "Scale
+    envelopes on resize"; or the selected handle's time on the timeline, level (% and DMX) and curve.
+- **Audio tracks:** audio clips span the time they play, with fades drawn as a volume outline (dashed while the
+  file's length isn't known). Double-click an empty part of the row to add one; drag to
+  move (snapped to the Snap setting); drag an audio clip's right edge to change its length, or its left edge to
   start later (or earlier) into the file.
+- **Right-click** empty space for Add here and Paste here.
+- **Selecting:** click (Ctrl+click adds); drag on empty space draws a box that selects the clips it touches, or the
+  handles inside it on expanded tracks. **Arrow keys** nudge the selection by one snap step (Shift: finely); Up/Down
+  change selected handles' level.
+- **Snapping:** moving or resizing snaps to the grid, and to the playhead and other clips' edges when within a few
+  pixels (a dashed guide line shows it). A dragged handle's time snaps to the grid.
 - Gold: selected. Dashed red: has a problem (listed below the lanes). Dimmed: disabled or on a muted track. Click or
-  drag on the ruler to move the playhead; Ctrl+wheel zooms around the pointer.
+  drag on the ruler to move the playhead; Ctrl+wheel zooms around the pointer. A timeline zooms to fit when opened.
+- The properties panel appears while something is selected; otherwise a hint line shows what you can do. For a
+  show that isn't set up yet, a **Getting started** card above the editor lists the steps (DMX adapter, fixtures, a
+  lighting track's channels) with buttons to each.
 - **Keys:** Space play/pause · Ctrl+Z undo · Ctrl+Y or Ctrl+Shift+Z redo · Ctrl+C / Ctrl+V copy and paste at the
   playhead · Ctrl+D duplicate · Delete · Ctrl+A select all · Esc clear selection. Keys typed into a text field go to
   the field.
-- **Properties** (right): exact values for the selected event or point, or the channel picker while it's open.
+- **Properties** (right): exact values for the selected clip or handle, a track's properties, or the channel picker
+  while it's open.
 - **Undo/redo:** every edit, up to 500 steps per timeline. Typing into one field becomes one step. Each open
   timeline keeps its own history while its tab is open. Tree changes (rename, move, delete) aren't on the history;
   deleting asks first.
 
-The transport (Play/Pause, Stop, Restart, position) is on the toolbar on every screen.
+The transport is under the timeline, as in VenueMagic: back to the start (Home), play/pause (Space), stop, loop,
+and the position and state. The top bar shows the open timeline's position on every screen, and **Space** plays and
+pauses it from any screen (except while typing in a field); the Playback menu has the same commands.
 
 ## Older shows
 
 Lighting used to be events ("these levels, over this fade"), then for a short while points directly on a track's
-channels. Both are converted when a show is opened (timeline files of versions 1 and 2, and every older show),
-playing exactly as before: a fade becomes a jump to its start level plus a point at its end, an instant change
-becomes a step, an event that cut into an earlier fade ends that fade where it had got to, and each track's points
-go into one block spanning them. Disabled lighting events are dropped. The file is written in the new form
-(version 3) on the next save.
+channels, then clips without envelope rules. All are converted when a show is opened (timeline files of versions 1
+to 3, and every older show), playing as before: a fade becomes a jump to its start level plus a point at its end,
+an instant change becomes a step, an event that cut into an earlier fade ends that fade where it had got to, and
+each track's points go into one clip spanning them. A version 3 clip's first point becomes a step (it was a jump),
+each envelope gets an end handle holding its last level, and points past a clip's end (which never played) go.
+"step": true in a file reads as the Step curve. Two differences: a channel is now controlled from the track's
+first clip (at its starting level, 0 unless set) where it used to be left alone until its own first point, and a
+clip that another one cuts into no longer plays its later points after that one starts. Disabled lighting events are dropped. The file is written in the new form (version 4)
+on the next save.
+
+Marker tracks (named points in time that only showed their name when passed) are gone: a scare is its own
+timeline, started when someone gets there. Older timeline files' marker tracks are dropped when they're opened.
 
 Shows before version 5 were a single `.json` file: version 4 held its timelines inside it; earlier versions stored
 the prototype's "scenes", which are converted when opened (keyframed channel tracks become raw-channel lighting
@@ -192,9 +273,11 @@ events). Either way, saving writes a show folder.
 
 ## Limits (by design, for now)
 
-- One timeline plays at a time (the one selected on the Timeline screen).
-- Fades between points are straight lines (no eased curves yet). No cues/go-lists, timecode or external triggers yet.
-- Copy, paste and duplicate work on blocks and events, not on single points. No box-select of points yet.
-- Block edges snap to the grid, not yet to the playhead or other blocks; no fade handles on blocks yet.
+- No cues/go-lists, timecode or external triggers yet (triggers, to start a scare timeline when someone gets there,
+  come next).
+- Copy, paste and duplicate work on clips, not on single handles.
+- A channel's starting level is fixed or its first clip's; VenueMagic's "current level when the timeline starts" isn't
+  there yet. Nor are the Envelope Editor's Snapshot and RGB/position handles, or fixture effects other than Level Control (see
+  docs/plan-timeline-venuemagic.md).
 - An event can't be dragged to another track (cut and paste instead).
 - Audio events play on the one output device; no per-event routing to other outputs yet.

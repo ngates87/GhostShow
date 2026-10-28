@@ -11,12 +11,10 @@ public class ShowPlayerTests
     readonly ManualClock _clock = new();
     readonly FakeAudioOutput _audio = new();
     readonly ShowPlayer _player;
-    readonly List<string> _markers = [];
 
     public ShowPlayerTests()
     {
         _player = new ShowPlayer(_engine, _audio, _clock);
-        _player.MarkerReached += m => _markers.Add(m.Name);
     }
 
     void Load(params TimelineTrack[] tracks) => _player.Load(Compile(Timeline(tracks)));
@@ -36,11 +34,6 @@ public class ShowPlayerTests
         _engine.TryCopyUniverse(1, frame, out _);
         return frame[address - 1];
     }
-
-    static TimelineTrack Markers(params (double At, string Name)[] markers) => new()
-    {
-        Kind = TrackKind.Markers, Events = [.. markers.Select(m => (TimelineEvent)new MarkerEvent { Name = m.Name, Start = S(m.At) })],
-    };
 
     // ---- transport ----
 
@@ -200,7 +193,7 @@ public class ShowPlayerTests
     [Fact]
     public void Position_does_not_drift_over_many_updates()
     {
-        Load(Lights(Raw(0, 1, to: 1)) , new TimelineTrack { Kind = TrackKind.Markers, Events = [new MarkerEvent { Start = TimeSpan.FromHours(2) }] });
+        Load(Lights(Raw(0, 1, to: 1), Raw(TimeSpan.FromHours(2).TotalSeconds, 1, to: 2)));
         _player.Play();
 
         for (int i = 0; i < 360_000; i++) After(0.01);   // an hour of 10 ms updates
@@ -279,76 +272,5 @@ public class ShowPlayerTests
         Assert.Equal(0, Output(1));
         Assert.Equal(TransportState.Playing, _player.Status.State);
         Assert.Equal(S(1.01), _player.Status.Position);   // an edit doesn't move the playhead
-    }
-
-    // ---- markers ----
-
-    [Fact]
-    public void Markers_are_reported_once_when_crossed_even_by_a_late_update()
-    {
-        Load(Markers((1, "A"), (2, "B"), (2, "C"), (5, "D")));
-        _player.Play();
-        After(0.5);
-
-        After(2);   // late: crosses A, B and C in one update
-        After(0.5);
-        After(0.5);
-
-        Assert.Equal(["A", "B", "C"], _markers);
-    }
-
-    [Fact]
-    public void Seeking_over_markers_does_not_report_them()
-    {
-        Load(Markers((1, "A"), (5, "B")));
-        _player.Play();
-        After(0.1);
-
-        _player.Seek(S(4));
-        After(0.01);
-        After(1);
-
-        Assert.Equal(["B"], _markers);
-    }
-
-    [Fact]
-    public void Markers_are_reported_across_a_loop_wrap()
-    {
-        var timeline = Timeline(Markers((0, "Top"), (9, "Near end")));
-        timeline.Length = S(10);
-        timeline.Loop = true;
-        LoadTimeline(timeline);
-        _player.Play();
-        After(8);
-
-        After(3);   // 8 -> 11 = wraps to 1
-
-        Assert.Equal(["Near end", "Top"], _markers);
-    }
-
-    [Fact]
-    public void An_edit_while_playing_does_not_swallow_markers_crossed_on_that_update()
-    {
-        // Found by the playback soak test: an edit swapped in between two updates hid a marker crossed in that gap.
-        Load(Markers((1, "A")));
-        _player.Play();
-        After(0.995);
-
-        Load(Markers((1, "A")));   // an edit lands
-        After(0.01);
-
-        Assert.Equal(["A"], _markers);
-    }
-
-    [Fact]
-    public void Paused_playback_reports_no_markers()
-    {
-        Load(Markers((1, "A")));
-        _player.Play();
-        After(0.5);
-        _player.Pause();
-        After(5);
-
-        Assert.Empty(_markers);
     }
 }

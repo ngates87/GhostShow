@@ -29,7 +29,7 @@ View, and Playback; below it are the transport and Blackout. With a show open, t
 
 | Tab | Screen | For |
 |---|---|---|
-| Timeline | | A tree of the show's timelines in folders, open timelines as tabs, and the editor: lighting, audio and marker tracks; drag, fade, copy/paste, undo/redo; edits apply while playing ([docs/timeline.md](docs/timeline.md)) |
+| Timeline | | Several timelines can play at once, with priorities and overrides that pause or keep the ambient and release back to it. A tree of the show's timelines in folders, open timelines as tabs, and the editor: lighting tracks with Level Control clips and envelopes (and an Envelope Editor window), audio tracks; drag, fade, copy/paste, undo/redo; edits apply while playing ([docs/timeline.md](docs/timeline.md)) |
 | Lighting | DMX setup | The show's universes, and which device (simulator or USB adapter) outputs each on this computer |
 | | Fixtures | A heat map of the universe above the fixture list, and an address map for re-addressing (drag a fixture). **Add fixtures…** is a two-step wizard: choose the type (grid by manufacturer or type, or search), then click green openings on the map to add one per click, or quick-add several in a row, and press Done |
 | | Control | Faders for a fixture's logical controls (intensity, colours) and every channel |

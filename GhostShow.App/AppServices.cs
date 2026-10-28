@@ -14,7 +14,7 @@ namespace GhostShow.App;
 public sealed record AppServices(
     ShowSession Session,
     OutputManager Outputs,
-    ShowPlayer Player,
+    PlaybackManager Playback,
     PlaybackLoop PlaybackLoop,
     AudioService Audio,
     MachineSettings Settings,

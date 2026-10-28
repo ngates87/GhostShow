@@ -4,14 +4,27 @@ using GhostShow.Core.Timeline;
 
 namespace GhostShow.App.ViewModels;
 
-/// <summary>Exact values for one selected point of a lighting channel. Every change is an undoable edit.</summary>
-public sealed partial class PointPropertiesViewModel(CurvePoint point, ChannelLane lane, TimelineEditorViewModel editor) : ObservableObject
+/// <summary>Exact values for one selected envelope handle. Every change is an undoable edit.</summary>
+public sealed partial class PointPropertiesViewModel(CurvePoint point, ChannelLane lane, LightingClip clip, TimelineEditorViewModel editor) : ObservableObject
 {
+    public static IReadOnlyList<CurveKind> Curves { get; } = [CurveKind.Linear, CurveKind.Step, CurveKind.Spline];
+
     public CurvePoint Point { get; } = point;
 
     public string Channel => editor.LaneLabel(lane.Target);
 
-    /// <summary>On the timeline (the block's start plus the point's time in it); kept within its block.</summary>
+    public string ClipName => clip.Name ?? LightingClip.DefaultName;
+
+    /// <summary>An envelope's end handle stays at the clip's end: only its level changes, and it can't be deleted.</summary>
+    public bool IsEndHandle => clip.IsEndHandle(Point);
+
+    public bool CanEdit => !clip.Locked;
+    public bool CanEditTime => CanEdit && !IsEndHandle;
+    public bool CanDelete => CanEdit && !IsEndHandle;
+
+    public string Heading => IsEndHandle ? "End handle" : "Envelope handle";
+
+    /// <summary>On the timeline (the clip's start plus the handle's time in it); kept between its neighbours.</summary>
     public decimal TimeSeconds
     {
         get => Math.Round((decimal)editor.AbsoluteTime(Point).TotalSeconds, 3);
@@ -31,11 +44,11 @@ public sealed partial class PointPropertiesViewModel(CurvePoint point, ChannelLa
         set => editor.SetPoint(Point, value: (byte)Math.Clamp(value, 0, 255), field: "dmx");
     }
 
-    /// <summary>Unchecked: fade here from the previous point. Checked: hold the previous level, then jump here.</summary>
-    public bool Step
+    /// <summary>How the level gets here from the previous handle.</summary>
+    public CurveKind Curve
     {
-        get => Point.Step;
-        set => editor.SetStep(Point, value);
+        get => Point.Curve;
+        set => editor.SetCurve([Point], value);
     }
 
     [RelayCommand]

@@ -5,6 +5,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using GhostShow.Audio;
 using GhostShow.Core.Diagnostics;
 using GhostShow.Core.Playback;
+using GhostShow.Core.Timeline;
 using GhostShow.Dmx;
 
 namespace GhostShow.App.ViewModels;
@@ -19,7 +20,7 @@ public sealed partial class DiagnosticsViewModel : ObservableObject
     readonly OutputManager _outputs;
     readonly UiResponsivenessProbe _probe;
     readonly PlaybackLoop _loop;
-    readonly ShowPlayer _player;
+    readonly PlaybackManager _player;
     readonly AudioService _audio;
     readonly PlaybackViewModel _playback;
 
@@ -28,7 +29,7 @@ public sealed partial class DiagnosticsViewModel : ObservableObject
         _outputs = services.Outputs;
         _probe = services.Probe;
         _loop = services.PlaybackLoop;
-        _player = services.Player;
+        _player = services.Playback;
         _audio = services.Audio;
         _playback = playback;
         var log = services.Log;
@@ -95,10 +96,13 @@ public sealed partial class DiagnosticsViewModel : ObservableObject
 
     void TickPlayback()
     {
-        var status = _player.Status;
-        var compiled = _player.Timeline;
+        var focused = _playback.Timeline;
+        var status = focused is null ? default : _player.StatusOf(focused.Id);
+        var compiled = (focused is null ? null : _player.TimelineOf(focused.Id)) ?? CompiledTimeline.Empty;
+        int running = _player.Running.Count;
         PlaybackState = $"{_playback.StateLabel} · {PlaybackViewModel.Format(status.Position)} / {PlaybackViewModel.Format(status.Length)} · " +
-                        $"{_playback.Timeline?.Name ?? "no timeline"} ({compiled.LevelStepCount} level steps, {compiled.AudioCues.Count} sounds, {compiled.Markers.Count} markers)";
+                        $"{focused?.Name ?? "no timeline"} ({compiled.LevelStepCount} level steps, {compiled.AudioCues.Count} sounds)" +
+                        $" · {running} playing";
         var t = _loop.Timing;
         PlaybackTiming = $"Updates {t.FramesPerSecond:0.0}/s (target {1 / PlaybackLoop.Interval.TotalSeconds:0}) · " +
                          $"interval p50 {t.IntervalP50Ms:0.0} / p95 {t.IntervalP95Ms:0.0} / max {t.IntervalMaxMs:0.0} ms · " +
