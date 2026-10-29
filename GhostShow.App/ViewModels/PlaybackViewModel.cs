@@ -3,6 +3,7 @@ using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using GhostShow.Audio;
+using GhostShow.Core.Editing;
 using GhostShow.Core.Playback;
 using GhostShow.Core.Timeline;
 using Microsoft.Extensions.Logging;
@@ -50,6 +51,17 @@ public sealed partial class PlaybackViewModel : ObservableObject
         _logger = logger;
         services.Audio.LengthMeasured += _ => Dispatcher.UIThread.Post(RecompileAll);
         services.Session.Applied += RecompileAll;   // patch changes can make fixture channels valid or invalid
+        // Edits to other loaded timelines (a running one changed from another device, or one an event runs): theirs
+        // too. The focused one is recompiled by the editor, after it has caught up with the change.
+        services.Session.Document.Changed += change =>
+        {
+            // A deleted timeline stops (with its copies) and is forgotten.
+            foreach (var op in change.Ops)
+                if (op is RemoveOp { Path: var path } && path.StartsWith("timelines/", StringComparison.Ordinal) && Guid.TryParse(path["timelines/".Length..], out var removed))
+                    Manager.Unload(removed);
+            foreach (var timeline in _services.Session.Project.Timelines.Where(t => t != _timeline && change.Timelines.Contains(t.Id) && Manager.IsLoaded(t.Id)))
+                Load(timeline);
+        };
         Manager.CueNotLoaded += cue => _logger.LogWarning("An event track runs a timeline that isn't loaded ({Timeline}); it was skipped.", cue.Timeline);
     }
 

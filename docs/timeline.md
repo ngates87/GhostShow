@@ -322,9 +322,12 @@ same files. The Audio screen lists every sound the show uses and whether it was 
   the field.
 - **Properties** (right): exact values for the selected clip or handle, a track's properties, or the channel picker
   while it's open.
-- **Undo/redo:** every edit, up to 500 steps per timeline. Typing into one field becomes one step. Each open
-  timeline keeps its own history while its tab is open. Tree changes (rename, move, delete) aren't on the history;
-  deleting asks first.
+- **Undo/redo:** every edit, up to 500 steps per timeline. Typing into one field becomes one step.
+  - Each timeline keeps its own history while the show is open.
+  - Tree changes (new, rename, move, delete) and show-button edits share the show's own history.
+  - Undo takes back whichever is latest: the open timeline's last edit or the show's. It never takes back another
+    timeline's edits.
+  - Deleting in the tree still asks first; Undo brings back what was deleted.
 
 The transport is under the timeline, as in VenueMagic: back to the start (Home), play/pause (Space), stop, loop,
 and the position and state. Blackout (and ⚠ when something needs attention) is at the right of the menu bar on every

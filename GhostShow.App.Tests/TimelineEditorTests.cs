@@ -1,7 +1,7 @@
-using GhostShow.App.Editing;
 using GhostShow.App.ViewModels;
 using GhostShow.Audio;
 using GhostShow.Core.Diagnostics;
+using GhostShow.Core.Editing;
 using GhostShow.Core.Engine;
 using GhostShow.Core.Fixtures;
 using GhostShow.Core.Playback;
@@ -1336,12 +1336,19 @@ public class TimelineEditorTests : IDisposable
         Editor.Tree.NewTimelineCommand.Execute(null);   // opens the new one in a tab
         var other = Editor.SelectedTimeline!;
         Assert.NotSame(main, other);
-        Assert.Equal("Undo", Editor.UndoLabel);
+        _rig.AddSound(2);   // on the new timeline
+        Assert.Equal("Undo Add audio clip", Editor.UndoLabel);
 
         Editor.SelectedTab = Editor.Tabs.Single(t => t.Timeline == main);
 
-        Assert.Equal("Undo Add audio clip", Editor.UndoLabel);
+        // The latest of main's edits and the show's (making the new timeline): never the other timeline's sound.
+        Assert.Equal("Undo New timeline", Editor.UndoLabel);
         Assert.Same(main, _rig.Playback.Timeline);
+        Editor.UndoCommand.Execute(null);
+        Assert.DoesNotContain(other, _rig.Session.Project.Timelines);
+        Assert.DoesNotContain(Editor.Tabs, t => t.Timeline == other);   // its tab closed
+
+        Assert.Equal("Undo Add audio clip", Editor.UndoLabel);
         Editor.UndoCommand.Execute(null);
         Assert.Empty(_rig.Events(TrackKind.Audio));
     }
@@ -1427,6 +1434,29 @@ public class TimelineEditorTests : IDisposable
     }
 
     [Fact]
+    public void An_edit_from_another_client_shows_in_the_editor_and_reaches_playback()
+    {
+        var main = Editor.SelectedTimeline!;
+        var room = new ShowTimeline { Name = "Room", Length = S(30), Tracks = [] };
+        _rig.Session.Project.Timelines.Add(room);
+        Editor.DropTimeline(room, null, S(1));   // main runs the room: it's loaded too
+        Assert.True(_rig.Manager.IsLoaded(room.Id));
+        long revision = Editor.Revision;
+        var document = _rig.Session.Document;
+
+        document.Apply(new Transaction("Rename track", new SetOp(ShowPath.Timeline(main.Id).Track(main.Tracks[0].Id).Then("name"), "Spots")), origin: "iPad");
+        document.Apply(new Transaction("Change priority", new SetOp(ShowPath.Timeline(main.Id).Then("playback"), new TimelinePlayback(Priority: 7))), origin: "iPad");
+        document.Apply(new Transaction("Change priority", new SetOp(ShowPath.Timeline(room.Id).Then("playback"), new TimelinePlayback(Priority: 3))), origin: "iPad");
+
+        Assert.Equal("Spots", Editor.Tracks[0].Name);
+        Assert.True(Editor.Revision > revision);
+        Assert.Equal("Undo Change priority", Editor.UndoLabel);
+        Assert.Equal(7, _rig.Compiled.Playback.Priority);
+        Assert.Equal(3, _rig.Manager.TimelineOf(room.Id)!.Playback.Priority);   // not open, but loaded: recompiled
+        Assert.True(_rig.Dirty);
+    }
+
+    [Fact]
     public void A_deleted_timeline_stops()
     {
         var main = Editor.SelectedTimeline!;
@@ -1447,93 +1477,5 @@ public class TimelineEditorTests : IDisposable
         _rig.Dirty = false;
         Editor.Reload();
         Assert.False(_rig.Dirty);
-    }
-}
-
-public class EditHistoryTests
-{
-    [Fact]
-    public void Undo_and_redo_apply_in_order_and_a_new_edit_clears_redo()
-    {
-        var history = new EditHistory();
-        int value = 0;
-        history.Execute("one", () => value = 1, () => value = 0);
-        history.Execute("two", () => value = 2, () => value = 1);
-
-        history.Undo();
-        Assert.Equal(1, value);
-        Assert.Equal("two", history.RedoDescription);
-
-        history.Execute("three", () => value = 3, () => value = 1);
-        Assert.False(history.CanRedo);
-        history.Undo();
-        history.Undo();
-        Assert.Equal(0, value);
-        Assert.False(history.CanUndo);
-    }
-
-    [Fact]
-    public void Edits_with_the_same_key_merge_and_undo_restores_the_value_before_the_first()
-    {
-        var history = new EditHistory();
-        int value = 0;
-        for (int i = 1; i <= 5; i++)
-        {
-            int previous = value, next = i;
-            history.Execute("type", () => value = next, () => value = previous, mergeKey: "field");
-        }
-        history.Execute("other", () => value = 99, () => value = 5, mergeKey: "another field");
-
-        history.Undo();
-        Assert.Equal(5, value);
-        history.Undo();
-        Assert.Equal(0, value);
-        Assert.False(history.CanUndo);
-    }
-
-    [Fact]
-    public void A_redone_edit_does_not_merge_with_the_next()
-    {
-        var history = new EditHistory();
-        int value = 0;
-        history.Execute("a", () => value = 1, () => value = 0, mergeKey: "k");
-        history.Undo();
-        history.Redo();
-        history.Execute("b", () => value = 2, () => value = 1, mergeKey: "k");
-
-        history.Undo();
-        Assert.Equal(1, value);
-    }
-
-    [Fact]
-    public void Keeps_at_most_500_steps_dropping_the_oldest()
-    {
-        var history = new EditHistory();
-        int value = 0;
-        for (int i = 1; i <= 600; i++)
-        {
-            int previous = value, next = i;
-            history.Execute($"{i}", () => value = next, () => value = previous);
-        }
-        int undone = 0;
-        while (history.CanUndo)
-        {
-            history.Undo();
-            undone++;
-        }
-        Assert.Equal(500, undone);
-        Assert.Equal(100, value);
-    }
-
-    [Fact]
-    public void Clear_forgets_everything_without_reporting_a_change()
-    {
-        var history = new EditHistory();
-        int changes = 0;
-        history.Changed += () => changes++;
-        history.Execute("a", () => { }, () => { });
-        history.Clear();
-        Assert.Equal(1, changes);
-        Assert.False(history.CanUndo);
     }
 }

@@ -39,8 +39,15 @@ public sealed class Project
     public List<ShowTimeline> Timelines { get; set; } = [NewTimeline("Main")];
 
     /// <summary>Every folder of the timeline tree ('/'-separated paths), including empty ones and each parent.</summary>
+    /// (Set as a whole, e.g. by an edit, it keeps the tree's name rule: case doesn't matter.)
     [JsonIgnore]
-    public SortedSet<string> TimelineFolders { get; set; } = new(TimelineNames.Comparer);
+    public SortedSet<string> TimelineFolders
+    {
+        get => _timelineFolders;
+        set => _timelineFolders = new SortedSet<string>(value, TimelineNames.Comparer);
+    }
+
+    SortedSet<string> _timelineFolders = new(TimelineNames.Comparer);
 
     /// <summary>The timeline files and folders as last loaded or saved (relative to timelines/), so saving can tidy up.</summary>
     [JsonIgnore]

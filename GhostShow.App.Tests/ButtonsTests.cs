@@ -127,4 +127,30 @@ public class ButtonsTests : IDisposable
         Assert.True(_edits >= 7);
         Assert.Equal(_buttons.Buttons.Select(b => b.Button), _rig.Session.Project.Buttons);
     }
+
+    [Fact]
+    public void Button_edits_undo_and_the_panel_follows_and_edits_from_elsewhere_show()
+    {
+        Button("First");
+        var first = _buttons.Buttons[0];
+        first.Name = "Scare";
+        first.AddActionCommand.Execute("run");
+        first.RemoveCommand.Execute(null);
+        Assert.Empty(_buttons.Buttons);
+
+        _rig.Editor.UndoCommand.Execute(null);   // the delete: the same button comes back, with its action
+        var back = Assert.Single(_buttons.Buttons);
+        Assert.Same(first.Button, back.Button);
+        Assert.Equal(("Scare", 1), (back.Name, back.Actions.Count));
+
+        _rig.Editor.UndoCommand.Execute(null);   // the action
+        Assert.Empty(back.Actions);
+        _rig.Editor.UndoCommand.Execute(null);   // the rename
+        Assert.Equal("First", back.Name);
+
+        var document = _rig.Session.Document;
+        document.Apply(new Core.Editing.Transaction("Rename button",
+            new Core.Editing.SetOp(Core.Editing.ShowPath.Button(back.Button.Id).Then("name"), "From the iPad")), origin: "iPad");
+        Assert.Equal("From the iPad", back.Name);
+    }
 }

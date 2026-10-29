@@ -243,6 +243,48 @@ public class TimelineTreeTests : IDisposable
     }
 
     [Fact]
+    public void Tree_changes_undo_and_redo_one_at_a_time_and_the_tree_follows()
+    {
+        NewFolder("Rooms");
+        var troll = NewTimeline("Troll", inside: "Rooms");
+        Assert.True(Tree.Rename(Folder("Rooms"), "Areas"));
+        Assert.Equal("Areas/Troll", troll.TreePath);
+
+        _rig.Editor.UndoCommand.Execute(null);   // the folder's rename, with what's inside it
+        Assert.Equal("Rooms/Troll", troll.TreePath);
+        Assert.Equal(["Rooms"], Project.TimelineFolders);
+        Assert.Equal("Rooms/\n  Troll\nMain", Shape());
+
+        Tree.SelectedNode = Folder("Rooms");
+        Tree.DeleteCommand.Execute(null);
+        Assert.DoesNotContain(troll, Project.Timelines);
+        Assert.Equal("Undo Delete folder 'Rooms'", _rig.Editor.UndoLabel);
+
+        _rig.Editor.UndoCommand.Execute(null);   // the delete: the folder and the timeline come back
+        Assert.Contains(troll, Project.Timelines);
+        Assert.Equal(["Rooms"], Project.TimelineFolders);
+        Assert.Contains("ROOMS", Project.TimelineFolders);   // still case-insensitive after the undo replaced the set
+        Assert.Equal("Rooms/\n  Troll\nMain", Shape());
+
+        _rig.Editor.RedoCommand.Execute(null);
+        Assert.DoesNotContain(troll, Project.Timelines);
+        Assert.Empty(Project.TimelineFolders);
+    }
+
+    [Fact]
+    public void A_deleted_timeline_that_comes_back_can_be_opened()
+    {
+        NewFolder("Rooms");
+        var troll = NewTimeline("Troll", inside: "Rooms");
+        Tree.SelectedNode = Node("Rooms/Troll");
+        Tree.DeleteCommand.Execute(null);
+        _rig.Editor.UndoCommand.Execute(null);
+
+        _rig.Editor.OpenTimeline(troll);
+        Assert.Same(troll, _rig.Editor.SelectedTimeline);
+    }
+
+    [Fact]
     public void Rebuilding_keeps_open_folders_open_and_the_selection()
     {
         NewFolder("Rooms");

@@ -22,11 +22,10 @@ unclear, it follows VenueMagic 3/4. Decided 2026-10-28.
   It folds to a strip at the edge (it starts folded in a show without buttons).
 - **Keys:** F1, F3-F12 (F2 renames), 0-9 and A-Z, without modifiers; one button per key. They work on every screen
   while GhostShow has focus, except while typing in a field.
-- Button edits mark the show unsaved; they have no undo yet.
+- Button edits mark the show unsaved and are undoable (on the show's history, with the timeline tree's).
 
 ## Later
 
-- Undo for button edits.
 - More actions: house lights (everything to full), fire a channel for N seconds (fog), set a look (a snapshot of the
   faders), play a sound, master volume and lamp level, pause timeline.
 - Docking windows (Visual Studio style) for the buttons, properties and other panels.

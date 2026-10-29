@@ -22,10 +22,16 @@ public sealed class UiResponsivenessProbe : IDisposable
         _timer = new Timer(_ => Probe(), null, TimeSpan.FromSeconds(1), TimeSpan.FromMilliseconds(100));
     }
 
-    public (double P50Ms, double P95Ms, double MaxMs, int Samples) Snapshot()
+    /// <param name="last">Only the most recent samples (e.g. 20: the last 2 s); all of the last minute by default.</param>
+    public (double P50Ms, double P95Ms, double MaxMs, int Samples) Snapshot(int last = SampleCount)
     {
         double[] sorted;
-        lock (_lock) sorted = _samplesMs.AsSpan(0, _count).ToArray();
+        lock (_lock)
+        {
+            int n = Math.Min(last, _count);
+            sorted = new double[n];
+            for (int i = 0; i < n; i++) sorted[i] = _samplesMs[(_next - 1 - i + SampleCount) % SampleCount];
+        }
         if (sorted.Length == 0) return (0, 0, 0, 0);
         Array.Sort(sorted);
         double At(double fraction) => sorted[Math.Min(sorted.Length - 1, (int)Math.Ceiling(fraction * sorted.Length) - 1)];

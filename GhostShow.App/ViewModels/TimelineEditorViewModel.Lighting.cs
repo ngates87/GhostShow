@@ -237,12 +237,8 @@ public sealed partial class TimelineEditorViewModel
         var point = new CurvePoint { Time = at, Value = Envelope.Round(Envelope.ValueAt(clip.EnvelopeFor(target, start), at)) };
         if (lane is null)
         {
-            lane = new ChannelLane { Target = target };
-            var newLane = lane;
-            var end = new CurvePoint { Time = clip.Length, Value = start };
-            History.Execute("Add envelope handle",
-                            () => { newLane.Points = [point, end]; clip.Lanes.Add(newLane); },
-                            () => clip.Lanes.Remove(newLane));
+            var newLane = new ChannelLane { Target = target, Points = [point, new CurvePoint { Time = clip.Length, Value = start }] };
+            Edit("Add envelope handle", () => clip.Lanes.Add(newLane), roots: Only(clip));
         }
         else
         {
@@ -268,7 +264,7 @@ public sealed partial class TimelineEditorViewModel
             return;
         }
         var clip = new LightingClip { Name = LightingClip.DefaultName, Start = time };
-        History.Execute("Add Level Control clip", () => track.Events.Add(clip), () => track.Events.Remove(clip));
+        Edit("Add Level Control clip", () => track.Events.Add(clip), roots: Only(track));
         _selectedPoints.Clear();
         _selection.Clear();
         _selection.Add(clip.Id);
@@ -289,7 +285,7 @@ public sealed partial class TimelineEditorViewModel
         }
         var info = EffectInfo.Of(kind);
         var clip = new LightingClip { Name = info.Name, Start = time, Length = info.DefaultLength, Effect = LightingEffect.Create(kind, Random.Shared.Next()) };
-        History.Execute($"Add {info.Name} effect", () => track.Events.Add(clip), () => track.Events.Remove(clip));
+        Edit($"Add {info.Name} effect", () => track.Events.Add(clip), roots: Only(track));
         _selectedPoints.Clear();
         _selection.Clear();
         _selection.Add(clip.Id);
@@ -320,7 +316,7 @@ public sealed partial class TimelineEditorViewModel
         var changed = current.Clone();
         change(changed);
         if (EffectEquals(current, changed)) return;
-        History.Execute(description, () => clip.Effect = changed, () => clip.Effect = current, (clip.Id, "effect:" + field));
+        Edit(description, () => clip.Effect = changed, (clip.Id, "effect:" + field), Only(clip));
     }
 
     static bool EffectEquals(LightingEffect a, LightingEffect b) =>
@@ -350,10 +346,11 @@ public sealed partial class TimelineEditorViewModel
             var envelope = LightingEffects.EnvelopeFor(keys, roles[i], target.Control ?? FunctionOf(target), start, clip.Length);
             lanes.Add(new ChannelLane { Target = target, Points = envelope.Skip(1).Select(p => p.Clone()).ToList() });
         }
-        var oldLanes = clip.Lanes;
-        History.Execute("Convert to Level Control",
-                        () => { clip.Effect = null; clip.Lanes = lanes; },
-                        () => { clip.Effect = effect; clip.Lanes = oldLanes; });
+        Edit("Convert to Level Control", () =>
+        {
+            clip.Effect = null;
+            clip.Lanes = lanes;
+        }, roots: Only(clip));
     }
 
     /// <summary>
@@ -365,15 +362,11 @@ public sealed partial class TimelineEditorViewModel
         start = start < TimeSpan.Zero ? TimeSpan.Zero : start;
         if (clip.Locked || length < TimeSpan.FromMilliseconds(50) || (start == clip.Start && length == clip.Length)) return;
         var startLevels = StartLevels(clip);
-        var (oldStart, oldLength) = (clip.Start, clip.Length);
-        var before = Snapshot(clip.Lanes);
-        if (start != clip.Start) clip.ResizeStart(start);
-        if (clip.Length != length) clip.ResizeEnd(length, startLevels);
-        var (newStart, newLength) = (clip.Start, clip.Length);
-        var after = Snapshot(clip.Lanes);
-        History.Execute(clip.ScaleOnResize ? "Resize clip" : "Crop clip",
-                        () => { Restore(after); (clip.Start, clip.Length) = (newStart, newLength); },
-                        () => { Restore(before); (clip.Start, clip.Length) = (oldStart, oldLength); });
+        Edit(clip.ScaleOnResize ? "Resize clip" : "Crop clip", () =>
+        {
+            if (start != clip.Start) clip.ResizeStart(start);
+            if (clip.Length != length) clip.ResizeEnd(length, startLevels);
+        }, roots: clip);
     }
 
     /// <summary>
@@ -466,53 +459,34 @@ public sealed partial class TimelineEditorViewModel
     public void SetStartLevel(ChannelLane channel, byte level, string field = "start")
     {
         if (channel.StartLevel == level) return;
-        var old = channel.StartLevel;
-        History.Execute("Change start level", () => channel.StartLevel = level, () => channel.StartLevel = old, (channel, field));
+        Edit("Change start level", () => channel.StartLevel = level, (channel, field), Only(channel));
     }
 
     public void SetChannelStart(ChannelLane channel, ChannelStart start)
     {
         if (channel.Start == start) return;
-        var old = channel.Start;
         string description = start switch
         {
             ChannelStart.Fixed => "Start at a fixed level",
             ChannelStart.LeaveAlone => "Leave alone until the first clip",
             _ => "Start at the first clip",
         };
-        History.Execute(description, () => channel.Start = start, () => channel.Start = old);
+        Edit(description, () => channel.Start = start, roots: Only(channel));
     }
 
     /// <summary>
-    /// Makes an edit to handles undoable: records each affected envelope's handles (and their values) before and
-    /// after, keeping them in time order. Undo and redo restore those exact states.
+    /// An edit to handles, as one undo step: afterwards each affected envelope's handles are put back in time order.
+    /// Only those envelopes are compared (cheap enough for a drag).
     /// </summary>
     void EditLanes(string description, IEnumerable<ChannelLane> lanes, Action change, object? mergeKey = null)
     {
-        var affected = lanes.Distinct().ToList();
-        var before = Snapshot(affected);
-        change();
-        foreach (var lane in affected) lane.Sort();
-        var after = Snapshot(affected);
-        History.Execute(description, () => Restore(after), () => Restore(before), mergeKey);
-    }
-
-    static List<(ChannelLane Lane, (CurvePoint Point, TimeSpan Time, byte Value, CurveKind Curve, Guid? Group)[] Points)> Snapshot(IEnumerable<ChannelLane> lanes) =>
-        lanes.Select(l => (l, l.Points.Select(p => (p, p.Time, p.Value, p.Curve, p.Group)).ToArray())).ToList();
-
-    static void Restore(List<(ChannelLane Lane, (CurvePoint Point, TimeSpan Time, byte Value, CurveKind Curve, Guid? Group)[] Points)> state)
-    {
-        foreach (var (lane, points) in state)
+        var affected = lanes.Distinct().ToArray<object>();
+        if (affected.Length == 0) return;
+        Edit(description, () =>
         {
-            foreach (var (point, time, value, curve, group) in points)
-            {
-                point.Time = time;
-                point.Value = value;
-                point.Curve = curve;
-                point.Group = group;
-            }
-            lane.Points = points.Select(p => p.Point).ToList();
-        }
+            change();
+            foreach (ChannelLane lane in affected) lane.Sort();
+        }, mergeKey, affected);
     }
 
     // ---- clips: split, lock, link ----
@@ -531,42 +505,33 @@ public sealed partial class TimelineEditorViewModel
         var splits = candidates.Where(e => !e.Locked && e is LightingClip { Effect: null } or AudioEvent && e.Start < at && at < e.Start + LengthOf(e))
                                .Select(e => (Track: TrackContaining(e)!, Event: e)).ToList();
         if (splits.Count == 0) return;
-        var undo = new List<Action>();
-        var redo = new List<Action>();
         var added = new List<TimelineEvent>();
-        foreach (var (track, e) in splits)
+        Edit(splits.Count == 1 ? "Split clip" : $"Split {splits.Count} clips", () =>
         {
-            switch (e)
+            foreach (var (track, e) in splits)
             {
-                case LightingClip clip:
+                switch (e)
                 {
-                    // Split to see the result, then put it back: the history applies it.
-                    var before = (Lanes: Snapshot(clip.Lanes), clip.Length);
-                    var second = clip.SplitAt(at - clip.Start, StartLevels(clip))!;
-                    var after = (Lanes: Snapshot(clip.Lanes), clip.Length);
-                    Restore(before.Lanes);
-                    clip.Length = before.Length;
-                    redo.Add(() => { Restore(after.Lanes); clip.Length = after.Length; track.Events.Add(second); });
-                    undo.Add(() => { track.Events.Remove(second); Restore(before.Lanes); clip.Length = before.Length; });
-                    added.Add(second);
-                    break;
-                }
-                case AudioEvent sound:
-                {
-                    var cut = at - sound.Start;
-                    var second = (AudioEvent)sound.Clone();
-                    (second.Start, second.Offset, second.Length, second.FadeIn) = (at, sound.Offset + cut, sound.Length - cut, TimeSpan.Zero);
-                    var (oldLength, oldFadeOut) = (sound.Length, sound.FadeOut);
-                    redo.Add(() => { (sound.Length, sound.FadeOut) = (cut, TimeSpan.Zero); track.Events.Add(second); });
-                    undo.Add(() => { track.Events.Remove(second); (sound.Length, sound.FadeOut) = (oldLength, oldFadeOut); });
-                    added.Add(second);
-                    break;
+                    case LightingClip clip:
+                    {
+                        var second = clip.SplitAt(at - clip.Start, StartLevels(clip))!;
+                        track.Events.Add(second);
+                        added.Add(second);
+                        break;
+                    }
+                    case AudioEvent sound:
+                    {
+                        var cut = at - sound.Start;
+                        var second = (AudioEvent)sound.Clone();
+                        (second.Start, second.Offset, second.Length, second.FadeIn) = (at, sound.Offset + cut, sound.Length - cut, TimeSpan.Zero);
+                        (sound.Length, sound.FadeOut) = (cut, TimeSpan.Zero);
+                        track.Events.Add(second);
+                        added.Add(second);
+                        break;
+                    }
                 }
             }
-        }
-        History.Execute(splits.Count == 1 ? "Split clip" : $"Split {splits.Count} clips",
-                        () => { foreach (var r in redo) r(); },
-                        () => { foreach (var u in Enumerable.Reverse(undo)) u(); });
+        }, roots: [.. splits.Select(s => s.Track).Distinct().Select(Only), .. splits.Select(s => s.Event)]);
         _selectedPoints.Clear();
         _selection.Clear();
         foreach (var e in added) _selection.Add(e.Id);
@@ -579,10 +544,8 @@ public sealed partial class TimelineEditorViewModel
         var events = SelectedEvents().ToList();
         if (events.Count == 0) return;
         bool lockThem = events.Any(e => !e.Locked);
-        var before = events.ToDictionary(e => e, e => e.Locked);
-        History.Execute(lockThem ? (events.Count == 1 ? "Lock clip" : $"Lock {events.Count} clips") : (events.Count == 1 ? "Unlock clip" : $"Unlock {events.Count} clips"),
-                        () => { foreach (var e in events) e.Locked = lockThem; },
-                        () => { foreach (var (e, locked) in before) e.Locked = locked; });
+        Edit(lockThem ? (events.Count == 1 ? "Lock clip" : $"Lock {events.Count} clips") : (events.Count == 1 ? "Unlock clip" : $"Unlock {events.Count} clips"),
+             () => { foreach (var e in events) e.Locked = lockThem; }, roots: [.. events.Select(Only)]);
     }
 
     public bool CanLink => _selection.Count > 1;
@@ -594,9 +557,7 @@ public sealed partial class TimelineEditorViewModel
         var events = SelectedEvents().ToList();
         if (events.Count < 2) return;
         var group = Guid.NewGuid();
-        var before = events.ToDictionary(e => e, e => e.LinkGroup);
-        History.Execute($"Link {events.Count} clips", () => { foreach (var e in events) e.LinkGroup = group; },
-                        () => { foreach (var (e, g) in before) e.LinkGroup = g; });
+        Edit($"Link {events.Count} clips", () => { foreach (var e in events) e.LinkGroup = group; }, roots: [.. events.Select(Only)]);
     }
 
     /// <summary>Unlinks the selected clips from whatever they were linked to.</summary>
@@ -604,9 +565,7 @@ public sealed partial class TimelineEditorViewModel
     {
         var events = SelectedEvents().Where(e => e.LinkGroup is not null).ToList();
         if (events.Count == 0) return;
-        var before = events.ToDictionary(e => e, e => e.LinkGroup);
-        History.Execute(events.Count == 1 ? "Unlink clip" : $"Unlink {events.Count} clips", () => { foreach (var e in events) e.LinkGroup = null; },
-                        () => { foreach (var (e, g) in before) e.LinkGroup = g; });
+        Edit(events.Count == 1 ? "Unlink clip" : $"Unlink {events.Count} clips", () => { foreach (var e in events) e.LinkGroup = null; }, roots: [.. events.Select(Only)]);
     }
 
     /// <summary>
@@ -759,11 +718,11 @@ public sealed partial class TimelineEditorViewModel
         // A channel taken off the track takes its envelopes in every clip with it (undo brings them back).
         var kept = after.Select(l => l.Target).ToHashSet();
         var clips = track.Events.OfType<LightingClip>().ToList();
-        var clipLanesBefore = clips.ToDictionary(c => c, c => c.Lanes.ToList());
-        var clipLanesAfter = clips.ToDictionary(c => c, c => c.Lanes.Where(l => kept.Contains(l.Target)).ToList());
-        History.Execute("Change channels",
-                        () => { track.Channels = after.ToList(); foreach (var (c, lanes) in clipLanesAfter) c.Lanes = lanes.ToList(); },
-                        () => { track.Channels = before.ToList(); foreach (var (c, lanes) in clipLanesBefore) c.Lanes = lanes.ToList(); });
+        Edit("Change channels", () =>
+        {
+            track.Channels = after.ToList();
+            foreach (var c in clips) c.Lanes = c.Lanes.Where(l => kept.Contains(l.Target)).ToList();
+        }, roots: [Only(track), .. clips.Select(Only)]);
         if (Tracks.FirstOrDefault(t => t.Track == track) is { } row && _expanded.Contains(track.Id)) row.IsExpanded = true;
     }
 
@@ -771,7 +730,6 @@ public sealed partial class TimelineEditorViewModel
     public void SetDrawLevelsBetweenClips(TimelineTrack track, bool draw)
     {
         if (track.DrawLevelsBetweenClips == draw) return;
-        History.Execute(draw ? "Draw levels between clips" : "Hide levels between clips",
-                        () => track.DrawLevelsBetweenClips = draw, () => track.DrawLevelsBetweenClips = !draw);
+        Edit(draw ? "Draw levels between clips" : "Hide levels between clips", () => track.DrawLevelsBetweenClips = draw, roots: Only(track));
     }
 }

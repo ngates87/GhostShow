@@ -1,7 +1,7 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using GhostShow.App.Editing;
+using GhostShow.Core.Editing;
 using GhostShow.Core.Engine;
 using GhostShow.Core.Timeline;
 
@@ -27,7 +27,7 @@ public sealed record LaneRowViewModel(ChannelLane Lane, string Label, string Col
 /// <summary>
 /// A track header: name, kind, mute; for a lighting track also its channels (right-click → Channels…) and whether
 /// it's expanded (tall, its clips showing their envelopes); for an audio track its volume (its output device is in
-/// its properties, right-click → Properties… or ⚙). Edits go through the history like everything else.
+/// its properties, right-click → Properties… or ⚙). Edits go through the show's document like everything else.
 /// </summary>
 public sealed partial class TrackRowViewModel : ObservableObject
 {
@@ -129,8 +129,7 @@ public sealed partial class TrackRowViewModel : ObservableObject
         set
         {
             if (value == Track.Name) return;
-            string old = Track.Name;
-            editor.History.Execute("Rename track", () => Track.Name = value, () => Track.Name = old, (Track.Id, "name"));
+            editor.Edit("Rename track", () => Track.Name = value, (Track.Id, "name"), TimelineEditorViewModel.Only(Track));
         }
     }
 
@@ -184,7 +183,7 @@ public sealed partial class TrackRowViewModel : ObservableObject
         set
         {
             if (value == Track.Enabled) return;
-            editor.History.Execute(value ? "Unmute track" : "Mute track", () => Track.Enabled = value, () => Track.Enabled = !value);
+            editor.Edit(value ? "Unmute track" : "Mute track", () => Track.Enabled = value, roots: TimelineEditorViewModel.Only(Track));
         }
     }
 
@@ -216,9 +215,9 @@ public sealed partial class TrackRowViewModel : ObservableObject
 
 /// <summary>
 /// The timeline editor: the show's timeline tree, the open timelines (tabs), the one being edited (and played), its
-/// tracks, the selected events, and every editing command. All changes go through the timeline's own
-/// <see cref="History"/> (undoable, kept while its tab is open) and then recompile the playing timeline, so edits
-/// during playback take effect on the next playback update (see docs/timeline.md, "Editing while playing").
+/// tracks, the selected events, and every editing command. All changes go through the show's
+/// <see cref="ShowDocument"/> (<see cref="Edit"/>), undoable per timeline, and then recompile the playing timeline, so
+/// edits during playback take effect on the next playback update (see docs/timeline.md, "Editing while playing").
 /// </summary>
 public sealed partial class TimelineEditorViewModel : ObservableObject
 {
@@ -248,7 +247,7 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
         _playback = playback;
         _pickAudioFile = pickAudioFile;
         _markDirty = markDirty;
-        Tree = new TimelineTreeViewModel(session, markDirty, OpenTimeline, OnTimelineRemoved);
+        Tree = new TimelineTreeViewModel(session, markDirty, OpenTimeline);
         Tree.StructureChanged += RefreshTitles;
         playback.Open = id =>
         {
@@ -261,14 +260,34 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
             Relayout();
         };
         playback.Compiled += () => ErrorEvents = playback.Issues.Where(i => i.EventId is not null).Select(i => i.EventId!.Value).ToHashSet();
+        session.Document.Changed += OnDocumentChanged;
         Reload();
     }
 
-    readonly Dictionary<Guid, EditHistory> _histories = new();
+    ShowDocument Document => _session.Document;
 
-    /// <summary>The undo history of the timeline being edited; each open timeline keeps its own.</summary>
-    [ObservableProperty]
-    public partial EditHistory History { get; private set; } = new();
+    /// <summary>The open timeline's undo history (each timeline has its own), by its ID.</summary>
+    Guid Scope => SelectedTimeline?.Id ?? Guid.Empty;
+
+    /// <summary>
+    /// Makes an edit to the open timeline, as one undo step: the change is made on the model directly, and the
+    /// document records it (see <see cref="ShowDocument.Record"/>), which also tells every other client.
+    /// </summary>
+    /// <param name="mergeKey">Edits with equal keys in quick succession are one step (dragging a slider, typing).</param>
+    /// <param name="roots">
+    /// What the change touches (required): objects compared with everything in them, or <see cref="Only"/> their own
+    /// properties and lists. Name only what changes: comparing a whole big timeline takes tens of milliseconds, a clip
+    /// or a lane well under one.
+    /// </param>
+    internal void Edit(string description, Action change, object? mergeKey = null, params object[] roots)
+    {
+        if (roots.Length == 0) throw new ArgumentException("An edit names what it changes.", nameof(roots));
+        if (SelectedTimeline is not { } timeline) return;
+        Document.Record(description, change, roots, mergeKey, within: timeline);
+    }
+
+    /// <summary>A root for <see cref="Edit"/>: only the object's own properties and which items its lists hold.</summary>
+    internal static object Only(object o) => ShowDocument.Shallow(o);
 
     public PlaybackViewModel Playback => _playback;
 
@@ -315,8 +334,15 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
     [ObservableProperty]
     public partial IReadOnlySet<Guid> ErrorEvents { get; private set; } = new HashSet<Guid>();
 
-    public string UndoLabel => History.UndoDescription is { } d ? $"Undo {d}" : "Undo";
-    public string RedoLabel => History.RedoDescription is { } d ? $"Redo {d}" : "Redo";
+    /// <summary>
+    /// What Undo takes back: the latest of the open timeline's edits and the show's (the tree, buttons). Each
+    /// timeline keeps its own history, so undoing here never reaches into another timeline.
+    /// </summary>
+    Guid UndoScope => Document.LatestUndo(Scope, Guid.Empty) ?? Scope;
+    Guid RedoScope => Document.LatestRedo(Scope, Guid.Empty) ?? Scope;
+
+    public string UndoLabel => Document.UndoDescription(UndoScope) is { } d ? $"Undo {d}" : "Undo";
+    public string RedoLabel => Document.RedoDescription(RedoScope) is { } d ? $"Redo {d}" : "Redo";
     public string SelectionLabel => (_selection.Count, _selectedPoints.Count) switch
     {
         (0, 0) => "Nothing selected",
@@ -334,7 +360,7 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
         set
         {
             if (SelectedTimeline is not { } timeline || value == timeline.Loop) return;
-            History.Execute(value ? "Loop timeline" : "Stop looping", () => timeline.Loop = value, () => timeline.Loop = !value);
+            Edit(value ? "Loop timeline" : "Stop looping", () => timeline.Loop = value, roots: Only(timeline));
         }
     }
 
@@ -348,7 +374,7 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
         if (SelectedTimeline is not { } timeline) return;
         var (old, updated) = (timeline.Playback, change(timeline.Playback));
         if (old == updated) return;
-        History.Execute(description, () => timeline.Playback = updated, () => timeline.Playback = old, (timeline.Id, "playback", field));
+        Edit(description, () => timeline.Playback = updated, (timeline.Id, "playback", field), Only(timeline));
     }
 
     /// <summary>Higher wins channels shared with other playing timelines (0 normal; e.g. 10 for scares).</summary>
@@ -409,8 +435,7 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
             if (SelectedTimeline is not { } timeline) return;
             TimeSpan? length = value <= 0 ? null : TimeSpan.FromSeconds((double)value);
             if (length == timeline.Length) return;
-            var old = timeline.Length;
-            History.Execute("Change timeline length", () => timeline.Length = length, () => timeline.Length = old, (timeline.Id, "length"));
+            Edit("Change timeline length", () => timeline.Length = length, (timeline.Id, "length"), Only(timeline));
         }
     }
 
@@ -422,7 +447,6 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
     partial void OnSelectedTimelineChanged(ShowTimeline? value)
     {
         if (SelectedTab?.Timeline != value) SelectedTab = value is null ? null : Tabs.FirstOrDefault(t => t.Timeline == value) ?? AddTab(value);
-        History = value is null ? new EditHistory() : HistoryOf(value);
         ClearSelection();
         EnvelopeEditor?.Show(null);   // its clip was on the other timeline
         RebuildTracks();
@@ -466,7 +490,6 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
     public void Reload()
     {
         Tabs.Clear();
-        _histories.Clear();
         SelectedTab = null;
         Tree.Rebuild();
         var first = Tree.AllNodes().OfType<TimelineNode>().FirstOrDefault()?.Timeline;
@@ -485,7 +508,6 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
         if (tab is null) return;
         int index = Tabs.IndexOf(tab);
         Tabs.Remove(tab);
-        _histories.Remove(tab.Timeline.Id);
         if (SelectedTab == tab || SelectedTab is null)
             SelectedTimeline = Tabs.Count == 0 ? null : Tabs[Math.Clamp(index, 0, Tabs.Count - 1)].Timeline;
     }
@@ -509,14 +531,6 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
         var tab = new TimelineTabViewModel(timeline);
         Tabs.Add(tab);
         return tab;
-    }
-
-    EditHistory HistoryOf(ShowTimeline timeline)
-    {
-        if (_histories.TryGetValue(timeline.Id, out var history)) return history;
-        history = new EditHistory();
-        history.Changed += OnEdited;
-        return _histories[timeline.Id] = history;
     }
 
     // ---- selection (called by the canvas) ----
@@ -559,11 +573,8 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
         if (events.Count == 0 || delta == TimeSpan.Zero) return;
         var earliest = events.Min(e => e.Start);
         if (earliest + delta < TimeSpan.Zero) delta = -earliest;
-        var before = events.ToDictionary(e => e, e => e.Start);
         var after = events.ToDictionary(e => e, e => snapToGrid ? SnapTime(e.Start + delta) : e.Start + delta);
-        History.Execute(events.Count == 1 ? "Move clip" : $"Move {events.Count} clips",
-                        () => { foreach (var (e, t) in after) e.Start = t; },
-                        () => { foreach (var (e, t) in before) e.Start = t; });
+        Edit(events.Count == 1 ? "Move clip" : $"Move {events.Count} clips", () => { foreach (var (e, t) in after) e.Start = t; }, roots: [.. events.Select(Only)]);
     }
 
     /// <summary>Drag of a clip's right edge: an audio clip's length, or a lighting clip's (scaling or cropping its envelopes).</summary>
@@ -580,8 +591,7 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
             case AudioEvent audio:
                 length = Snapped(audio.Start, length < TimeSpan.Zero ? TimeSpan.Zero : length);
                 if (audio.Length == length || length <= TimeSpan.Zero) return;
-                var oldLength = audio.Length;
-                History.Execute("Change audio length", () => audio.Length = length, () => audio.Length = oldLength);
+                Edit("Change audio length", () => audio.Length = length, roots: Only(audio));
                 break;
             case LightingClip clip:
                 ResizeClip(clip, clip.Start, Snapped(clip.Start, length));
@@ -610,12 +620,9 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
                 if (audio.Offset + delta < TimeSpan.Zero) delta = -audio.Offset;   // can't start before the file does
                 var visibleLength = LengthOf(audio);
                 if (delta == TimeSpan.Zero || (visibleLength > TimeSpan.Zero && delta >= visibleLength)) return;
-                var (oldStart, oldOffset, oldLen) = (audio.Start, audio.Offset, audio.Length);
                 var (newStart, newOffset) = (audio.Start + delta, audio.Offset + delta);
                 TimeSpan? newLen = audio.Length is { } l ? l - delta : null;
-                History.Execute("Trim audio start",
-                                () => (audio.Start, audio.Offset, audio.Length) = (newStart, newOffset, newLen),
-                                () => (audio.Start, audio.Offset, audio.Length) = (oldStart, oldOffset, oldLen));
+                Edit("Trim audio start", () => (audio.Start, audio.Offset, audio.Length) = (newStart, newOffset, newLen), roots: Only(audio));
                 break;
         }
     }
@@ -651,7 +658,7 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
         }
         if (await NewAudioEventAsync(at) is not { } e) return;
         var track = row.Track;
-        History.Execute($"Add {Describe(e)}", () => track.Events.Add(e), () => track.Events.Remove(e));
+        Edit($"Add {Describe(e)}", () => track.Events.Add(e), roots: Only(track));
         _selection.Clear();
         _selection.Add(e.Id);
         SelectionChanged();
@@ -666,7 +673,7 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
         var target = _session.Project.Timelines.Where(t => t != SelectedTimeline).OrderBy(t => t.TreePath, StringComparer.OrdinalIgnoreCase).FirstOrDefault();
         var e = new TimelineCommandEvent { Start = at, Command = TimelineCommand.Run, TimelineId = target?.Id ?? Guid.Empty };
         var track = row.Track;
-        History.Execute("Add Run timeline event", () => track.Events.Add(e), () => track.Events.Remove(e));
+        Edit("Add Run timeline event", () => track.Events.Add(e), roots: Only(track));
         _selection.Clear();
         _selection.Add(e.Id);
         SelectionChanged();
@@ -684,9 +691,11 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
         var existing = row is { Kind: TrackKind.Event } ? row.Track : timeline.Tracks.FirstOrDefault(t => t.Kind == TrackKind.Event);
         var track = existing ?? new TimelineTrack { Kind = TrackKind.Event, Name = "Events 1" };
         var e = new TimelineCommandEvent { Start = SnapTime(at < TimeSpan.Zero ? TimeSpan.Zero : at), Command = TimelineCommand.Run, TimelineId = target.Id };
-        History.Execute($"Run {target.Name} here",
-                        () => { if (existing is null) timeline.Tracks.Add(track); track.Events.Add(e); },
-                        () => { track.Events.Remove(e); if (existing is null) timeline.Tracks.Remove(track); });
+        Edit($"Run {target.Name} here", () =>
+        {
+            if (existing is null) timeline.Tracks.Add(track);
+            track.Events.Add(e);
+        }, roots: existing is null ? [Only(timeline)] : [Only(track)]);
         SelectedTrack = Tracks.FirstOrDefault(t => t.Track == track);
         _selection.Clear();
         _selection.Add(e.Id);
@@ -713,7 +722,7 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
             DeleteSelectedPoints();
             return;
         }
-        var removals = SelectedEvents().Where(e => !e.Locked).Select(e => (Track: TrackContaining(e)!, Event: e, Index: TrackContaining(e)!.Events.IndexOf(e))).ToList();
+        var removals = SelectedEvents().Where(e => !e.Locked).Select(e => (Track: TrackContaining(e)!, Event: e)).ToList();
         if (removals.Count == 0) return;
         // A lighting track's starting levels (for channels that start at their first clip) are the first clip's start
         // handles: deleting that clip puts them back to 0, so they don't carry over unseen into whatever comes first next.
@@ -721,18 +730,12 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
         var resets = removals.Select(r => r.Track).Distinct()
             .Where(t => TrackLevels.PlayingOrder(t).FirstOrDefault() is { } first && removed.Contains(first))
             .SelectMany(t => t.Channels.Where(c => c.Start != ChannelStart.Fixed && c.StartLevel != 0))
-            .Select(c => (Channel: c, Level: c.StartLevel)).ToList();
-        History.Execute(removals.Count == 1 ? $"Delete {Describe(removals[0].Event)}" : $"Delete {removals.Count} clips",
-            () =>
-            {
-                foreach (var r in removals) r.Track.Events.Remove(r.Event);
-                foreach (var r in resets) r.Channel.StartLevel = 0;
-            },
-            () =>
-            {
-                foreach (var r in removals.OrderBy(r => r.Index)) r.Track.Events.Insert(Math.Min(r.Index, r.Track.Events.Count), r.Event);
-                foreach (var r in resets) r.Channel.StartLevel = r.Level;
-            });
+            .ToList();
+        Edit(removals.Count == 1 ? $"Delete {Describe(removals[0].Event)}" : $"Delete {removals.Count} clips", () =>
+        {
+            foreach (var r in removals) r.Track.Events.Remove(r.Event);
+            foreach (var c in resets) c.StartLevel = 0;
+        }, roots: [.. removals.Select(r => r.Track).Distinct().Select(Only), .. resets.Select(Only)]);
         ClearSelection();
     }
 
@@ -786,9 +789,10 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
             return (s.Track, Copy: copy);
         }).ToList();
         if (copies.Count == 0) return;
-        History.Execute(copies.Count == 1 ? $"{verb} {Describe(copies[0].Copy)}" : $"{verb} {copies.Count} clips",
-                        () => { foreach (var c in copies) c.Track.Events.Add(c.Copy); },
-                        () => { foreach (var c in copies) c.Track.Events.Remove(c.Copy); });
+        Edit(copies.Count == 1 ? $"{verb} {Describe(copies[0].Copy)}" : $"{verb} {copies.Count} clips", () =>
+        {
+            foreach (var c in copies) c.Track.Events.Add(c.Copy);
+        }, roots: [.. copies.Select(c => c.Track).Distinct().Select(Only)]);
         _selection.Clear();
         foreach (var c in copies) _selection.Add(c.Copy.Id);
         SelectionChanged();
@@ -807,10 +811,10 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
     void UnlinkClips() => Unlink();
 
     [RelayCommand]
-    void Undo() => History.Undo();
+    void Undo() => Document.Undo(UndoScope);
 
     [RelayCommand]
-    void Redo() => History.Redo();
+    void Redo() => Document.Redo(RedoScope);
 
     [RelayCommand]
     void ZoomIn() => PixelsPerSecond = Math.Min(MaxZoom, PixelsPerSecond * 1.5);
@@ -831,7 +835,7 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
         if (SelectedTimeline is not { } timeline) return;
         int count = timeline.Tracks.Count(t => t.Kind == kind) + 1;
         var track = new TimelineTrack { Kind = kind, Name = kind switch { TrackKind.Lighting => $"Lighting {count}", TrackKind.Event => $"Events {count}", _ => $"Audio {count}" } };
-        History.Execute("Add track", () => timeline.Tracks.Add(track), () => timeline.Tracks.Remove(track));
+        Edit("Add track", () => timeline.Tracks.Add(track), roots: Only(timeline));
         SelectedTrack = Tracks.FirstOrDefault(t => t.Track == track);
     }
 
@@ -846,8 +850,7 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
     {
         if (SelectedTimeline is not { } timeline) return;
         var track = row.Track;
-        int index = timeline.Tracks.IndexOf(track);
-        History.Execute($"Remove track '{track.Name}'", () => timeline.Tracks.Remove(track), () => timeline.Tracks.Insert(index, track));
+        Edit($"Remove track '{track.Name}'", () => timeline.Tracks.Remove(track), roots: Only(timeline));
     }
 
     /// <summary>Track order decides ties: where two events start together on one channel, the lower track wins.</summary>
@@ -867,8 +870,7 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
     {
         volume = Math.Round(Math.Clamp(volume, 0, 1), 2);
         if (track.Volume == volume) return;
-        double old = track.Volume;
-        History.Execute("Change track volume", () => track.Volume = volume, () => track.Volume = old, (track.Id, "volume"));
+        Edit("Change track volume", () => track.Volume = volume, (track.Id, "volume"), Only(track));
     }
 
     /// <summary>
@@ -878,8 +880,7 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
     public void SetTrackAudioDevice(TimelineTrack track, string? device)
     {
         if (track.AudioDevice == device) return;
-        string? old = track.AudioDevice;
-        History.Execute("Change track output", () => track.AudioDevice = device, () => track.AudioDevice = old);
+        Edit("Change track output", () => track.AudioDevice = device, roots: Only(track));
     }
 
     /// <summary>A short tone on the track's output, to check which speakers it is.</summary>
@@ -898,22 +899,36 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
         var track = row.Track;
         int from = timeline.Tracks.IndexOf(track), to = from + direction;
         if (to < 0 || to >= timeline.Tracks.Count) return;
-        History.Execute("Move track",
-                        () => { timeline.Tracks.RemoveAt(from); timeline.Tracks.Insert(to, track); },
-                        () => { timeline.Tracks.RemoveAt(to); timeline.Tracks.Insert(from, track); });
+        Edit("Move track", () =>
+        {
+            timeline.Tracks.RemoveAt(from);
+            timeline.Tracks.Insert(to, track);
+        }, roots: Only(timeline));
     }
 
     // ---- helpers ----
 
-    void OnEdited()
+    /// <summary>
+    /// After any change to the show (made here, or by another client): the show is unsaved, changed timelines' tabs
+    /// and tree entries show it, and if the open timeline changed, everything showing it follows.
+    /// </summary>
+    void OnDocumentChanged(ShowChange change)
     {
         _markDirty();
-        if (SelectedTimeline is { } edited)
+        // A timeline that's gone (deleted, or its adding undone): its tab closes.
+        foreach (var gone in Tabs.Select(t => t.Timeline).Where(t => !_session.Project.Timelines.Contains(t)).ToList()) OnTimelineRemoved(gone);
+        foreach (var tab in Tabs) tab.Refresh();
+        foreach (var timeline in _session.Project.Timelines.Where(t => change.Timelines.Contains(t.Id))) Tree.NodeOf(timeline)?.Refresh();
+        if (SelectedTimeline is { } open && change.Timelines.Contains(open.Id)) OnEdited();
+        else
         {
-            edited.HasUnsavedChanges = true;
-            foreach (var tab in Tabs) tab.Refresh();
-            Tree.NodeOf(edited)?.Refresh();
+            OnPropertyChanged(nameof(UndoLabel));
+            OnPropertyChanged(nameof(RedoLabel));
         }
+    }
+
+    void OnEdited()
+    {
         RebuildTracksIfChanged();
         foreach (var row in Tracks) row.Refresh();
         _selection.RemoveWhere(id => FindEvent(id) is null);
@@ -943,7 +958,7 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
         EnvelopeEditorFollowSelection();
         var single = _selection.Count == 1 ? FindEvent(_selection.First()) : null;
         if (Properties?.Event != single)
-            Properties = single is null ? null : new EventPropertiesViewModel(single, _session, History, _pickAudioFile, _playback, ResizeEvent, this);
+            Properties = single is null ? null : new EventPropertiesViewModel(single, _session, _pickAudioFile, _playback, ResizeEvent, this);
         else
             Properties?.Refresh();
     }

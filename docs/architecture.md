@@ -137,6 +137,31 @@ changes it asks Save / Don't save / Cancel, and only proceeds once the show is s
 A save that doesn't happen (e.g. Save As cancelled) cancels the action. Machine settings (hardware assignments) are
 saved as soon as they change.
 
+## Editing the show
+
+Every change to the show is meant to go through `Core/Editing/ShowDocument` as a `Transaction` of edit
+operations: set a property, or insert, remove or move a list item. Each operation addresses its target by a path
+from the project down (`timelines/<id>/tracks/<id>/events/<id>/start`; list items by ID, or by index where they
+have none, like envelope handles).
+
+Applying an operation gives back the one that undoes it, so undo needs no hand-written code. Each timeline keeps
+its own history, and the rest of the show (the buttons and the timeline tree) shares one. Every change raises
+`Changed` with a version number and the operations as applied. Operations encode to JSON in the show files' format,
+so the web remote (see [plan-remote.md](plan-remote.md)) can send them, and a copy of the show that replays them
+stays identical.
+
+The timeline editor edits through it. Its code changes the model directly, as before, inside
+`ShowDocument.Record`. The document then:
+1. compares the objects the edit names with how they were;
+2. puts them back;
+3. applies the differences as operations.
+
+The objects end up the same instances (a selected handle stays selected). Each edit names what it touches, either an
+object and everything in it, or only an object's own properties and lists, because comparing a whole big timeline
+takes tens of milliseconds and a clip or envelope well under one. The timeline tree and the show buttons go through it
+too, on the show's own history. Undo takes back the latest of that and the open timeline's. Only the setup screens
+(fixtures, universes) still change the model directly, with `ShowSession.Apply` (see [plan-remote.md](plan-remote.md)).
+
 ## Connection and failure behaviour
 
 | Situation | What GhostShow does |

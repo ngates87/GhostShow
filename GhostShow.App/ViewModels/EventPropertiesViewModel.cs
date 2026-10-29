@@ -1,6 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using GhostShow.App.Editing;
 using GhostShow.Core.Engine;
 using GhostShow.Core.Timeline;
 
@@ -13,22 +12,20 @@ namespace GhostShow.App.ViewModels;
 public sealed partial class EventPropertiesViewModel : ObservableObject
 {
     readonly ShowSession _session;
-    readonly EditHistory _history;
     readonly Func<Task<string?>> _pickAudioFile;
     readonly PlaybackViewModel _playback;
     readonly Action<Guid, TimeSpan> _resize;
-    readonly TimelineEditorViewModel? _editor;
+    readonly TimelineEditorViewModel _editor;
 
     /// <param name="resize">Changes a clip's length the way dragging its right edge does (a lighting clip scales or crops).</param>
-    /// <param name="editor">For effect clips' settings, new pattern and converting (null: those do nothing).</param>
-    public EventPropertiesViewModel(TimelineEvent e, ShowSession session, EditHistory history, Func<Task<string?>> pickAudioFile,
-                                    PlaybackViewModel playback, Action<Guid, TimeSpan> resize, TimelineEditorViewModel? editor = null)
+    /// <param name="editor">Where its edits go (and effect clips' settings, new pattern and converting).</param>
+    public EventPropertiesViewModel(TimelineEvent e, ShowSession session, Func<Task<string?>> pickAudioFile,
+                                    PlaybackViewModel playback, Action<Guid, TimeSpan> resize, TimelineEditorViewModel editor)
     {
         _resize = resize;
         _editor = editor;
         Event = e;
         _session = session;
-        _history = history;
         _pickAudioFile = pickAudioFile;
         _playback = playback;
     }
@@ -229,18 +226,18 @@ public sealed partial class EventPropertiesViewModel : ObservableObject
     [RelayCommand]
     void NewPattern()
     {
-        if (EffectClip is { } clip) _editor?.NewEffectPattern(clip);
+        if (EffectClip is { } clip) _editor.NewEffectPattern(clip);
     }
 
     [RelayCommand]
     void ConvertToLevelControl()
     {
-        if (EffectClip is { } clip) _editor?.ConvertToLevelControl(clip);
+        if (EffectClip is { } clip) _editor.ConvertToLevelControl(clip);
     }
 
     void ChangeEffect(string description, Action<LightingEffect> change, string field)
     {
-        if (EffectClip is { } clip) _editor?.ChangeEffect(clip, description, change, field);
+        if (EffectClip is { } clip) _editor.ChangeEffect(clip, description, change, field);
     }
 
     // ---- audio ----
@@ -319,7 +316,7 @@ public sealed partial class EventPropertiesViewModel : ObservableObject
     void Change<T>(string description, T current, T value, Action<T> set, string field)
     {
         if (EqualityComparer<T>.Default.Equals(current, value)) return;
-        _history.Execute(description, () => set(value), () => set(current), (Event.Id, field));
+        _editor.Edit(description, () => set(value), (Event.Id, field), TimelineEditorViewModel.Only(Event));
     }
 
     static decimal Seconds(TimeSpan time) => Math.Round((decimal)time.TotalSeconds, 3);

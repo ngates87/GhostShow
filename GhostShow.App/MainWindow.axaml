@@ -2,6 +2,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:GhostShow.App.ViewModels"
         xmlns:views="using:GhostShow.App.Views"
+        xmlns:controls="using:GhostShow.App.Controls"
         x:Class="GhostShow.App.MainWindow"
         x:DataType="vm:MainViewModel"
         Title="{Binding Title, FallbackValue=GhostShow}"
@@ -66,14 +67,14 @@
         </MenuItem>
         <MenuItem Header="Open Older Show _File (.json)…" Command="{Binding OpenOldShowCommand}" />
         <Separator />
-        <MenuItem Header="_Save" InputGesture="Ctrl+S" Command="{Binding SaveCommand}" IsEnabled="{Binding IsShowOpen}" />
-        <MenuItem Header="Save _As…" InputGesture="Ctrl+Shift+S" Command="{Binding SaveAsCommand}" IsEnabled="{Binding IsShowOpen}" />
+        <MenuItem Header="_Save" InputGesture="Ctrl+S" Command="{Binding SaveCommand}" />
+        <MenuItem Header="Save _As…" InputGesture="Ctrl+Shift+S" Command="{Binding SaveAsCommand}" />
         <Separator />
-        <MenuItem Header="_Close Show" InputGesture="Ctrl+W" Command="{Binding CloseShowCommand}" IsEnabled="{Binding IsShowOpen}" />
+        <MenuItem Header="_Close Show" InputGesture="Ctrl+W" Command="{Binding CloseShowCommand}" />
         <Separator />
         <MenuItem Header="E_xit" InputGesture="Ctrl+Q" Command="{Binding ExitCommand}" />
       </MenuItem>
-      <MenuItem Header="_Edit" IsEnabled="{Binding IsShowOpen}">
+      <MenuItem Header="_Edit">
         <MenuItem Header="{Binding Timeline.UndoLabel}" InputGesture="Ctrl+Z" Command="{Binding Timeline.UndoCommand}" />
         <MenuItem Header="{Binding Timeline.RedoLabel}" InputGesture="Ctrl+Y" Command="{Binding Timeline.RedoCommand}" />
         <Separator />
@@ -84,7 +85,7 @@
         <Separator />
         <MenuItem Header="Select _All" InputGesture="Ctrl+A" Command="{Binding Timeline.SelectAllCommand}" />
       </MenuItem>
-      <MenuItem Header="_View" IsEnabled="{Binding IsShowOpen}">
+      <MenuItem Header="_View">
         <MenuItem Header="_Timeline" InputGesture="Ctrl+1" Command="{Binding GoToCommand}" CommandParameter="{x:Static vm:Page.Timeline}" />
         <MenuItem Header="_Lighting">
           <MenuItem Header="_DMX Setup" Command="{Binding GoToCommand}" CommandParameter="{x:Static vm:Page.DmxSetup}" />
@@ -99,7 +100,7 @@
         <MenuItem Header="Zoom _In" Command="{Binding Timeline.ZoomInCommand}" />
         <MenuItem Header="Zoom _Out" Command="{Binding Timeline.ZoomOutCommand}" />
       </MenuItem>
-      <MenuItem Header="_Playback" IsEnabled="{Binding IsShowOpen}">
+      <MenuItem Header="_Playback">
         <MenuItem Header="{Binding Playback.PlayPauseLabel}" InputGesture="Space" Command="{Binding Playback.PlayPauseCommand}" />
         <MenuItem Header="_Stop" Command="{Binding Playback.StopCommand}" />
         <MenuItem Header="Play from _Start" Command="{Binding Playback.RestartCommand}" />
@@ -117,6 +118,15 @@
     <Border DockPanel.Dock="Bottom" Padding="8,4" BorderThickness="0,1,0,0"
             BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}">
       <DockPanel>
+        <!-- Load meter: the worst of CPU, playback timing and UI response; click for Diagnostics (with a show open) -->
+        <Button DockPanel.Dock="Right" Margin="12,0,0,0" Padding="4,1" MinHeight="0" Background="Transparent" BorderThickness="0"
+                Command="{Binding GoToCommand}" CommandParameter="{x:Static vm:Page.Diagnostics}"
+                ToolTip.Tip="{Binding Performance.Tip}">
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <TextBlock Text="LOAD" FontSize="10" FontWeight="SemiBold" Opacity="0.7" VerticalAlignment="Center" />
+            <controls:LoadMeter Value="{Binding Performance.Level}" Width="120" Height="14" VerticalAlignment="Center" />
+          </StackPanel>
+        </Button>
         <TextBlock DockPanel.Dock="Right" Text="{Binding Library.Summary}" Opacity="0.7" />
         <TextBlock Text="{Binding StatusMessage}" TextTrimming="CharacterEllipsis" />
       </DockPanel>

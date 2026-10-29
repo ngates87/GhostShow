@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using GhostShow.Core.Editing;
 using GhostShow.Core.Engine;
 using GhostShow.Core.Model;
 using GhostShow.Core.Timeline;
@@ -38,6 +39,33 @@ public sealed partial class ButtonsViewModel : ObservableObject
         _blackout = blackout;
         _markDirty = markDirty;
         Reload();
+        // Button edits made here, undone, or made on another device: the panel follows.
+        session.Document.Changed += change =>
+        {
+            if (change.Ops.Any(o => o.Path == "buttons" || o.Path.StartsWith("buttons/", StringComparison.Ordinal))) Sync();
+        };
+    }
+
+    /// <summary>A button edit through the show's document: one undo step (on the show's history, with the tree's).</summary>
+    internal void Edit(string description, Action change, object? mergeKey, params object[] roots) =>
+        _session.Document.Record(description, change, roots, mergeKey);
+
+    internal static object Only(object o) => ShowDocument.Shallow(o);
+
+    /// <summary>Matches the panel to the show's buttons: rows for added ones, none for removed ones, the order, and every field.</summary>
+    void Sync()
+    {
+        var model = _session.Project.Buttons;
+        if (!Buttons.Select(b => b.Button).SequenceEqual(model))
+        {
+            var rows = model.Select(b => Buttons.FirstOrDefault(r => r.Button == b) ?? new ShowButtonViewModel(b, this)).ToList();
+            Buttons.Clear();
+            foreach (var row in rows) Buttons.Add(row);
+            if (Selected is not null && !Buttons.Contains(Selected)) Selected = null;
+        }
+        foreach (var row in Buttons) row.Sync();
+        Changed();
+        Tick();
     }
 
     public ObservableCollection<ShowButtonViewModel> Buttons { get; } = new();
@@ -149,22 +177,18 @@ public sealed partial class ButtonsViewModel : ObservableObject
     void Add()
     {
         var button = new ShowButton { Name = $"Button {Buttons.Count + 1}", Color = Palette[(Buttons.Count + 1) % Palette.Count] };
-        _session.Project.Buttons.Add(button);
-        var row = new ShowButtonViewModel(button, this);
-        Buttons.Add(row);
+        Edit("Add button", () => _session.Project.Buttons.Add(button), null, Only(_session.Project));
         IsOpen = true;
         IsEditing = true;
-        Selected = row;
-        Changed();
+        Selected = Buttons.First(r => r.Button == button);
     }
 
     internal void Remove(ShowButtonViewModel button)
     {
         int index = Buttons.IndexOf(button);
-        _session.Project.Buttons.Remove(button.Button);
-        Buttons.Remove(button);
-        if (Selected == button) Selected = Buttons.Count == 0 ? null : Buttons[Math.Min(index, Buttons.Count - 1)];
-        Changed();
+        bool wasSelected = Selected == button;
+        Edit($"Delete button '{button.Name}'", () => _session.Project.Buttons.Remove(button.Button), null, Only(_session.Project));
+        if (wasSelected) Selected = Buttons.Count == 0 ? null : Buttons[Math.Min(index, Buttons.Count - 1)];
     }
 
     internal void Duplicate(ShowButtonViewModel button)
@@ -172,21 +196,19 @@ public sealed partial class ButtonsViewModel : ObservableObject
         var copy = button.Button.Clone();
         copy.Name = $"{button.Name} copy";
         int index = Buttons.IndexOf(button) + 1;
-        _session.Project.Buttons.Insert(index, copy);
-        var row = new ShowButtonViewModel(copy, this);
-        Buttons.Insert(index, row);
-        Selected = row;
-        Changed();
+        Edit("Duplicate button", () => _session.Project.Buttons.Insert(index, copy), null, Only(_session.Project));
+        Selected = Buttons.First(r => r.Button == copy);
     }
 
     internal void Move(ShowButtonViewModel button, int by)
     {
         int from = Buttons.IndexOf(button), to = from + by;
         if (from < 0 || to < 0 || to >= Buttons.Count) return;
-        Buttons.Move(from, to);
-        _session.Project.Buttons.RemoveAt(from);
-        _session.Project.Buttons.Insert(to, button.Button);
-        Changed();
+        Edit("Move button", () =>
+        {
+            _session.Project.Buttons.RemoveAt(from);
+            _session.Project.Buttons.Insert(to, button.Button);
+        }, null, Only(_session.Project));
     }
 
     /// <summary>The keys this button could take: its own and those no other button has.</summary>
@@ -224,6 +246,25 @@ public sealed partial class ShowButtonViewModel : ObservableObject
         foreach (var action in button.Actions) Actions.Add(new ButtonActionViewModel(action, this, owner));
     }
 
+    /// <summary>After a change to the show: its actions' rows match its actions, and every field shows the model.</summary>
+    internal void Sync()
+    {
+        if (!Actions.Select(a => a.Action).SequenceEqual(Button.Actions))
+        {
+            var rows = Button.Actions.Select(a => Actions.FirstOrDefault(r => r.Action == a) ?? new ButtonActionViewModel(a, this, _owner)).ToList();
+            Actions.Clear();
+            foreach (var row in rows) Actions.Add(row);
+        }
+        OnPropertyChanged(nameof(Name));
+        OnPropertyChanged(nameof(Color));
+        OnPropertyChanged(nameof(SelectedKey));
+        OnPropertyChanged(nameof(KeyLabel));
+        foreach (var action in Actions) action.Refresh();
+    }
+
+    void Edit(string description, Action change, string? field = null) =>
+        _owner.Edit(description, change, field is null ? null : (Button.Id, field), ButtonsViewModel.Only(Button));
+
     public ShowButton Button { get; }
 
     public string Name
@@ -232,9 +273,7 @@ public sealed partial class ShowButtonViewModel : ObservableObject
         set
         {
             if (value == Button.Name || string.IsNullOrWhiteSpace(value)) return;
-            Button.Name = value;
-            OnPropertyChanged();
-            _owner.Changed();
+            Edit("Rename button", () => Button.Name = value, "name");
         }
     }
 
@@ -244,9 +283,7 @@ public sealed partial class ShowButtonViewModel : ObservableObject
         set
         {
             if (value == Button.Color) return;
-            Button.Color = value;
-            OnPropertyChanged();
-            _owner.Changed();
+            Edit("Change button colour", () => Button.Color = value);
         }
     }
 
@@ -258,10 +295,7 @@ public sealed partial class ShowButtonViewModel : ObservableObject
         set
         {
             if (value is null || value.Key == Button.Key) return;
-            Button.Key = value.Key;
-            OnPropertyChanged();
-            OnPropertyChanged(nameof(KeyLabel));
-            _owner.Changed();
+            Edit("Change button key", () => Button.Key = value.Key);
         }
     }
 
@@ -309,29 +343,28 @@ public sealed partial class ShowButtonViewModel : ObservableObject
             "blackout" => new BlackoutAction(),
             _ => new RunTimelineAction { TimelineId = first },
         };
-        Button.Actions.Add(action);
-        Actions.Add(new ButtonActionViewModel(action, this, _owner));
-        _owner.Changed();
+        Edit("Add action", () => Button.Actions.Add(action));
     }
 
     internal void RemoveAction(ButtonActionViewModel action)
     {
-        Button.Actions.Remove(action.Action);
-        Actions.Remove(action);
-        _owner.Changed();
+        Edit("Remove action", () => Button.Actions.Remove(action.Action));
     }
 
     internal void MoveAction(ButtonActionViewModel action, int by)
     {
         int from = Actions.IndexOf(action), to = from + by;
         if (from < 0 || to < 0 || to >= Actions.Count) return;
-        Actions.Move(from, to);
-        Button.Actions.RemoveAt(from);
-        Button.Actions.Insert(to, action.Action);
-        _owner.Changed();
+        Edit("Move action", () =>
+        {
+            Button.Actions.RemoveAt(from);
+            Button.Actions.Insert(to, action.Action);
+        });
     }
 
-    internal void ActionChanged() => _owner.Changed();
+    /// <summary>A change to one of its actions (only that action is compared).</summary>
+    internal void EditAction(ButtonAction action, string description, Action change) =>
+        _owner.Edit(description, change, null, ButtonsViewModel.Only(action));
 }
 
 /// <summary>One action of a button, in the editor.</summary>
@@ -370,10 +403,7 @@ public sealed partial class ButtonActionViewModel(ButtonAction action, ShowButto
         set
         {
             if (value is null || value.Id == TimelineId) return;
-            TimelineId = value.Id;
-            OnPropertyChanged();
-            OnPropertyChanged(nameof(IsMissing));
-            button.ActionChanged();
+            button.EditAction(Action, "Change the action's timeline", () => TimelineId = value.Id);
         }
     }
 
@@ -386,11 +416,12 @@ public sealed partial class ButtonActionViewModel(ButtonAction action, ShowButto
         set
         {
             if (Action is not RunTimelineAction run || run.PlayOnceOnly == value) return;
-            run.PlayOnceOnly = value;
-            OnPropertyChanged();
-            button.ActionChanged();
+            button.EditAction(Action, value ? "Play once only" : "Play every time", () => run.PlayOnceOnly = value);
         }
     }
+
+    /// <summary>After a change to the show: every field shows the model.</summary>
+    internal void Refresh() => OnPropertyChanged(string.Empty);
 
     [RelayCommand]
     void Remove() => button.RemoveAction(this);

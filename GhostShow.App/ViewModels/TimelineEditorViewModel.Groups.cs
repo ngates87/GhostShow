@@ -99,19 +99,15 @@ public sealed partial class TimelineEditorViewModel
         var startLevels = StartLevels(clip);
         var id = group ? Guid.NewGuid() : (Guid?)null;
         var placed = new List<CurvePoint>();
-        var lanesBefore = clip.Lanes.ToList();
-        var before = Snapshot(clip.Lanes);
-        foreach (var (target, level) in levels)
+        Edit(description, () =>
         {
-            var point = PlaceHandle(clip, target, at, level, startLevels);
-            if (!clip.IsEndHandle(point)) point.Group = id;
-            placed.Add(point);
-        }
-        var lanesAfter = clip.Lanes.ToList();
-        var after = Snapshot(clip.Lanes);
-        History.Execute(description,
-                        () => { clip.Lanes = lanesAfter.ToList(); Restore(after); },
-                        () => { clip.Lanes = lanesBefore.ToList(); Restore(before); });
+            foreach (var (target, level) in levels)
+            {
+                var point = PlaceHandle(clip, target, at, level, startLevels);
+                if (!clip.IsEndHandle(point)) point.Group = id;
+                placed.Add(point);
+            }
+        }, roots: clip);
         return placed;
     }
 

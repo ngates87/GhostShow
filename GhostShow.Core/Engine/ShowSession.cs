@@ -1,3 +1,4 @@
+using GhostShow.Core.Editing;
 using GhostShow.Core.Fixtures;
 using GhostShow.Core.Model;
 using GhostShow.Core.Storage;
@@ -27,7 +28,14 @@ public sealed class ShowSession
 
     public ShowEngine Engine { get; }
 
-    public Project Project { get; private set; } = new();
+    /// <summary>The open show, and how it's edited: every change to it goes through the document (see <see cref="ShowDocument"/>).</summary>
+    public ShowDocument Document { get; } = new(new Project());
+
+    public Project Project
+    {
+        get => Document.Project;
+        private set => Document.Open(value);
+    }
 
     /// <summary>
     /// The show's show.json (in its folder), or an older single-file show it was opened from; null until the show has

@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using GhostShow.Core.Editing;
 using GhostShow.Core.Engine;
 using GhostShow.Core.Model;
 using GhostShow.Core.Timeline;
@@ -58,26 +59,54 @@ public sealed class TimelineNode(ShowTimeline timeline) : TimelineTreeNode
 /// <summary>
 /// The show's timelines as a tree of folders, mirroring the show folder's timelines/ directory: creating, renaming,
 /// moving and deleting here changes the show, and the files follow when it is saved (see ShowFolderStore). These
-/// are show-structure changes, not timeline edits, so they aren't on a timeline's undo history; deleting asks first.
+/// are show-structure changes, not timeline edits: they're on the show's undo history (Undo takes back whichever is
+/// latest, these or the open timeline's edits); deleting asks first. The tree follows every change to the show's
+/// structure, including undo and edits from other devices.
 /// </summary>
 public sealed partial class TimelineTreeViewModel : ObservableObject
 {
     readonly ShowSession _session;
     readonly Action _markDirty;
     readonly Action<ShowTimeline> _open;
-    readonly Action<ShowTimeline> _removed;
+    bool _editing;
 
     /// <param name="open">Opens a timeline in the editor (a tab).</param>
-    /// <param name="removed">A timeline was deleted from the show: close its tab.</param>
-    public TimelineTreeViewModel(ShowSession session, Action markDirty, Action<ShowTimeline> open, Action<ShowTimeline> removed)
+    public TimelineTreeViewModel(ShowSession session, Action markDirty, Action<ShowTimeline> open)
     {
         _session = session;
         _markDirty = markDirty;
         _open = open;
-        _removed = removed;
+        session.Document.Changed += change =>
+        {
+            if (!_editing && change.Ops.Any(o => IsStructural(o.Path))) Changed();
+        };
     }
 
     Project Project => _session.Project;
+
+    /// <summary>A tree change through the show's document (one undo step); the command rebuilds the tree itself.</summary>
+    void Edit(string description, Action change, params object[] roots)
+    {
+        _editing = true;
+        try
+        {
+            _session.Document.Record(description, change, roots);
+        }
+        finally
+        {
+            _editing = false;
+        }
+    }
+
+    static object Only(object o) => ShowDocument.Shallow(o);
+
+    /// <summary>Whether an edit at this path changes the tree: the timelines or folders, or a timeline's name or folder.</summary>
+    static bool IsStructural(string path)
+    {
+        if (path is "timelines" or "timelineFolders") return true;
+        var parts = path.Split('/');
+        return parts[0] == "timelines" && (parts.Length == 2 || (parts.Length == 3 && parts[2] is "name" or "folder"));
+    }
 
     public ObservableCollection<TimelineTreeNode> Roots { get; } = new();
 
@@ -164,7 +193,7 @@ public sealed partial class TimelineTreeViewModel : ObservableObject
         string folder = TargetFolder;
         var timeline = Project.NewTimeline(TimelineNames.Unique("New timeline", NamesIn(folder)));
         timeline.Folder = folder;
-        Project.Timelines.Add(timeline);
+        Edit("New timeline", () => Project.Timelines.Add(timeline), Only(Project));
         Changed();
         Reveal(timeline);
         _open(timeline);
@@ -176,7 +205,7 @@ public sealed partial class TimelineTreeViewModel : ObservableObject
     {
         string parent = TargetFolder;
         string path = TimelineNames.Combine(parent, TimelineNames.Unique("New folder", FolderNamesIn(parent)));
-        Project.AddFolder(path);
+        Edit("New folder", () => Project.AddFolder(path), Only(Project));
         Changed();
         SelectedNode = AllNodes().OfType<TimelineFolderNode>().First(f => f.Path == path);
         StartRename();
@@ -218,14 +247,13 @@ public sealed partial class TimelineTreeViewModel : ObservableObject
                 bool taken = Project.Timelines.Any(o => o != t.Timeline && TimelineNames.Comparer.Equals(o.Folder, t.Timeline.Folder)
                                                         && TimelineNames.Comparer.Equals(o.Name, name));
                 if (Refuse(taken ? $"There's already a timeline called '{name}' here." : null)) return false;
-                t.Timeline.Name = name;
-                t.Timeline.HasUnsavedChanges = true;   // its file is renamed on save
+                Edit("Rename timeline", () => t.Timeline.Name = name, Only(t.Timeline));   // its file is renamed on save
                 break;
             case TimelineFolderNode f:
                 string path = TimelineNames.Combine(f.ParentFolder, name);
                 if (Refuse(!TimelineNames.Comparer.Equals(path, f.Path) && Project.TimelineFolders.Contains(path)
                     ? $"There's already a folder called '{name}' here." : null)) return false;
-                MoveFolder(f.Path, path);
+                MoveFolder("Rename folder", f.Path, path);
                 Changed(f.Path, path);
                 return true;
         }
@@ -238,7 +266,7 @@ public sealed partial class TimelineTreeViewModel : ObservableObject
     {
         if (SelectedNode is not TimelineNode node) return;
         var copy = node.Timeline.Clone(TimelineNames.Unique($"{node.Timeline.Name} copy", NamesIn(node.Timeline.Folder)));
-        Project.Timelines.Add(copy);
+        Edit("Duplicate timeline", () => Project.Timelines.Add(copy), Only(Project));
         Changed();
         Reveal(copy);
         _open(copy);
@@ -254,7 +282,7 @@ public sealed partial class TimelineTreeViewModel : ObservableObject
     [ObservableProperty]
     public partial bool IsConfirmingDelete { get; private set; }
 
-    /// <summary>Deletes the selected timeline, or a folder with everything in it, once confirmed. There's no undo.</summary>
+    /// <summary>Deletes the selected timeline, or a folder with everything in it, once confirmed (Undo brings it back).</summary>
     [RelayCommand]
     void Delete()
     {
@@ -262,16 +290,14 @@ public sealed partial class TimelineTreeViewModel : ObservableObject
         switch (SelectedNode)
         {
             case TimelineNode node:
-                Project.Timelines.Remove(node.Timeline);
-                _removed(node.Timeline);
+                Edit($"Delete timeline '{node.Timeline.Name}'", () => Project.Timelines.Remove(node.Timeline), Only(Project));
                 break;
             case TimelineFolderNode folder:
-                foreach (var timeline in Project.Timelines.Where(t => TimelineNames.IsWithin(t.Folder, folder.Path)).ToList())
+                Edit($"Delete folder '{folder.Name}'", () =>
                 {
-                    Project.Timelines.Remove(timeline);
-                    _removed(timeline);
-                }
-                Project.TimelineFolders.RemoveWhere(f => TimelineNames.IsWithin(f, folder.Path));
+                    Project.Timelines.RemoveAll(t => TimelineNames.IsWithin(t.Folder, folder.Path));
+                    Project.TimelineFolders.RemoveWhere(f => TimelineNames.IsWithin(f, folder.Path));
+                }, Only(Project));
                 break;
             default:
                 return;
@@ -283,8 +309,8 @@ public sealed partial class TimelineTreeViewModel : ObservableObject
     /// <summary>What the delete confirmation says.</summary>
     public string DeleteQuestion => SelectedNode switch
     {
-        TimelineNode t => $"Delete the timeline '{t.Name}'? Its file is removed when the show is saved. This can't be undone.",
-        TimelineFolderNode f => $"Delete the folder '{f.Name}' and the {Project.Timelines.Count(t => TimelineNames.IsWithin(t.Folder, f.Path))} timelines in it? Their files are removed when the show is saved. This can't be undone.",
+        TimelineNode t => $"Delete the timeline '{t.Name}'? Its file is removed when the show is saved. Undo (Ctrl+Z) brings it back.",
+        TimelineFolderNode f => $"Delete the folder '{f.Name}' and the {Project.Timelines.Count(t => TimelineNames.IsWithin(t.Folder, f.Path))} timelines in it? Their files are removed when the show is saved. Undo (Ctrl+Z) brings them back.",
         _ => "",
     };
 
@@ -319,15 +345,14 @@ public sealed partial class TimelineTreeViewModel : ObservableObject
                 if (TimelineNames.Comparer.Equals(t.Timeline.Folder, targetFolder)) return false;
                 if (Refuse(NamesIn(targetFolder).Contains(t.Timeline.Name, TimelineNames.Comparer)
                     ? $"There's already a timeline called '{t.Timeline.Name}' in {Describe(targetFolder)}." : null)) return false;
-                t.Timeline.Folder = targetFolder;
-                t.Timeline.HasUnsavedChanges = true;
+                Edit("Move timeline", () => t.Timeline.Folder = targetFolder, Only(t.Timeline));
                 break;
             case TimelineFolderNode f:
                 if (TimelineNames.Comparer.Equals(f.ParentFolder, targetFolder)) return false;
                 if (Refuse(TimelineNames.IsWithin(targetFolder, f.Path) ? "A folder can't go inside itself." : null)) return false;
                 string path = TimelineNames.Combine(targetFolder, f.Name);
                 if (Refuse(Project.TimelineFolders.Contains(path) ? $"There's already a folder called '{f.Name}' in {Describe(targetFolder)}." : null)) return false;
-                MoveFolder(f.Path, path);
+                MoveFolder("Move folder", f.Path, path);
                 Changed(f.Path, path);
                 return true;
         }
@@ -336,19 +361,19 @@ public sealed partial class TimelineTreeViewModel : ObservableObject
         return true;
     }
 
-    /// <summary>Renames or moves a folder: every folder and timeline inside follows.</summary>
-    void MoveFolder(string from, string to)
+    /// <summary>Renames or moves a folder (one undo step): every folder and timeline inside follows.</summary>
+    void MoveFolder(string description, string from, string to)
     {
         string Rebase(string path) => to + path[from.Length..];
-        var inside = Project.TimelineFolders.Where(f => TimelineNames.IsWithin(f, from)).ToList();
-        Project.TimelineFolders.RemoveWhere(f => TimelineNames.IsWithin(f, from));
-        Project.AddFolder(to);
-        foreach (var f in inside) Project.TimelineFolders.Add(Rebase(f));
-        foreach (var t in Project.Timelines.Where(t => TimelineNames.IsWithin(t.Folder, from)))
+        var moving = Project.Timelines.Where(t => TimelineNames.IsWithin(t.Folder, from)).ToList();
+        Edit(description, () =>
         {
-            t.Folder = Rebase(t.Folder);
-            t.HasUnsavedChanges = true;
-        }
+            var inside = Project.TimelineFolders.Where(f => TimelineNames.IsWithin(f, from)).ToList();
+            Project.TimelineFolders.RemoveWhere(f => TimelineNames.IsWithin(f, from));
+            Project.AddFolder(to);
+            foreach (var f in inside) Project.TimelineFolders.Add(Rebase(f));
+            foreach (var t in moving) t.Folder = Rebase(t.Folder);
+        }, [Only(Project), .. moving.Select(Only)]);
     }
 
     void Changed(string? movedFolderFrom = null, string? movedFolderTo = null)

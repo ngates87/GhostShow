@@ -69,6 +69,7 @@ public sealed partial class MainViewModel : ObservableObject
         Monitor = new MonitorViewModel(session.Engine, outputs.Find);
         Playback = new PlaybackViewModel(services, logger);
         Diagnostics = new DiagnosticsViewModel(services, Playback);
+        Performance = new PerformanceMeterViewModel(() => services.PlaybackLoop.Timing, () => services.Probe.Snapshot(last: 20).P95Ms);
         AudioDevices = new AudioDeviceList(services.Audio);
         Timeline = new TimelineEditorViewModel(session, Playback, PickAudioFileAsync, MarkDirty, AudioDevices);
         Buttons = new ButtonsViewModel(session, Playback, Blackout, MarkDirty);
@@ -108,6 +109,7 @@ public sealed partial class MainViewModel : ObservableObject
     public ChannelsViewModel Channels { get; }
     public MonitorViewModel Monitor { get; }
     public DiagnosticsViewModel Diagnostics { get; }
+    public PerformanceMeterViewModel Performance { get; }
 
     public string Title => IsShowOpen ? $"GhostShow — {ShowName}{(IsDirty ? " *" : "")}" : "GhostShow";
 
@@ -547,7 +549,9 @@ public sealed partial class MainViewModel : ObservableObject
             case Page.Control: Control.Tick(); break;
         }
 
-        if (++_tickCount % 30 != 0) return;
+        _tickCount++;
+        if (_tickCount % 15 == 0) Performance.Update();   // twice a second, so the meter moves like one
+        if (_tickCount % 30 != 0) return;
         Outputs.Tick();
         // Every 2 s on the DMX setup screen: notice adapters plugged in or out (cheap; see WatchAdaptersAsync).
         if (CurrentPage == Page.DmxSetup && _tickCount % 60 == 0) _ = Outputs.WatchAdaptersAsync();
