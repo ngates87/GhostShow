@@ -4,6 +4,7 @@
              RequestedThemeVariant="Dark">
   <Application.Styles>
     <FluentTheme />
+    <StyleInclude Source="avares://Avalonia.Controls.ColorPicker/Themes/Fluent/Fluent.xaml" />
 
     <!-- Two levels of tabs: big department tabs (Show, Lighting, Audio), smaller screen tabs within each. -->
     <Style Selector="TabStrip.sections > TabStripItem">

@@ -4,6 +4,7 @@ using Avalonia.Headless;
 using Avalonia.Input;
 using Avalonia.VisualTree;
 using GhostShow.App.ViewModels;
+using GhostShow.Core.Fixtures;
 using GhostShow.Core.Timeline;
 using Page = GhostShow.App.ViewModels.Page;
 
@@ -176,6 +177,28 @@ public class UiTests
         Assert.Equal(0, rig.Lighting.Channels[0].StartLevel);
     });
 
+    [Fact]
+    public Task A_first_effect_clip_s_start_dot_sets_the_start_level_and_deleting_the_clip_puts_it_back_to_0() => Ui.Run(() =>
+    {
+        using var rig = new WindowRig();
+        rig.Editor.Tracks[0].IsExpanded = true;
+        var row = rig.TrackRow("Lighting");
+        var lightning = rig.Editor.AddEffectAt(row.Track, S(2), EffectKind.Lightning)!;
+        WindowRig.Pump();
+
+        rig.Drag(rig.At(row, 2, level: 0), rig.At(row, 2, level: 1));   // its start dot, as on a Level Control clip
+        Assert.Equal(255, rig.Lighting.Channels[0].StartLevel);
+
+        rig.Editor.SelectEvent(lightning.Id, additive: false);
+        rig.Editor.DeleteCommand.Execute(null);
+
+        Assert.Empty(rig.Lighting.Events);
+        Assert.Equal(0, rig.Lighting.Channels[0].StartLevel);
+        rig.Editor.UndoCommand.Execute(null);   // one step brings both back
+        Assert.Single(rig.Lighting.Events);
+        Assert.Equal(255, rig.Lighting.Channels[0].StartLevel);
+    });
+
     // ---- the Envelope Editor window ----
 
     /// <summary>Opens the Envelope Editor by double-clicking a clip, and returns its window and plot.</summary>
@@ -202,6 +225,29 @@ public class UiTests
         window.MouseUp(to, MouseButton.Left);
         WindowRig.Pump(100);
     }
+
+    [Fact]
+    public Task The_envelope_editor_s_colour_handle_button_adds_a_colour_handle_set_with_a_colour_picker() => Ui.Run(() =>
+    {
+        using var rig = new WindowRig();
+        rig.Editor.SetTrackChannels(rig.Lighting, new[] { ChannelFunction.Red, ChannelFunction.Green, ChannelFunction.Blue }.Select(f => LaneTarget.FixtureControl(rig.Rgb.Id, f)).ToList());
+        var clip = AddClip(rig, 1, 4);
+        rig.Editor.Playback.Seek(S(3));
+        var (window, _) = OpenEnvelopeEditor(rig, 2);
+
+        var button = window.GetVisualDescendants().OfType<Button>().Single(b => b.Content as string == "Colour handle");
+        Assert.True(button.IsEffectivelyEnabled);
+        var at = button.TranslatePoint(new Point(button.Bounds.Width / 2, button.Bounds.Height / 2), window)!.Value;
+        Assert.InRange(at.X, 0, window.Bounds.Width);   // the toolbar wraps rather than pushing it out of the window
+        window.MouseDown(at, MouseButton.Left);
+        window.MouseUp(at, MouseButton.Left);
+        WindowRig.Pump(200);
+
+        Assert.Equal(3, clip.Lanes.Count);
+        Assert.All(clip.Lanes, l => Assert.Equal(S(2), l.Points[0].Time));   // at the playhead (3 s is 2 s into the clip)
+        Assert.True(rig.Editor.SelectedHandleGroup?.IsColour);
+        Assert.Contains(window.GetVisualDescendants().OfType<ColorPicker>(), p => p.IsEffectivelyVisible);
+    });
 
     [Fact]
     public Task Double_clicking_a_clip_opens_the_envelope_editor_where_handles_are_dragged() => Ui.Run(() =>

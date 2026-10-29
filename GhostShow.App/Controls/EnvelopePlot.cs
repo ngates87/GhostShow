@@ -177,17 +177,46 @@ public sealed class EnvelopePlot : Control
             if (x >= plot.Left && x <= plot.Right) context.DrawLine(ClipEdgePen, new Point(x, plot.Top), new Point(x, plot.Bottom));
         }
 
+        List<(double X, Color Colour)> chips;
         using (context.PushClip(plot.Inflate(new Thickness(HandleSize + 2, HandleSize + 2, HandleSize + 2, HandleSize + 2))))
         {
+            chips = DrawGroups(context, editor, view, clip, plot);
             // The active channel last, so it's on top.
             foreach (var levels in view.ShownLevels.OrderBy(l => l.Channel.Target == view.ActiveTarget))
                 DrawChannel(context, editor, view, clip, levels, plot, active: levels.Channel.Target == view.ActiveTarget);
         }
 
+        // Colour handles' colours, in the ruler above them (clear of handles at 100%).
+        foreach (var (x, colour) in chips) context.DrawRectangle(new SolidColorBrush(colour), HandleOutline, new Rect(x - 6, RulerHeight - 12, 12, 10), 2);
+
         var playhead = editor.Playback.Position - clip.Start;
         double px = X(playhead);
         if (px >= plot.Left && px <= plot.Right) context.DrawLine(PlayheadPen, new Point(px, RulerHeight), new Point(px, plot.Bottom));
         if (_drag == DragKind.Box) context.DrawRectangle(BoxFill, BoxPen, new Rect(_dragStart, _boxEnd).Normalize());
+    }
+
+    static readonly IPen GroupPen = new Pen(new SolidColorBrush(Color.FromArgb(150, 255, 255, 255)), 1, new DashStyle([3, 3], 0));
+
+    /// <summary>
+    /// Grouped handles (colour, position, snapshot): a dashed line joining them. Returns where colour handles are and
+    /// their colours, for chips in the ruler.
+    /// </summary>
+    List<(double X, Color Colour)> DrawGroups(DrawingContext context, TimelineEditorViewModel editor, EnvelopeEditorViewModel view, LightingClip clip, Rect plot)
+    {
+        var chips = new List<(double, Color)>();
+        var shown = clip.Lanes.Where(l => view.IsShown(l.Target)).ToList();
+        foreach (var group in shown.SelectMany(l => l.Points).Where(p => p.Group is not null).GroupBy(p => p.Group))
+        {
+            var points = group.ToList();
+            var (time, _) = _preview.TryGetValue(points[0], out var moved) ? moved : (points[0].Time, points[0].Value);
+            double x = X(time);
+            if (x < plot.Left - 6 || x > plot.Right + 6) continue;
+            var ys = points.Select(p => Y(_preview.TryGetValue(p, out var m) ? m.Value : p.Value)).ToList();
+            context.DrawLine(GroupPen, new Point(x, Math.Min(plot.Top + 14, ys.Min())), new Point(x, ys.Max()));
+            var all = editor.GroupOf(points[0]);
+            if (all.Count > 1 && new HandleGroupViewModel(all, group.Key!.Value, editor) is { IsColour: true } colour) chips.Add((x, colour.Colour));
+        }
+        return chips;
     }
 
     void DrawChannel(DrawingContext context, TimelineEditorViewModel editor, EnvelopeEditorViewModel view, LightingClip clip, TrackLevels levels, Rect plot, bool active)
@@ -421,6 +450,15 @@ public sealed class EnvelopePlot : Control
             here.Click += (_, _) => view.AddHandle(active.Channel.Target, time, level);
             items.Add(here);
         }
+        // Colour and position handles for each fixture that has the channels for one.
+        foreach (var (fixtureId, name) in view.GroupFixtures)
+            foreach (var (kind, label) in new[] { (HandleGroupKind.Colour, "colour"), (HandleGroupKind.Position, "position") })
+            {
+                if (view.Track is not { } track || view.Editor.GroupTargets(track, fixtureId, kind).Count < 2) continue;
+                var item = new MenuItem { Header = $"Add {name} {label} handle here", IsEnabled = inside };
+                item.Click += (_, _) => view.AddGroupHandle(fixtureId, kind, time);
+                items.Add(item);
+            }
         var others = view.ShownLevels.Where(l => l.Channel.Target != view.ActiveTarget).ToList();
         if (others.Count == 0)
         {

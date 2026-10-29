@@ -398,7 +398,7 @@
                       <TextBlock Text="Starting levels" FontWeight="SemiBold" VerticalAlignment="Center" />
                     </DockPanel>
                     <TextBlock TextWrapping="Wrap" Opacity="0.7" FontSize="12"
-                               Text="Where each channel is before its first clip. The first clip's envelope starts there; every later clip starts where the one before left the channel." />
+                               Text="Where each channel is from the timeline's start until its first clip. The first clip's envelope starts there; every later clip starts where the one before left the channel." />
                     <TextBlock Text="No channels yet." Opacity="0.7" IsVisible="{Binding !HasChannels}" />
                     <ItemsControl ItemsSource="{Binding Channels}">
                       <ItemsControl.ItemTemplate>
@@ -409,7 +409,7 @@
                               <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Label}" />
                             </DockPanel>
                             <ComboBox ItemsSource="{x:Static vm:ChannelStartViewModel.Sources}" SelectedIndex="{Binding SourceIndex}" HorizontalAlignment="Stretch"
-                                      ToolTip.Tip="Start of the first clip: the timeline leaves the channel alone until then. Fixed level: held at the level from the timeline's start." />
+                                      ToolTip.Tip="Start of the first clip: held at the first clip's start level from the timeline's start (drag the clip's start dot to set it). Fixed level: the track's own level, held from the start even without clips. Leave alone: not touched until the first clip, so the faders or an ambient timeline underneath show (for scares)." />
                             <Grid ColumnDefinitions="Auto,*">
                               <TextBlock Text="Level (%)" Classes="label" Margin="0,0,8,0" />
                               <NumericUpDown Grid.Column="1" Value="{Binding Percent}" Minimum="0" Maximum="100" Increment="5" FormatString="0.#"

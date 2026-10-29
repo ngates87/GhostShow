@@ -178,6 +178,14 @@ public sealed class TrackLevels
         return new TrackLevels(channel, result);
     }
 
+    /// <summary>Whether the timeline holds the channel at its start level before its first clip (else it leaves it alone there).</summary>
+    public bool HoldsBeforeFirstClip => Channel.Start switch
+    {
+        ChannelStart.Fixed => true,
+        ChannelStart.FirstClip => Clips.Count > 0,
+        _ => false,
+    };
+
     public ClipEnvelope? Find(LightingClip clip)
     {
         foreach (var envelope in Clips) if (envelope.Clip == clip) return envelope;
@@ -196,7 +204,7 @@ public sealed class TrackLevels
             if (envelope.Clip.Start > time) break;
             current = envelope;
         }
-        if (current is null) return Channel.Start == ChannelStart.Fixed ? Channel.StartLevel : null;
+        if (current is null) return HoldsBeforeFirstClip ? Channel.StartLevel : null;
         var into = time - current.Clip.Start;
         return into < current.PlaysFor ? Envelope.Round(Envelope.ValueAt(current.Handles, into)) : current.EndLevel;
     }

@@ -615,9 +615,24 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
         }
         var removals = SelectedEvents().Where(e => !e.Locked).Select(e => (Track: TrackContaining(e)!, Event: e, Index: TrackContaining(e)!.Events.IndexOf(e))).ToList();
         if (removals.Count == 0) return;
+        // A lighting track's starting levels (for channels that start at their first clip) are the first clip's start
+        // handles: deleting that clip puts them back to 0, so they don't carry over unseen into whatever comes first next.
+        var removed = removals.Select(r => r.Event).ToHashSet();
+        var resets = removals.Select(r => r.Track).Distinct()
+            .Where(t => TrackLevels.PlayingOrder(t).FirstOrDefault() is { } first && removed.Contains(first))
+            .SelectMany(t => t.Channels.Where(c => c.Start != ChannelStart.Fixed && c.StartLevel != 0))
+            .Select(c => (Channel: c, Level: c.StartLevel)).ToList();
         History.Execute(removals.Count == 1 ? $"Delete {Describe(removals[0].Event)}" : $"Delete {removals.Count} clips",
-            () => { foreach (var r in removals) r.Track.Events.Remove(r.Event); },
-            () => { foreach (var r in removals.OrderBy(r => r.Index)) r.Track.Events.Insert(Math.Min(r.Index, r.Track.Events.Count), r.Event); });
+            () =>
+            {
+                foreach (var r in removals) r.Track.Events.Remove(r.Event);
+                foreach (var r in resets) r.Channel.StartLevel = 0;
+            },
+            () =>
+            {
+                foreach (var r in removals.OrderBy(r => r.Index)) r.Track.Events.Insert(Math.Min(r.Index, r.Track.Events.Count), r.Event);
+                foreach (var r in resets) r.Channel.StartLevel = r.Level;
+            });
         ClearSelection();
     }
 

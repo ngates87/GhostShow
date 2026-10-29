@@ -64,8 +64,16 @@ flattened into sorted per-channel steps (`CompiledTimeline`). Playback then only
   a clip moves its envelopes.
   - Every envelope starts with a **start handle** at the clip's start whose level is where the previous clip left
     the channel: clips carry on from each other. The first clip starts from the channel's **starting level** (track
-    properties): with "Start of the first clip" the timeline leaves the channel alone until then; with "Fixed level"
-    it holds the channel at that level from the timeline's start.
+    properties), and, as in VenueMagic, the channel is at that level from the timeline's start (drawn as a line
+    before the first clip, like the lines between clips):
+    - **Start of the first clip** (the default): the first clip's start dot sets it. A track with no clips leaves
+      the channel alone.
+    - **Fixed level**: the track's own level, held from the start even with no clips.
+    - **Leave alone until the first clip**: the timeline doesn't touch the channel before then, so the faders, or an
+      ambient timeline playing under this one, show (useful for a scare's timeline). The level the first clip will
+      start from is drawn faint and dashed.
+    Except for a fixed level, the starting level belongs to the first clip: deleting that clip puts it back to 0 (in
+    the same undo step), so it never carries over unseen into whichever clip comes first next.
   - Every envelope ends with an **end handle** at the clip's end: its level can change, its time can't. Handles in
     between can't pass their neighbours.
   - From one handle to the next the level follows the later handle's **curve**: Linear (a straight fade), Step (hold,
@@ -233,7 +241,8 @@ same files. The Audio screen lists every sound the show uses and whether it was 
     opens the Envelope Editor). Click a handle to select it (Ctrl+click adds); drag to move the selected handles in time (not past
     their neighbours; an end handle only up and down) and level; right-click a handle for its curve (Step, Linear,
     Spline) or to delete it. Handles are squares, end handles diamonds; a start handle is a ring, or a filled dot on
-    the first clip when the channel starts there, which you can drag up and down to set its starting level.
+    the first clip when the channel starts there, which you can drag up and down to set its starting level (an
+    effect clip has no handles of its own, but shows and takes these dots too when it's first).
   - The **Envelope Editor** is its own window (like VenueMagic's), for editing one clip's envelopes at a good size.
     On the left, the track's channels by fixture: untick one to hide its envelope (ticking a fixture covers all its
     channels); click a channel's name to make it the **active channel** (highlighted, drawn on top and thicker;
@@ -246,7 +255,18 @@ same files. The Audio screen lists every sound the show uses and whether it was 
     curve for them all. ◀ ▶ go to the track's previous and next clip; −, + and Fit zoom (Ctrl+wheel zooms around the
     pointer, the wheel pans). **Update lamps while editing**: while stopped or paused, selecting or moving a handle
     puts the playhead there, paused, so the lights show the level. Keys: Delete, arrows (nudge), Ctrl+A (all
-    handles shown), Ctrl+Z / Ctrl+Y, Esc, Space (play/pause). The window follows the timeline: selecting another
+    handles shown), Ctrl+Z / Ctrl+Y, Esc, Space (play/pause). The toolbar wraps onto a second line in a narrow window.
+    **Grouped handles** are handles on several channels at one time, made together: selecting one selects them
+    all, and they move, nudge and delete as one (a dashed line joins them; **Ungroup** separates them):
+    - **Colour handle** (toolbar, for the active channel's fixture, or right-click → Add *fixture* colour handle
+      here): one handle on the fixture's red, green, blue, white and amber channels that are on the track, set
+      with a colour picker (white is what red, green and blue share, amber the orange part; UV is left alone). Its
+      colour shows as a chip in the ruler.
+    - **Position handle**: the same for pan and tilt, set on a pad (pan across, tilt up and down) or as numbers.
+    - **Snapshot** (VenueMagic's): set a look by hand on Lighting → Control or Channels, then Snapshot writes those
+      levels into handles at the playhead on the ticked channels, grouped. At the clip's end it sets the end
+      handles. The playhead has to be in the clip.
+    Toolbar handles go at the playhead when it's in the clip, otherwise in the middle of what's in view. The window follows the timeline: selecting another
     lighting clip, or a handle in one, shows that clip. Every edit is the same as on the timeline: undoable, and it
     plays straight away.
   - Right-click a clip also for Split at playhead, Lock/Unlock, Link/Unlink (with several selected), Duplicate, Copy
@@ -292,8 +312,9 @@ to 3, and every older show), playing as before: a fade becomes a jump to its sta
 an instant change becomes a step, an event that cut into an earlier fade ends that fade where it had got to, and
 each track's points go into one clip spanning them. A version 3 clip's first point becomes a step (it was a jump),
 each envelope gets an end handle holding its last level, and points past a clip's end (which never played) go.
-"step": true in a file reads as the Step curve. Two differences: a channel is now controlled from the track's
-first clip (at its starting level, 0 unless set) where it used to be left alone until its own first point, and a
+"step": true in a file reads as the Step curve. Two differences: a channel is now controlled from the timeline's
+start (at its starting level, 0 unless set; choose "Leave alone until the first clip" in track properties for the
+old behaviour) where it used to be left alone until its own first point, and a
 clip that another one cuts into no longer plays its later points after that one starts. Disabled lighting events are dropped. The file is written in the new form (version 4)
 on the next save.
 
@@ -311,7 +332,6 @@ events). Either way, saving writes a show folder.
   come next).
 - Copy, paste and duplicate work on clips, not on single handles.
 - A channel's starting level is fixed or its first clip's; VenueMagic's "current level when the timeline starts" isn't
-  there yet. Nor are the Envelope Editor's Snapshot and RGB/position handles, or fixture effects other than Level Control (see
-  docs/plan-timeline-venuemagic.md).
+  there yet (see docs/plan-timeline-venuemagic.md).
 - An event can't be dragged to another track (cut and paste instead).
 - Audio events play on the one output device; no per-event routing to other outputs yet.

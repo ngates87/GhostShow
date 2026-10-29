@@ -8,12 +8,18 @@
         Title="{Binding Title}" Icon="avares://ghostshow-app/Assets/ghostshow.ico" Width="1100" Height="600" MinWidth="640" MinHeight="380"
         Background="#141414" WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
   <Window.Styles>
-    <Style Selector="StackPanel.toolbar > Button">
+    <!-- The toolbar wraps onto a second line when the window is too narrow for it. -->
+    <Style Selector="WrapPanel.toolbar > :is(Control)">
+      <Setter Property="Margin" Value="0,0,6,6" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="WrapPanel.toolbar > Button">
       <Setter Property="Padding" Value="8,4" />
     </Style>
     <Style Selector="Border.separator">
       <Setter Property="Width" Value="1" />
-      <Setter Property="Margin" Value="6,2" />
+      <Setter Property="Height" Value="22" />
+      <Setter Property="Margin" Value="0,0,6,6" />
       <Setter Property="Background" Value="{DynamicResource SystemControlForegroundBaseLowBrush}" />
     </Style>
     <Style Selector="Border.channel.active">
@@ -27,7 +33,7 @@
 
   <DockPanel Margin="8">
     <!-- Tools -->
-    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="6" Margin="0,0,0,8" Classes="toolbar">
+    <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,2" Classes="toolbar">
       <Button Classes="icon" Command="{Binding PreviousClipCommand}" ToolTip.Tip="The previous clip on the track"><PathIcon Data="{StaticResource Icon.Previous}" /></Button>
       <Button Classes="icon" Command="{Binding NextClipCommand}" ToolTip.Tip="The next clip on the track"><PathIcon Data="{StaticResource Icon.Next}" /></Button>
       <Border Classes="separator" />
@@ -41,16 +47,25 @@
       <CheckBox Content="Update lamps while editing" IsChecked="{Binding UpdateLamps}"
                 ToolTip.Tip="While stopped or paused, selecting or moving a handle puts the playhead there, so the lights show the level" />
       <Border Classes="separator" />
+      <Button Content="Snapshot" Command="{Binding SnapshotCommand}" IsEnabled="{Binding CanSnapshot}"
+              ToolTip.Tip="Handles at the playhead from the levels set by hand (Lighting → Control or Channels), on the ticked channels: set a look on the faders, then snapshot it" />
+      <Button Content="Colour handle" Command="{Binding AddColourHandleCommand}" IsEnabled="{Binding CanAddColourHandle}"
+              ToolTip.Tip="One handle for the active channel's fixture's colour (red, green, blue, white, amber together), at the playhead; set it with a colour picker" />
+      <Button Content="Position handle" Command="{Binding AddPositionHandleCommand}" IsEnabled="{Binding CanAddPositionHandle}"
+              ToolTip.Tip="One handle for the active channel's fixture's pan and tilt together, at the playhead; set it on a pad" />
+      <Border Classes="separator" />
       <Button Classes="icon" Command="{Binding Editor.UndoCommand}" ToolTip.Tip="{Binding Editor.UndoLabel}"><PathIcon Data="{StaticResource Icon.Undo}" /></Button>
       <Button Classes="icon" Command="{Binding Editor.RedoCommand}" ToolTip.Tip="{Binding Editor.RedoLabel}"><PathIcon Data="{StaticResource Icon.Redo}" /></Button>
-    </StackPanel>
+    </WrapPanel>
+
+    <TextBlock DockPanel.Dock="Bottom" Text="{Binding Status}" Opacity="0.75" Margin="2,6,0,0" IsVisible="{Binding Status, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
 
     <!-- The selected handle(s) -->
     <Border DockPanel.Dock="Bottom" Classes="card" Margin="0,8,0,0" Padding="10,6" MinHeight="46">
       <Panel>
         <TextBlock Opacity="0.6" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
                    IsVisible="{Binding !Editor.SelectedPoints.Count}"
-                   Text="Click a channel on the left to make it active · double-click to add a handle (on a curve, or anywhere for the active channel) · drag handles (Shift: one direction) · right-click a handle for its curve" />
+                   Text="Click a channel on the left to make it active · double-click to add a handle (on a curve, or anywhere for the active channel) · drag handles (Shift: one direction) · right-click for colour and position handles, or a handle for its curve" />
         <ContentControl Content="{Binding Editor.PointProperties}">
           <ContentControl.ContentTemplate>
             <DataTemplate x:DataType="vm:PointPropertiesViewModel">
@@ -71,7 +86,36 @@
           </ContentControl.ContentTemplate>
         </ContentControl>
         <StackPanel Orientation="Horizontal" Spacing="10" IsVisible="{Binding HasSeveralSelected}">
-          <TextBlock Text="{Binding Editor.SelectionLabel}" FontWeight="SemiBold" VerticalAlignment="Center" />
+          <TextBlock Text="{Binding Editor.SelectionLabel}" FontWeight="SemiBold" VerticalAlignment="Center"
+                     IsVisible="{Binding Editor.SelectedHandleGroup, Converter={x:Static ObjectConverters.IsNull}}" />
+          <!-- A colour, position or snapshot group -->
+          <ContentControl Content="{Binding Editor.SelectedHandleGroup}">
+            <ContentControl.ContentTemplate>
+              <DataTemplate x:DataType="vm:HandleGroupViewModel">
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                  <TextBlock Text="{Binding Heading}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                  <ColorPicker Color="{Binding Colour, Mode=TwoWay}" IsVisible="{Binding IsColour}" IsAlphaEnabled="False" IsAlphaVisible="False"
+                               ToolTip.Tip="The colour: sets red, green, blue, white and amber together" />
+                  <Button Content="Position…" IsVisible="{Binding IsPosition}" ToolTip.Tip="Point it: pan across, tilt up and down">
+                    <Button.Flyout>
+                      <Flyout Placement="Top">
+                        <StackPanel Spacing="8">
+                          <controls:PositionPad Pan="{Binding Pan}" Tilt="{Binding Tilt}" />
+                          <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,6,Auto">
+                            <TextBlock Text="Pan" Classes="label" Margin="0,0,8,0" />
+                            <NumericUpDown Grid.Column="1" Value="{Binding Pan}" Minimum="0" Maximum="255" Increment="1" FormatString="0" IsEnabled="{Binding HasPan}" />
+                            <TextBlock Grid.Row="2" Text="Tilt" Classes="label" Margin="0,0,8,0" />
+                            <NumericUpDown Grid.Row="2" Grid.Column="1" Value="{Binding Tilt}" Minimum="0" Maximum="255" Increment="1" FormatString="0" IsEnabled="{Binding HasTilt}" />
+                          </Grid>
+                        </StackPanel>
+                      </Flyout>
+                    </Button.Flyout>
+                  </Button>
+                  <Button Content="Ungroup" Command="{Binding UngroupCommand}" ToolTip.Tip="Let these handles move on their own again" />
+                </StackPanel>
+              </DataTemplate>
+            </ContentControl.ContentTemplate>
+          </ContentControl>
           <TextBlock Text="Curve for all" Classes="label" Margin="8,0,0,0" />
           <Button Content="Step" Command="{Binding SetCurveCommand}" CommandParameter="{x:Static tl:CurveKind.Step}" />
           <Button Content="Linear" Command="{Binding SetCurveCommand}" CommandParameter="{x:Static tl:CurveKind.Linear}" />

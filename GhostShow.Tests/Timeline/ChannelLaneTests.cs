@@ -210,13 +210,24 @@ public class ChannelLaneTests
     [Fact]
     public void A_clip_fades_from_its_start_level_through_its_handles_and_holds_its_end_level_after_it()
     {
-        var compiled = Compile(Timeline(ClipTrack(new ChannelLane { Target = Ch10 }, Clip(2, 4, Lane(Ch10, P(4, 200))))));
+        var compiled = Compile(Timeline(ClipTrack(new ChannelLane { Target = Ch10, StartLevel = 30 }, Clip(2, 4, Lane(Ch10, P(4, 200))))));
 
-        Assert.False(LevelsAt(compiled, 1.9).Controlled[9]);   // starts at the first clip
-        Assert.Equal(0, At(compiled, 2, 10));                  // the channel's start level
-        Assert.Equal(100, At(compiled, 4, 10));
+        Assert.Equal(30, At(compiled, 0, 10));                 // the start level, held from the timeline's start (VenueMagic)
+        Assert.Equal(30, At(compiled, 2, 10));
+        Assert.Equal(115, At(compiled, 4, 10));
         Assert.Equal(200, At(compiled, 30, 10));
         Assert.Equal(S(6).Ticks, compiled.Length);
+    }
+
+    [Fact]
+    public void A_channel_left_alone_is_not_touched_until_its_first_clip_and_one_without_clips_only_when_fixed()
+    {
+        var alone = Compile(Timeline(ClipTrack(new ChannelLane { Target = Ch10, StartLevel = 30, Start = ChannelStart.LeaveAlone }, Clip(2, 4, Lane(Ch10, P(4, 200))))));
+        Assert.False(LevelsAt(alone, 1.9).Controlled[9]);
+        Assert.Equal(30, At(alone, 2, 10));   // the first clip still starts at the start level
+
+        Assert.False(LevelsAt(Compile(Timeline(ClipTrack(new ChannelLane { Target = Ch10, StartLevel = 30 }))), 1).Controlled[9]);   // no clips: nothing to start from
+        Assert.Equal(30, At(Compile(Timeline(ClipTrack(new ChannelLane { Target = Ch10, StartLevel = 30, Start = ChannelStart.Fixed }))), 1, 10));
     }
 
     [Fact]

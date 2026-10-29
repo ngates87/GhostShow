@@ -155,7 +155,8 @@ public static class LightingEffects
         }).ToList();
     }
 
-    static bool IsColour(ChannelFunction f) => f is ChannelFunction.Red or ChannelFunction.Green or ChannelFunction.Blue
+    /// <summary>A colour channel: red, green, blue, white, amber or UV.</summary>
+    public static bool IsColour(ChannelFunction f) => f is ChannelFunction.Red or ChannelFunction.Green or ChannelFunction.Blue
         or ChannelFunction.White or ChannelFunction.Amber or ChannelFunction.UV;
 
     /// <summary>
@@ -184,8 +185,8 @@ public static class LightingEffects
 
     static double Lerp(double a, double b, double f) => a + (b - a) * Math.Clamp(f, 0, 1);
 
-    /// <summary>How much of a colour a colour channel gives: white is what all three share, amber the orange part.</summary>
-    static double Component(Rgb c, ChannelFunction f) => f switch
+    /// <summary>How much of a colour (0-1) a colour channel gives: white is what all three share, amber the orange part.</summary>
+    public static double Component(Rgb c, ChannelFunction f) => f switch
     {
         ChannelFunction.Red => c.R,
         ChannelFunction.Green => c.G,

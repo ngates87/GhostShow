@@ -76,7 +76,7 @@ public sealed partial class TrackPropertiesViewModel : ObservableObject
 /// <summary>One channel of a lighting track: where it is before the first clip (VenueMagic's "starting level").</summary>
 public sealed partial class ChannelStartViewModel(ChannelLane channel, TimelineEditorViewModel editor) : ObservableObject
 {
-    public static IReadOnlyList<string> Sources { get; } = ["Start of the first clip", "Fixed level"];
+    public static IReadOnlyList<string> Sources { get; } = ["Start of the first clip", "Fixed level", "Leave alone until the first clip"];
 
     public ChannelLane Channel { get; } = channel;
     public string Label => editor.LaneLabel(Channel.Target);
@@ -85,8 +85,8 @@ public sealed partial class ChannelStartViewModel(ChannelLane channel, TimelineE
     /// <summary>0: the timeline leaves the channel alone until its first clip, which starts at the level; 1: held at the level from the start.</summary>
     public int SourceIndex
     {
-        get => Channel.Start == ChannelStart.Fixed ? 1 : 0;
-        set => editor.SetChannelStart(Channel, value == 1 ? ChannelStart.Fixed : ChannelStart.FirstClip);
+        get => (int)Channel.Start;
+        set => editor.SetChannelStart(Channel, value is >= 0 and <= 2 ? (ChannelStart)value : ChannelStart.FirstClip);
     }
 
     public decimal Percent

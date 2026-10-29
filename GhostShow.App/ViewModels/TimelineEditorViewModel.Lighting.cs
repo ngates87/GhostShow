@@ -192,17 +192,18 @@ public sealed partial class TimelineEditorViewModel
 
     /// <summary>The first clip of a channel whose start level is its own (the channel starts at its first clip); null if none.</summary>
     public LightingClip? FirstClipOf(TrackLevels levels) =>
-        levels.Channel.Start == ChannelStart.FirstClip && levels.Clips.Count > 0 ? levels.Clips[0].Clip : null;
+        levels.Channel.Start != ChannelStart.Fixed && levels.Clips.Count > 0 ? levels.Clips[0].Clip : null;
 
     // ---- handle selection (called by the canvas) ----
 
-    /// <summary>Click on a handle: select it alone, or with additive (Ctrl) toggle it in the selection.</summary>
+    /// <summary>Click on a handle: select it alone, or with additive (Ctrl) toggle it in the selection. A grouped handle brings its group.</summary>
     public void SelectPoint(CurvePoint point, bool additive)
     {
         if (!additive) _selectedPoints.Clear();
         _selection.Clear();
-        if (additive && _selectedPoints.Contains(point)) _selectedPoints.Remove(point);
-        else _selectedPoints.Add(point);
+        var group = GroupOf(point);
+        if (additive && _selectedPoints.Contains(point)) _selectedPoints.ExceptWith(group);
+        else _selectedPoints.UnionWith(group);
         SelectionChanged();
     }
 
@@ -214,6 +215,7 @@ public sealed partial class TimelineEditorViewModel
             PointProperties = single is null || Locate(single) is not { } where ? null : new PointPropertiesViewModel(single, where.Lane, where.Clip, this);
         else
             PointProperties?.Refresh();
+        HandleGroupSelectionChanged();
     }
 
     // ---- handle edits ----
@@ -471,7 +473,13 @@ public sealed partial class TimelineEditorViewModel
     {
         if (channel.Start == start) return;
         var old = channel.Start;
-        History.Execute(start == ChannelStart.Fixed ? "Start at a fixed level" : "Start at the first clip", () => channel.Start = start, () => channel.Start = old);
+        string description = start switch
+        {
+            ChannelStart.Fixed => "Start at a fixed level",
+            ChannelStart.LeaveAlone => "Leave alone until the first clip",
+            _ => "Start at the first clip",
+        };
+        History.Execute(description, () => channel.Start = start, () => channel.Start = old);
     }
 
     /// <summary>
@@ -488,18 +496,19 @@ public sealed partial class TimelineEditorViewModel
         History.Execute(description, () => Restore(after), () => Restore(before), mergeKey);
     }
 
-    static List<(ChannelLane Lane, (CurvePoint Point, TimeSpan Time, byte Value, CurveKind Curve)[] Points)> Snapshot(IEnumerable<ChannelLane> lanes) =>
-        lanes.Select(l => (l, l.Points.Select(p => (p, p.Time, p.Value, p.Curve)).ToArray())).ToList();
+    static List<(ChannelLane Lane, (CurvePoint Point, TimeSpan Time, byte Value, CurveKind Curve, Guid? Group)[] Points)> Snapshot(IEnumerable<ChannelLane> lanes) =>
+        lanes.Select(l => (l, l.Points.Select(p => (p, p.Time, p.Value, p.Curve, p.Group)).ToArray())).ToList();
 
-    static void Restore(List<(ChannelLane Lane, (CurvePoint Point, TimeSpan Time, byte Value, CurveKind Curve)[] Points)> state)
+    static void Restore(List<(ChannelLane Lane, (CurvePoint Point, TimeSpan Time, byte Value, CurveKind Curve, Guid? Group)[] Points)> state)
     {
         foreach (var (lane, points) in state)
         {
-            foreach (var (point, time, value, curve) in points)
+            foreach (var (point, time, value, curve, group) in points)
             {
                 point.Time = time;
                 point.Value = value;
                 point.Curve = curve;
+                point.Group = group;
             }
             lane.Points = points.Select(p => p.Point).ToList();
         }
@@ -628,7 +637,7 @@ public sealed partial class TimelineEditorViewModel
     {
         if (!additive) _selectedPoints.Clear();
         _selection.Clear();
-        _selectedPoints.UnionWith(points);
+        _selectedPoints.UnionWith(WithGroups(points));
         SelectionChanged();
     }
 

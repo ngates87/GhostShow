@@ -38,12 +38,30 @@ sealed class TimelineRig : IDisposable
         ],
     };
 
+    public static readonly FixtureProfile MoverProfile = new()
+    {
+        Id = "test/acme/mover", Manufacturer = "Acme", Model = "Mover", Type = "Moving Head",
+        Modes =
+        [
+            new FixtureMode
+            {
+                Name = "3ch",
+                Channels =
+                [
+                    new FixtureChannel { Name = "Pan", Function = ChannelFunction.Pan },
+                    new FixtureChannel { Name = "Tilt", Function = ChannelFunction.Tilt },
+                    new FixtureChannel { Name = "Dimmer", Function = ChannelFunction.Intensity },
+                ],
+            },
+        ],
+    };
+
     readonly string _configDirectory = Path.Combine(Path.GetTempPath(), "ghostshow-app-tests", Guid.NewGuid().ToString("N"));
     readonly UiResponsivenessProbe _probe = new();
 
     public TimelineRig()
     {
-        Session = new ShowSession(new ShowEngine(), new FixtureProfileLibrary([TestRig.Par, TestRig.Dimmer, RgbProfile]), NullLogger<ShowSession>.Instance);
+        Session = new ShowSession(new ShowEngine(), new FixtureProfileLibrary([TestRig.Par, TestRig.Dimmer, RgbProfile, MoverProfile]), NullLogger<ShowSession>.Instance);
         Par = new FixtureInstance { Name = "Par 1", ProfileId = TestRig.Par.Id, ModeName = "5ch", StartAddress = 10 };
         Rgb = new FixtureInstance { Name = "Entry LED", ProfileId = RgbProfile.Id, ModeName = "4ch", StartAddress = 20 };
         Session.Project.Fixtures.AddRange([Par, Rgb]);
@@ -675,6 +693,141 @@ public class TimelineEditorTests : IDisposable
     }
 
     [Fact]
+    public void Deleting_the_first_clip_resets_the_starting_levels_it_used_but_not_fixed_ones_or_for_later_clips()
+    {
+        var red = _rig.RedLane();
+        Editor.SetTrackChannels(_rig.LightingTrack, [red.Target, LaneTarget.Raw(1, 100)]);
+        var (start, held) = (_rig.LightingTrack.Channels[0], _rig.LightingTrack.Channels[1]);
+        Editor.SetStartLevel(start, 194);
+        Editor.SetChannelStart(held, ChannelStart.Fixed);
+        Editor.SetStartLevel(held, 60);
+        var first = AddClip(0, 2);
+        var second = AddClip(5, 2);
+
+        Editor.SelectEvent(second.Id, additive: false);
+        Editor.DeleteCommand.Execute(null);
+        Assert.Equal((194, 60), (start.StartLevel, held.StartLevel));   // not the first clip: nothing to reset
+
+        Editor.SelectEvent(first.Id, additive: false);
+        Editor.DeleteCommand.Execute(null);
+        Assert.Equal((0, 60), (start.StartLevel, held.StartLevel));     // a fixed level is the track's own
+
+        Editor.UndoCommand.Execute(null);
+        Assert.Equal(194, start.StartLevel);
+        Assert.Contains(first, _rig.LightingTrack.Events);
+    }
+
+    LaneTarget RgbControl(ChannelFunction control) => LaneTarget.FixtureControl(_rig.Rgb.Id, control);
+
+    [Fact]
+    public void A_colour_handle_sets_a_fixture_s_colour_channels_together_and_moves_ungroups_and_deletes_as_one()
+    {
+        Editor.SetTrackChannels(_rig.LightingTrack, [RgbControl(ChannelFunction.Intensity), RgbControl(ChannelFunction.Red), RgbControl(ChannelFunction.Green), RgbControl(ChannelFunction.Blue)]);
+        var clip = AddClip(0, 4);
+
+        var group = Editor.AddGroupHandle(clip, _rig.Rgb.Id, S(2), HandleGroupKind.Colour);
+
+        Assert.Equal(3, group.Count);   // red, green and blue: not the dimmer
+        Assert.All(group, p => Assert.Equal((S(2), group[0].Group), (p.Time, p.Group)));
+        Assert.Equal(3, Editor.SelectedPoints.Count);
+        var panel = Editor.SelectedHandleGroup!;
+        Assert.Equal((true, "Colour handle · Entry LED"), (panel.IsColour, panel.Heading));
+
+        panel.Colour = Avalonia.Media.Color.FromRgb(255, 128, 0);
+        panel.Colour = Avalonia.Media.Color.FromRgb(255, 100, 0);   // dragging in the picker: one undo step
+        Assert.Equal([(byte)255, (byte)100, (byte)0], group.Select(p => p.Value));
+        Assert.Equal(Avalonia.Media.Color.FromRgb(255, 100, 0), Editor.SelectedHandleGroup!.Colour);
+        Editor.UndoCommand.Execute(null);
+        Assert.Equal([(byte)0, (byte)0, (byte)0], group.Select(p => p.Value));
+
+        Editor.SelectPoint(group[1], additive: false);   // one brings the group
+        Assert.Equal(3, Editor.SelectedPoints.Count);
+        Editor.MoveSelectedPoints(S(1), 0, group[1]);
+        Assert.All(group, p => Assert.Equal(S(3), p.Time));
+
+        Editor.SelectedHandleGroup!.UngroupCommand.Execute(null);
+        Editor.SelectPoint(group[0], additive: false);
+        Assert.Single(Editor.SelectedPoints);
+        Editor.UndoCommand.Execute(null);
+        Editor.SelectPoint(group[0], additive: false);
+        Assert.Equal(3, Editor.SelectedPoints.Count);
+
+        Editor.DeleteCommand.Execute(null);
+        Assert.All(clip.Lanes, l => Assert.Equal([S(4)], l.Points.Select(p => p.Time)));   // only their end handles are left
+    }
+
+    [Fact]
+    public void Snapshot_puts_the_levels_set_by_hand_into_grouped_handles_at_a_time()
+    {
+        Editor.SetTrackChannels(_rig.LightingTrack, [RgbControl(ChannelFunction.Red), RgbControl(ChannelFunction.Green)]);
+        var clip = AddClip(0, 4);
+        _rig.Session.Engine.SetFixtureControl(_rig.Rgb.Id, ChannelFunction.Red, 200);
+        _rig.Session.Engine.SetFixtureControl(_rig.Rgb.Id, ChannelFunction.Green, 50);
+        var targets = _rig.LightingTrack.Channels.Select(c => c.Target).ToList();
+
+        var look = Editor.Snapshot(clip, S(1.5), targets);
+
+        Assert.Equal([(S(1.5), (byte)200), (S(1.5), (byte)50)], look.Select(p => (p.Time, p.Value)));
+        Assert.NotNull(look[0].Group);
+        Assert.Equal(look[0].Group, look[1].Group);
+        Assert.Equal(2, Editor.SelectedPoints.Count);
+
+        var ends = Editor.Snapshot(clip, S(4), targets);   // at the clip's end: its end handles
+        Assert.All(ends, p => Assert.True(clip.IsEndHandle(p) && p.Group is null));
+        Assert.Equal([(byte)200, (byte)50], ends.Select(p => p.Value));
+        Assert.Empty(Editor.Snapshot(clip, S(6), targets));   // outside the clip
+
+        Editor.UndoCommand.Execute(null);
+        Editor.UndoCommand.Execute(null);
+        Assert.All(clip.Lanes, l => Assert.Equal([(S(4), (byte)0)], l.Points.Select(p => (p.Time, p.Value))));
+    }
+
+    [Fact]
+    public void A_position_handle_points_a_moving_light_with_pan_and_tilt_together()
+    {
+        var mover = new FixtureInstance { Name = "Mover", ProfileId = TimelineRig.MoverProfile.Id, ModeName = "3ch", StartAddress = 60 };
+        _rig.Session.Project.Fixtures.Add(mover);
+        _rig.Session.Apply();
+        Editor.SetTrackChannels(_rig.LightingTrack, [LaneTarget.FixtureControl(mover.Id, ChannelFunction.Pan), LaneTarget.FixtureControl(mover.Id, ChannelFunction.Tilt),
+                                                     LaneTarget.FixtureControl(mover.Id, ChannelFunction.Intensity)]);
+        var clip = AddClip(0, 4);
+        Assert.Empty(Editor.AddGroupHandle(clip, mover.Id, S(1), HandleGroupKind.Colour));   // it has no colours
+
+        var position = Editor.AddGroupHandle(clip, mover.Id, S(1), HandleGroupKind.Position);
+        var panel = Editor.SelectedHandleGroup!;
+        panel.Pan = 64;
+        panel.Tilt = 200;
+
+        Assert.Equal((true, "Position handle · Mover"), (panel.IsPosition, panel.Heading));
+        Assert.Equal([(byte)64, (byte)200], position.Select(p => p.Value));
+        Editor.UndoCommand.Execute(null);   // pan and tilt set together: one step
+        Assert.Equal([(byte)0, (byte)0], position.Select(p => p.Value));
+    }
+
+    [Fact]
+    public void The_envelope_editor_snapshots_the_ticked_channels_at_the_playhead_and_says_why_when_it_cannot()
+    {
+        Editor.SetTrackChannels(_rig.LightingTrack, [RgbControl(ChannelFunction.Red), RgbControl(ChannelFunction.Green)]);
+        var clip = AddClip(2, 4);
+        Editor.OpenEnvelopeEditor(clip);
+        var envelopes = Editor.EnvelopeEditor!;
+        _rig.Session.Engine.SetFixtureControl(_rig.Rgb.Id, ChannelFunction.Red, 180);
+
+        _rig.Playback.Seek(S(1));
+        envelopes.SnapshotCommand.Execute(null);
+        Assert.Contains("playhead into the clip", envelopes.Status);
+
+        envelopes.Fixtures[0].Channels[1].IsChecked = false;   // Green unticked: left alone
+        _rig.Playback.Seek(S(3));
+        envelopes.SnapshotCommand.Execute(null);
+
+        Assert.StartsWith("Snapshot: 1 handle at", envelopes.Status);
+        Assert.Equal([(S(1), (byte)180)], clip.LaneFor(RgbControl(ChannelFunction.Red))!.Points.Where(p => !clip.IsEndHandle(p)).Select(p => (p.Time, p.Value)));
+        Assert.Null(clip.LaneFor(RgbControl(ChannelFunction.Green)));
+        Assert.True(envelopes.CanAddColourHandle);   // red and green: enough for a colour handle
+    }
+
+    [Fact]
     public void Selecting_a_handle_clears_selected_clips_and_the_other_way_round()
     {
         var sound = _rig.AddSound(1);
@@ -823,7 +976,7 @@ public class TimelineEditorTests : IDisposable
     }
 
     [Fact]
-    public void A_channel_starts_at_its_level_at_the_first_clip_or_holds_it_from_the_start_when_fixed()
+    public void A_channel_holds_its_start_level_from_the_start_unless_it_is_left_alone_until_its_first_clip()
     {
         var red = _rig.RedLane();
         var clip = AddClip(2);
@@ -838,15 +991,17 @@ public class TimelineEditorTests : IDisposable
         _rig.Playback.Seek(S(3));
         Assert.InRange(_rig.Output(21), 127, 128);   // half way from 255 to 0 between 2 and 4 s
         _rig.Seek(S(1));
-        _rig.Output(21);   // one playback update
-        Assert.False(_rig.Session.Engine.IsTimelineControlled(1, 21));   // left alone before the first clip
+        Assert.Equal(255, _rig.Output(21));   // held from the timeline's start (VenueMagic)
 
-        channel.SourceIndex = 1;   // fixed level
-        Assert.Equal(ChannelStart.Fixed, red.Start);
+        channel.SourceIndex = 2;   // leave alone
+        Assert.Equal(ChannelStart.LeaveAlone, red.Start);
         _rig.Seek(S(1));
-        Assert.Equal(255, _rig.Output(21));
+        _rig.Output(21);   // one playback update
+        Assert.False(_rig.Session.Engine.IsTimelineControlled(1, 21));   // not touched before the first clip
         Editor.UndoCommand.Execute(null);
         Assert.Equal(ChannelStart.FirstClip, red.Start);
+        channel.SourceIndex = 1;
+        Assert.Equal(ChannelStart.Fixed, red.Start);
     }
 
     [Fact]

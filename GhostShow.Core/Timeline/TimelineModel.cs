@@ -170,15 +170,28 @@ public sealed class TimelineTrack
     public bool DrawLevelsBetweenClips { get; set; } = true;
 }
 
-/// <summary>Where a lighting track's channel is before its first clip, and so where that clip's envelope starts.</summary>
+/// <summary>
+/// Where a lighting track's channel is before its first clip, and so where that clip's envelope starts
+/// (<see cref="ChannelLane.StartLevel"/>). As in VenueMagic, the channel is at that level from the timeline's start,
+/// unless it's left alone.
+/// </summary>
 [JsonConverter(typeof(JsonStringEnumConverter<ChannelStart>))]
 public enum ChannelStart
 {
-    /// <summary>The timeline leaves the channel alone until the first clip, whose envelope starts at <see cref="ChannelLane.StartLevel"/>.</summary>
+    /// <summary>
+    /// The first clip's start level (its start handle sets it), held from the timeline's start. A track with no clips
+    /// leaves the channel alone.
+    /// </summary>
     FirstClip,
 
-    /// <summary>The timeline holds the channel at <see cref="ChannelLane.StartLevel"/> from its start.</summary>
+    /// <summary>A level of the track's own (set in its properties), held from the timeline's start, clips or not.</summary>
     Fixed,
+
+    /// <summary>
+    /// The timeline doesn't touch the channel until its first clip (which starts at the start level), so whatever
+    /// else is driving it shows: the faders, or an ambient timeline under this one (a scare's timeline).
+    /// </summary>
+    LeaveAlone,
 }
 
 /// <summary>
@@ -218,7 +231,7 @@ public sealed class ChannelLane
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public ChannelStart Start { get; set; }
 
-    /// <summary>Track channels: the level the first clip starts from (and, with <see cref="ChannelStart.Fixed"/>, held before it).</summary>
+    /// <summary>Track channels: the level the first clip starts from, held before it unless the channel is left alone (<see cref="ChannelStart"/>).</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public byte StartLevel { get; set; }
 
@@ -277,7 +290,14 @@ public sealed class CurvePoint
         set { if (value) Curve = CurveKind.Step; }
     }
 
-    public CurvePoint Clone() => new() { Time = Time, Value = Value, Curve = Curve };
+    /// <summary>
+    /// Handles made together (a colour or position handle, or a snapshot) share a group within their clip: they're
+    /// selected, moved and deleted as one. Null: on its own.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public Guid? Group { get; set; }
+
+    public CurvePoint Clone() => new() { Time = Time, Value = Value, Curve = Curve, Group = Group };
 }
 
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "type")]
@@ -434,7 +454,7 @@ public sealed class LightingClip : TimelineEvent
             after.Lanes.Add(new ChannelLane
             {
                 Target = lane.Target, Color = lane.Color,
-                Points = later.Select(p => new CurvePoint { Time = p.Time - at, Value = p.Value, Curve = p.Curve }).ToList(),
+                Points = later.Select(p => new CurvePoint { Time = p.Time - at, Value = p.Value, Curve = p.Curve, Group = p.Group }).ToList(),
             });
             var cut = later.FirstOrDefault();
             lane.Points.RemoveAll(p => p.Time >= at);

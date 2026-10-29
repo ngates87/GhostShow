@@ -50,7 +50,7 @@ public class ShowFolderStoreTests : IDisposable
         var block = new LightingClip
         {
             Name = "Flash", Start = TimeSpan.FromSeconds(1.5), Length = TimeSpan.FromSeconds(2),
-            Lanes = [new ChannelLane { Target = red.Target, Points = [new CurvePoint { Time = TimeSpan.Zero, Value = 3 }, new CurvePoint { Time = TimeSpan.FromSeconds(0.5), Value = 255, Curve = CurveKind.Step }, new CurvePoint { Time = TimeSpan.FromSeconds(2), Value = 9, Curve = CurveKind.Spline }] }],
+            Lanes = [new ChannelLane { Target = red.Target, Points = [new CurvePoint { Time = TimeSpan.Zero, Value = 3 }, new CurvePoint { Time = TimeSpan.FromSeconds(0.5), Value = 255, Curve = CurveKind.Step, Group = Guid.Parse("6b1f0a52-0000-4000-8000-000000000001") }, new CurvePoint { Time = TimeSpan.FromSeconds(2), Value = 9, Curve = CurveKind.Spline }] }],
         };
         var sound = new AudioEvent { File = "audio/z.wav", Start = TimeSpan.FromSeconds(2), Volume = 0.8, FadeIn = TimeSpan.FromSeconds(1), Loop = true };
         var lightning = new ShowTimeline
@@ -97,6 +97,7 @@ public class ShowFolderStoreTests : IDisposable
         Assert.Equal((block.Id, "Flash", TimeSpan.FromSeconds(1.5), TimeSpan.FromSeconds(2)), (reloadedBlock.Id, reloadedBlock.Name, reloadedBlock.Start, reloadedBlock.Length));
         Assert.Equal([(TimeSpan.Zero, (byte)3, CurveKind.Linear), (TimeSpan.FromSeconds(0.5), (byte)255, CurveKind.Step), (TimeSpan.FromSeconds(2), (byte)9, CurveKind.Spline)],
                      Assert.Single(reloadedBlock.Lanes).Points.Select(p => (p.Time, p.Value, p.Curve)));
+        Assert.Equal([null, Guid.Parse("6b1f0a52-0000-4000-8000-000000000001"), null], reloadedBlock.Lanes[0].Points.Select(p => p.Group));
         Assert.Equal((false, 0.4, 1.0), (timeline.Tracks[1].Enabled, timeline.Tracks[1].Volume, timeline.Tracks[0].Volume));
         var storm = Assert.IsType<LightingClip>(Assert.Single(timeline.Tracks[2].Events)).Effect!;
         Assert.Equal((EffectKind.Lightning, 0.8, 3.0, "#CCDDFF", 42, EffectEnding.Dark), (storm.Kind, storm.Strength, storm.Rate, storm.Color, storm.Seed, storm.Ending));

@@ -292,7 +292,8 @@ public sealed class TimelineCanvas : Control
     {
         foreach (var channel in levels)
         {
-            var pen = PaintOf(channel.Channel).Hold;
+            var paint = PaintOf(channel.Channel);
+            var pen = paint.Hold;
             void Hold(double from, double to, byte level)
             {
                 if (to <= from || to < left || from > right) return;
@@ -300,8 +301,16 @@ public sealed class TimelineCanvas : Control
                 context.DrawLine(pen, new Point(Math.Max(from, left), y), new Point(Math.Min(to, right), y));
             }
             var clips = channel.Clips;
-            if (channel.Channel.Start == ChannelStart.Fixed)
-                Hold(0, clips.Count > 0 ? X(Displayed(editor, clips[0].Clip).Start) : right, channel.Channel.StartLevel);
+            // Before the first clip: the start level, held (as VenueMagic draws it); or, for a channel left alone
+            // until then, faint and dashed: where the first clip will start from.
+            double firstStart = clips.Count > 0 ? X(Displayed(editor, clips[0].Clip).Start) : right;
+            if (channel.HoldsBeforeFirstClip) Hold(0, firstStart, channel.Channel.StartLevel);
+            else if (clips.Count > 0)
+            {
+                pen = paint.Waiting;
+                Hold(0, firstStart, clips[0].StartLevel);
+                pen = paint.Hold;
+            }
             for (int i = 0; i < clips.Count; i++)
             {
                 var (start, length) = Displayed(editor, clips[i].Clip);
@@ -326,7 +335,7 @@ public sealed class TimelineCanvas : Control
                 // Built-in effects (Lightning, Fire, …) have a violet title; their envelopes are made, not edited.
                 bool effect = clip.Effect is not null;
                 context.FillRectangle(effect ? EffectTitleFill : TitleFill, new Rect(rect.X, rect.Y, rect.Width, ClipTitle), 4);
-                using (context.PushClip(rect.Deflate(1))) DrawEnvelopes(context, editor, row, clip, rect, levels, editable: expanded && !effect);
+                using (context.PushClip(rect.Deflate(1))) DrawEnvelopes(context, editor, row, clip, rect, levels, editable: expanded && !effect, startDots: expanded);
                 context.DrawRectangle(effect ? EffectBorder : ClipBorder, rect.Deflate(0.5), 4);
                 double titleY = rect.Y + 0.5;
                 double icons = DrawClipIcons(context, clip, rect, titleY);
@@ -383,7 +392,8 @@ public sealed class TimelineCanvas : Control
     }
 
     /// <summary>A channel colour's brushes and pens, made once (a redraw can paint hundreds of envelopes).</summary>
-    sealed record ChannelPaint(IBrush Fill, IPen Line, IPen Hold, IPen Ring);
+    /// <param name="Waiting">Before the first clip of a channel left alone: the level that clip starts from, faint and dashed (not played).</param>
+    sealed record ChannelPaint(IBrush Fill, IPen Line, IPen Hold, IPen Ring, IPen Waiting);
 
     static readonly Dictionary<string, ChannelPaint> Paints = new();
 
@@ -393,7 +403,8 @@ public sealed class TimelineCanvas : Control
         if (Paints.TryGetValue(key, out var paint)) return paint;
         var color = Color.Parse(key);
         var fill = new SolidColorBrush(color);
-        return Paints[key] = new ChannelPaint(fill, new Pen(fill, 1.6), new Pen(new SolidColorBrush(color, 0.6), 1.5), new Pen(fill, 1.2));
+        return Paints[key] = new ChannelPaint(fill, new Pen(fill, 1.6), new Pen(new SolidColorBrush(color, 0.6), 1.5), new Pen(fill, 1.2),
+                                              new Pen(new SolidColorBrush(color, 0.35), 1, new DashStyle([3, 4], 0)));
     }
 
     /// <summary>
@@ -402,8 +413,10 @@ public sealed class TimelineCanvas : Control
     /// they'd land; a clip being resized is drawn scaled (or cropped). Handles show where there's room for them
     /// (selected ones always do); only the part in view is drawn.
     /// </summary>
+    /// <param name="editable">Full lines and the handles; otherwise a thin preview.</param>
+    /// <param name="startDots">The start handles (an effect has no handles of its own, but its first clip's start dots set the track's starting levels).</param>
     void DrawEnvelopes(DrawingContext context, TimelineEditorViewModel editor, TimelineRow row, LightingClip clip, Rect rect, IReadOnlyList<TrackLevels> levels,
-                       bool editable)
+                       bool editable, bool startDots)
     {
         var (start, length) = Displayed(editor, clip);
         double scale = clip.ScaleOnResize && clip.Length > TimeSpan.Zero ? (double)length.Ticks / clip.Length.Ticks : 1;
@@ -447,11 +460,12 @@ public sealed class TimelineCanvas : Control
                 g.EndFigure(false);
             }
             context.DrawGeometry(null, editable ? paint.Line : paint.Ring, geometry);   // a preview: thinner, no handles
-            if (!editable) continue;
+            if (!editable && !startDots) continue;
 
             // The start handle: locked (a ring), unless it's the channel's own start level (a filled dot, draggable).
             var startAt = new Point(Px(TimeSpan.Zero), LevelY(row, envelope[0].Value));
             if (startAt.X >= left - 4) context.DrawEllipse(editor.FirstClipOf(channel) == clip ? paint.Fill : null, paint.Ring, startAt, 3, 3);
+            if (!editable) continue;
 
             if (lane is null || lane.Points.Count == 0) continue;
             // Unselected handles as one shape; selected ones on top: bigger, white with a gold ring, so they stand out

@@ -64,8 +64,8 @@ volume, master lamp level, loop, play-once-only.
 2. **Envelope Editor** window (done, 2026-10-28): channel list by fixture with ticks, a large plot with the levels
    either side of the clip dimmed, double-click a curve to add a handle, box select, drag with Shift and time/level
    locks, exact fields, curve for several handles, previous/next clip, zoom and pan, "update lamps while editing",
-   follows the timeline's selection. Not yet: Snapshot (live levels into handles) and RGB/position handles that move
-   several channels together.
+   follows the timeline's selection; Snapshot (levels set by hand into grouped handles at the playhead) and colour
+   (RGB) and position (pan/tilt) handles that set several channels together (done 2026-10-28).
 3. **Timeline chrome**: play-range bar, clip time display, toolbar parity, track panel parity (lock,
    solo, pin, master level), track size and pages, Timeline Options with time formats, Space play/stop, Home/End.
 4. **Effects and events**: built-in effects done (2026-10-28: Lightning, Brown out, Explosion, Failing bulb, Fire,

@@ -75,7 +75,15 @@ public sealed partial class EnvelopeEditorViewModel : ObservableObject
     partial void OnActiveTargetChanged(LaneTarget? value)
     {
         foreach (var fixture in Fixtures) fixture.Refresh();
+        NotifyGroupTools();
         Revision++;
+    }
+
+    void NotifyGroupTools()
+    {
+        OnPropertyChanged(nameof(CanAddColourHandle));
+        OnPropertyChanged(nameof(CanAddPositionHandle));
+        OnPropertyChanged(nameof(CanSnapshot));
     }
 
     /// <summary>Makes a channel the active one (showing it, if it was hidden).</summary>
@@ -129,6 +137,7 @@ public sealed partial class EnvelopeEditorViewModel : ObservableObject
         }
         OnPropertyChanged(nameof(Title));
         if (!Fixtures.SelectMany(f => f.Channels).Select(c => c.Channel).SequenceEqual(Track?.Channels ?? [])) RebuildChannels();
+        NotifyGroupTools();
         Revision++;
     }
 
@@ -252,6 +261,81 @@ public sealed partial class EnvelopeEditorViewModel : ObservableObject
     void SetCurve(CurveKind curve) => Editor.SetCurve(Editor.SelectedPoints, curve);
 
     public bool HasSeveralSelected => Editor.SelectedPoints.Count > 1;
+
+    // ---- grouped handles and Snapshot ----
+
+    /// <summary>What the last Snapshot (or colour or position handle) did, or why it couldn't.</summary>
+    [ObservableProperty]
+    public partial string Status { get; private set; } = "";
+
+    bool Editable => Clip is { Locked: false, Effect: null };
+
+    Guid? ActiveFixture => ActiveTarget?.FixtureId;
+
+    public bool CanAddColourHandle => Editable && Track is { } track && ActiveFixture is { } id && Editor.GroupTargets(track, id, HandleGroupKind.Colour).Count >= 2;
+    public bool CanAddPositionHandle => Editable && Track is { } track && ActiveFixture is { } id && Editor.GroupTargets(track, id, HandleGroupKind.Position).Count >= 2;
+    public bool CanSnapshot => Editable;
+
+    /// <summary>The track's fixtures (id, name) for the plot's "add colour/position handle here" menu.</summary>
+    public IReadOnlyList<(Guid Id, string Name)> GroupFixtures =>
+        (Track?.Channels ?? []).Select(c => c.Target.FixtureId).OfType<Guid>().Distinct()
+            .Select(id => (id, Editor.FixtureName(id) ?? "Missing fixture")).ToList();
+
+    /// <summary>Where the toolbar's tools put handles: at the playhead when it's in the clip, else the middle of what's in view.</summary>
+    TimeSpan ToolTime()
+    {
+        if (Clip is null) return TimeSpan.Zero;
+        var playhead = Editor.Playback.Position - Clip.Start;
+        if (playhead > TimeSpan.Zero && playhead < Clip.Length) return playhead;
+        var from = ViewStart < TimeSpan.Zero ? TimeSpan.Zero : ViewStart;
+        var to = ViewStart + ViewLength > Clip.Length ? Clip.Length : ViewStart + ViewLength;
+        return from + (to - from) / 2;
+    }
+
+    /// <summary>A colour or position handle for a fixture at a time in the clip.</summary>
+    public IReadOnlyList<CurvePoint> AddGroupHandle(Guid fixtureId, HandleGroupKind kind, TimeSpan relative)
+    {
+        if (Clip is null) return [];
+        var placed = Editor.AddGroupHandle(Clip, fixtureId, Clip.Start + relative, kind);
+        Status = placed.Count > 0 ? "" : "Can't add a handle there: it has to be inside the clip.";
+        AfterHandleChange();
+        return placed;
+    }
+
+    /// <summary>The active channel's fixture: a colour handle (its red, green, blue, white and amber together).</summary>
+    [RelayCommand]
+    void AddColourHandle()
+    {
+        if (ActiveFixture is { } id) AddGroupHandle(id, HandleGroupKind.Colour, ToolTime());
+    }
+
+    /// <summary>The active channel's fixture: a position handle (its pan and tilt together).</summary>
+    [RelayCommand]
+    void AddPositionHandle()
+    {
+        if (ActiveFixture is { } id) AddGroupHandle(id, HandleGroupKind.Position, ToolTime());
+    }
+
+    /// <summary>
+    /// VenueMagic's Snapshot: the levels set by hand (Lighting → Control or Channels) on the ticked channels, as
+    /// handles at the playhead, grouped so the look moves as one.
+    /// </summary>
+    [RelayCommand]
+    void Snapshot()
+    {
+        if (Clip is null) return;
+        var playhead = Editor.Playback.Position - Clip.Start;
+        if (playhead <= TimeSpan.Zero || playhead > Clip.Length)
+        {
+            Status = "Move the playhead into the clip first: Snapshot puts the handles there.";
+            return;
+        }
+        var placed = Editor.Snapshot(Clip, Editor.Playback.Position, ShownLevels.Select(l => l.Channel.Target));
+        Status = placed.Count == 0
+            ? "Nothing to snapshot: none of the ticked channels is patched."
+            : $"Snapshot: {placed.Count} handle{(placed.Count == 1 ? "" : "s")} at {PlaybackViewModel.Format(Editor.Playback.Position)} from the levels set by hand.";
+        AfterHandleChange();
+    }
 
     /// <summary>After selecting or moving handles: with "update lamps" on, the lights show the level at the (first) selected handle.</summary>
     public void AfterHandleChange()

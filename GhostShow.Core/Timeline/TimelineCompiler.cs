@@ -244,7 +244,7 @@ public static class TimelineCompiler
     /// </summary>
     static IEnumerable<LevelStep> ClipSteps(TrackLevels levels, (int Slot, int Index) channel)
     {
-        if (levels.Channel.Start == ChannelStart.Fixed)
+        if (levels.HoldsBeforeFirstClip)
             yield return new LevelStep(0, 0, channel.Slot, channel.Index, levels.Channel.StartLevel, levels.Channel.StartLevel);
         foreach (var clip in levels.Clips)
         {
