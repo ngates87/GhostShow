@@ -314,6 +314,51 @@ public sealed partial class MainViewModel : ObservableObject
         StatusMessage = "New show. Save (Ctrl+S) picks its folder.";
     }
 
+    /// <summary>What the last import couldn't convert (also in the log).</summary>
+    public IReadOnlyList<string> ImportNotes { get; private set; } = [];
+
+    static readonly FilePickerFileType VenueMagicProjects = new("VenueMagic project") { Patterns = ["*.vmp", "*.vmp.bak"] };
+
+    /// <summary>
+    /// File → Import VenueMagic project: a new show from a VenueMagic project's patch (its fixture types become custom
+    /// types), with an empty timeline for each of its timelines. Unsaved until Save picks a folder.
+    /// </summary>
+    [RelayCommand]
+    async Task ImportVenueMagic()
+    {
+        if (!await _unsavedChanges.ConfirmAsync("importing a VenueMagic project")) return;
+        var files = await _storage.OpenFilePickerAsync(new FilePickerOpenOptions { Title = "Choose a VenueMagic project (.vmp)", FileTypeFilter = [VenueMagicProjects] });
+        if (files is not [var file] || file.TryGetLocalPath() is not { } path) return;
+        await ImportVenueMagicAsync(path);
+    }
+
+    public async Task ImportVenueMagicAsync(string path)
+    {
+        Core.Import.ImportResult result;
+        try
+        {
+            string name = Path.GetFileName(path).Split('.')[0];
+            result = await Task.Run(() => Core.Import.VenueMagicImporter.Import(Core.Import.VenueMagicProject.Read(path), name));
+        }
+        catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException)
+        {
+            ReportError($"Couldn't import {Path.GetFileName(path)}: {ex.Message}");
+            return;
+        }
+        foreach (var profile in result.Profiles)
+            if (Library.SaveCustom(profile) is { } error) ReportError(error);
+        _session.Use(result.Project);
+        await AfterShowReplacedAsync();
+        IsDirty = true;
+        ShowEditor();
+        StatusMessage = $"Imported {Path.GetFileName(path)}: {result.Project.Fixtures.Count} fixtures, {result.Profiles.Count} fixture types, "
+                        + $"{result.Project.Timelines.Count} timelines"
+                        + (result.Notes.Count > 0 ? $"; {result.Notes.Count} notes on what wasn't converted (Diagnostics → recent events)" : "")
+                        + ". Save (Ctrl+S) picks its folder.";
+        foreach (var note in result.Notes) _logger.LogWarning("Import: {Note}", note);
+        ImportNotes = result.Notes;
+    }
+
     /// <summary>Closes the show (offering to save) and returns to Home.</summary>
     [RelayCommand]
     async Task CloseShow()

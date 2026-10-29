@@ -72,6 +72,15 @@ public sealed class ShowSession
         Apply();
     }
 
+    /// <summary>A show made elsewhere (an import): open, not yet saved anywhere.</summary>
+    public void Use(Project project)
+    {
+        Project = project;
+        FilePath = null;
+        IsSingleFileShow = false;
+        Apply();
+    }
+
     public void New()
     {
         Project = new Project();

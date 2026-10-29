@@ -29,6 +29,7 @@
       <MenuItem Header="_File">
         <MenuItem Header="_New Show" InputGesture="Ctrl+N" Command="{Binding NewCommand}" />
         <MenuItem Header="_Open Show…" InputGesture="Ctrl+O" Command="{Binding OpenCommand}" />
+        <MenuItem Header="_Import VenueMagic Project…" Command="{Binding ImportVenueMagicCommand}" />
         <MenuItem Header="Open _Recent" Classes="recentRoot" ItemsSource="{Binding RecentShows}" IsEnabled="{Binding !!RecentShows.Count}">
           <MenuItem.Styles>
             <Style Selector="MenuItem:not(.recentRoot)" x:DataType="vm:RecentShowRow">
