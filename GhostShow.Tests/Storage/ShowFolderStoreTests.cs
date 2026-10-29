@@ -71,6 +71,11 @@ public class ShowFolderStoreTests : IDisposable
         project.Universes = [new UniverseConfig { Number = 1, Name = "Front" }, new UniverseConfig { Number = 3, Name = "Back" }];
         project.Fixtures = [fixture];
         project.AddFolder("Empty for now");
+        project.Buttons =
+        [
+            new ShowButton { Name = "Scare 1", Color = "#C62828", Key = "F5", Actions = [new StopTimelineAction { TimelineId = lightning.Id }, new RunTimelineAction { TimelineId = lightning.Id, PlayOnceOnly = true }] },
+            new ShowButton { Name = "Panic", Actions = [new StopAllAction(), new BlackoutAction()] },
+        ];
 
         await Save(project, previous: null);
         var result = await Load();
@@ -83,6 +88,11 @@ public class ShowFolderStoreTests : IDisposable
         Assert.Equal(["Empty for now", "Rooms", "Rooms/Graveyard"], loaded.TimelineFolders);
         Assert.Equal(("Haunt", project.Id), (loaded.Name, loaded.Id));
         Assert.Equal([1, 3], loaded.Universes.Select(u => u.Number));
+        Assert.Equal([("Scare 1", "#C62828", "F5"), ("Panic", null, null)], loaded.Buttons.Select(b => (b.Name, b.Color, b.Key)));
+        var run = Assert.IsType<RunTimelineAction>(loaded.Buttons[0].Actions[1]);
+        Assert.Equal((lightning.Id, true), (run.TimelineId, run.PlayOnceOnly));
+        Assert.IsType<StopTimelineAction>(loaded.Buttons[0].Actions[0]);
+        Assert.Equal([typeof(StopAllAction), typeof(BlackoutAction)], loaded.Buttons[1].Actions.Select(a => a.GetType()));
         var reloaded = Assert.Single(loaded.Fixtures);
         Assert.Equal((fixture.Id, "generic/rgbw", "4 channel", 17, "Graveyard", false),
                      (reloaded.Id, reloaded.ProfileId, reloaded.ModeName, reloaded.StartAddress, reloaded.Group, reloaded.Enabled));

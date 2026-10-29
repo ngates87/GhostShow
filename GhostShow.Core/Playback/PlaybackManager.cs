@@ -5,7 +5,8 @@ using GhostShow.Core.Timeline;
 namespace GhostShow.Core.Playback;
 
 /// <summary>A timeline that's playing or paused, for the "Playing" list.</summary>
-public sealed record RunningTimeline(Guid Id, string Name, PlaybackStatus Status, int Priority);
+/// <param name="Id">What to stop or pause it by: the timeline's ID, or for a second (third, …) copy of it, the copy's.</param>
+public sealed record RunningTimeline(Guid Id, string Name, PlaybackStatus Status, int Priority, Guid TimelineId);
 
 /// <summary>
 /// Plays any number of timelines at once (a room's ambient loop, scares on top of it): one <see cref="ShowPlayer"/>
@@ -19,6 +20,11 @@ public sealed record RunningTimeline(Guid Id, string Name, PlaybackStatus Status
 /// - Duck: while it plays, lower-priority timelines' sounds are scaled by its duck volume.
 /// - Release: when a timeline stops (or ends, if set to release), its channels fade from where it left them to
 ///   whatever is underneath (a lower timeline, or the manual level) over its release fade.
+///
+/// Copies: <see cref="Launch"/> (a show button's Run Timeline) plays a timeline from its start as a new copy when
+/// it's already running (as VenueMagic does), so a scare fired twice plays twice, sounds overlapping. A copy is a
+/// timeline of its own for the rules above, is forgotten once it stops, and follows edits to its timeline. The
+/// timeline's own transport (the editor's) controls its first copy; <see cref="StopTimeline"/> stops them all.
 ///
 /// Threading: transport methods and <see cref="Load"/> can be called from any thread; <see cref="Tick"/> from the
 /// playback thread only.
@@ -40,9 +46,16 @@ public sealed class PlaybackManager
     long[][] _winnerStarted = [];
     bool _layerSet;
 
-    sealed class Slot(Guid id, ShowPlayer player)
+    /// <summary>The most copies of one timeline playing at once; launching another stops the oldest.</summary>
+    public const int MaxCopies = 8;
+
+    /// <param name="timelineId">The timeline it plays; for its first copy, the same as the slot's ID.</param>
+    sealed class Slot(Guid id, ShowPlayer player, Guid timelineId, long launched = 0)
     {
         public Guid Id { get; } = id;
+        public Guid TimelineId { get; } = timelineId;
+        public bool IsCopy => Id != TimelineId;
+        public long Launched { get; } = launched;
         public ShowPlayer Player { get; } = player;
         public string Name { get; set; } = "";
         public CompiledTimeline Timeline { get; set; } = CompiledTimeline.Empty;
@@ -73,21 +86,72 @@ public sealed class PlaybackManager
             if (!_slots.TryGetValue(id, out var slot))
             {
                 var player = new ShowPlayer(null, _audio, _clock);
-                _slots[id] = slot = new Slot(id, player);
+                _slots[id] = slot = new Slot(id, player, id);
             }
-            slot.Name = name;
-            slot.Timeline = timeline;
-            slot.Player.Load(timeline);
+            foreach (var each in _slots.Values.Where(s => s.TimelineId == id))
+            {
+                each.Name = name;
+                each.Timeline = timeline;
+                each.Player.Load(timeline);
+            }
         }
+    }
+
+    long _launches;
+
+    /// <summary>
+    /// Plays a loaded timeline from its start: its own player if that's stopped, otherwise a new copy (beyond
+    /// <see cref="MaxCopies"/>, the oldest copy stops). Returns what it's playing as (to stop or pause by), or null if
+    /// the timeline isn't loaded.
+    /// </summary>
+    public Guid? Launch(Guid timelineId)
+    {
+        lock (_lock)
+        {
+            if (!_slots.TryGetValue(timelineId, out var own)) return null;
+            if (own.Player.Status.State == TransportState.Stopped)
+            {
+                own.Player.Restart();
+                return timelineId;
+            }
+            var running = _slots.Values.Where(s => s.TimelineId == timelineId && s.Player.Status.State != TransportState.Stopped).ToList();
+            if (running.Count >= MaxCopies)
+                running.Where(s => s.IsCopy).OrderBy(s => s.Launched).FirstOrDefault()?.Player.Stop();
+            var id = Guid.NewGuid();
+            var copy = new Slot(id, new ShowPlayer(null, new InstanceAudioOutput(_audio, id), _clock), timelineId, ++_launches)
+            {
+                Name = own.Name, Timeline = own.Timeline,
+            };
+            copy.Player.Load(own.Timeline);
+            copy.Player.Restart();
+            _slots[id] = copy;
+            return id;
+        }
+    }
+
+    /// <summary>Stops a timeline and every copy of it playing (each releasing its channels with its fade).</summary>
+    public void StopTimeline(Guid timelineId)
+    {
+        lock (_lock)
+            foreach (var slot in _slots.Values.Where(s => s.TimelineId == timelineId)) slot.Player.Stop();
+    }
+
+    /// <summary>Whether a timeline (any copy of it) is playing or paused.</summary>
+    public bool IsRunning(Guid timelineId)
+    {
+        lock (_lock) return _slots.Values.Any(s => s.TimelineId == timelineId && s.Player.Status.State != TransportState.Stopped);
     }
 
     /// <summary>A timeline removed from the show: it stops (releasing its channels) and is forgotten.</summary>
     public void Unload(Guid id)
     {
         lock (_lock)
-            if (_slots.TryGetValue(id, out var slot)) slot.Player.Stop();
-        // Removed on the next tick, once its stop has been handled (release fade, resuming what it paused).
-        _toRemove.Add(id);
+            foreach (var slot in _slots.Values.Where(s => s.TimelineId == id))
+            {
+                slot.Player.Stop();
+                // Removed on the next tick, once its stop has been handled (release fade, resuming what it paused).
+                _toRemove.Add(slot.Id);
+            }
     }
 
     readonly System.Collections.Concurrent.ConcurrentBag<Guid> _toRemove = new();
@@ -144,7 +208,7 @@ public sealed class PlaybackManager
         get
         {
             lock (_lock)
-                return _slots.Values.Select(s => new RunningTimeline(s.Id, s.Name, s.Player.Status, s.Timeline.Playback.Priority))
+                return _slots.Values.Select(s => new RunningTimeline(s.Id, s.Name, s.Player.Status, s.Timeline.Playback.Priority, s.TimelineId))
                     .Where(r => r.Status.State != TransportState.Stopped)
                     .OrderByDescending(r => r.Priority).ThenBy(r => r.Name)
                     .ToList();
@@ -191,7 +255,11 @@ public sealed class PlaybackManager
             var state = slot.Player.Status.State;
             bool wasRunning = slot.LastState != TransportState.Stopped, running = state != TransportState.Stopped;
             if (running && !wasRunning) OnStarted(slot, slots);
-            if (!running && wasRunning) OnStopped(slot, slots, now, skipReleases);
+            if (!running && wasRunning)
+            {
+                OnStopped(slot, slots, now, skipReleases);
+                if (slot.IsCopy) _toRemove.Add(slot.Id);   // a copy is done once it stops
+            }
             slot.LastState = state;
             if (slot.Player.Frame is { } frame) slot.LastFrame = Copy(frame, slot.LastFrame);
         }

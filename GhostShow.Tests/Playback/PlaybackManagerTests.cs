@@ -241,4 +241,72 @@ public class PlaybackManagerTests : IDisposable
         Assert.False(_manager.IsLoaded(Scare));
         Assert.Equal(0, Output(1));
     }
+    // ---- copies (a show button's Run Timeline) ----
+
+    ShowTimeline ScareWithScream() => Show("Scare", length: 4, tracks:
+    [
+        Lights(Raw(0, 5, to: 255)),
+        new TimelineTrack { Kind = TrackKind.Audio, Events = [new AudioEvent { Name = "scream", File = "scream.wav", Length = S(3) }] },
+    ]);
+
+    [Fact]
+    public void Launching_a_running_timeline_plays_another_copy_with_its_own_sounds()
+    {
+        Load(Scare, ScareWithScream());
+
+        Assert.Equal(Scare, _manager.Launch(Scare));   // stopped: its own player
+        After(1);
+        var copy = _manager.Launch(Scare)!.Value;      // running: a copy, from the start
+        After(0.5);
+
+        Assert.NotEqual(Scare, copy);
+        Assert.True(_manager.IsRunning(Scare));
+        Assert.Equal([(Scare, 1.5), (copy, 0.5)], _manager.Running.OrderByDescending(r => r.Status.Position).Select(r => (r.Id, Math.Round(r.Status.Position.TotalSeconds, 2))));
+        Assert.All(_manager.Running, r => Assert.Equal(Scare, r.TimelineId));
+        Assert.Equal(2, _audio.States.Count(s => s.Value == AudioInstanceState.Playing));   // two screams, overlapping
+        Assert.Equal(255, Output(5));
+
+        _manager.StopTimeline(Scare);
+        After(0.1);
+
+        Assert.False(_manager.IsRunning(Scare));
+        Assert.Empty(_manager.Running);
+        Assert.Empty(_audio.States);
+        Assert.True(_manager.IsLoaded(Scare));   // the timeline stays; the copy is gone
+        Assert.Equal(TransportState.Stopped, _manager.StatusOf(copy).State);
+    }
+
+    [Fact]
+    public void A_copy_is_forgotten_when_it_stops_and_follows_edits_while_it_plays()
+    {
+        Load(Scare, ScareWithScream());
+        _manager.Launch(Scare);
+        var copy = _manager.Launch(Scare)!.Value;
+        After(0.5);
+
+        Load(Scare, Show("Scare", length: 4, tracks: Lights(Raw(0, 5, to: 77))));   // edited while both play
+        After(0.1);
+        Assert.Equal(77, Output(5));
+
+        _manager.Stop(copy);
+        After(0.1);
+        Assert.Equal([Scare], _manager.Running.Select(r => r.Id));
+        Assert.Null(_manager.TimelineOf(copy));
+    }
+
+    [Fact]
+    public void Launching_beyond_the_most_copies_stops_the_oldest_copy()
+    {
+        Load(Scare, Show("Scare", length: 60, tracks: Lights(Raw(0, 5, to: 255))));
+        var launched = Enumerable.Range(0, PlaybackManager.MaxCopies).Select(_ => { var id = _manager.Launch(Scare)!.Value; After(0.1); return id; }).ToList();
+
+        var another = _manager.Launch(Scare)!.Value;
+        After(0.1);
+
+        Assert.Equal(PlaybackManager.MaxCopies, _manager.Running.Count);
+        Assert.DoesNotContain(launched[1], _manager.Running.Select(r => r.Id));   // the oldest copy (the first is the timeline's own)
+        Assert.Contains(launched[0], _manager.Running.Select(r => r.Id));
+        Assert.Contains(another, _manager.Running.Select(r => r.Id));
+        Assert.Null(_manager.Launch(Other));   // not loaded
+    }
 }

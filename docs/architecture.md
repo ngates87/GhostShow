@@ -80,8 +80,10 @@ output timing. Only visible screens refresh, and only changed monitor cells are 
 on the channels it controls. Stop releases the timeline layer, so manual levels come back exactly as they were.
 
 **Show vs machine.** `ShowSession` holds the open show (`Project`: universes, fixtures, timelines) and applies it to
-the engine. Which hardware drives which universe, and which audio device and master volume to use, is per computer,
-in `MachineSettings`, applied by `OutputManager` and `AudioService`.
+the engine. Which hardware drives which universe, and the default audio device and master volume, are per computer,
+in `MachineSettings`, applied by `OutputManager` and `AudioService`. The exception is an audio track's output: like
+VenueMagic, each audio track can name an output device, saved in the show; a computer without that device plays the
+track on its default output (with a warning) until it's plugged in.
 A show opened on another machine keeps its patch and uses that machine's hardware; universes with no hardware
 assigned go to the simulator.
 
@@ -95,7 +97,7 @@ new show, open show, recent shows (kept in machine settings). With a show open, 
 |---|---|
 | Timeline | The timeline tree, open timelines as tabs, the editor |
 | Lighting | DMX setup (universes and their hardware), Fixtures, Control, Channels (raw faders), Monitor |
-| Audio | Output device, master volume, test sound, the show's sound files |
+| Audio | Default output device, master volume, test sound, the other outputs tracks are routed to (connected or not, test each), the show's sound files |
 | Diagnostics | Output and playback timing, audio status, UI responsiveness, memory, recent events |
 
 The editor is the first tab because it's where most of the work happens. Closing a show leaves an empty show
@@ -145,7 +147,7 @@ saved as soon as they change.
 | Output thread bug | Logged as critical, status Faulted; the app keeps running |
 | Controlled stop (closing the app, ending a CLI run, changing an output) | Sends all-zero frames for 0.5 s (blackout), disconnects, releases the device. The window waits for this before closing. `StopAsync` gives up after 3 s and logs it if a driver hangs |
 | Crash, power loss, unplugging | Nothing can be sent. Fixtures follow their own DMX-loss setting (see below) |
-| Audio device missing or unplugged | Reported on the Audio screen and in Diagnostics, retried every 3 s; when it's back, sounds that should be playing restart at the right place. Lighting is unaffected |
+| Audio device missing or unplugged | Reported on the Audio screen and in Diagnostics, retried every 3 s; when it's back, sounds that should be playing restart at the right place. A track's own output that's missing plays on the default output meanwhile (and is listed under the toolbar's ⚠). Lighting is unaffected |
 | Missing sound file, unpatched fixture, other timeline problems | That event is skipped and listed on the Timeline screen; the rest of the show plays |
 | Playback update throws (a bug) | Logged once, counted in Diagnostics; playback carries on with the next update |
 

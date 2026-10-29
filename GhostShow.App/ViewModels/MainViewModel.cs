@@ -69,14 +69,18 @@ public sealed partial class MainViewModel : ObservableObject
         Monitor = new MonitorViewModel(session.Engine, outputs.Find);
         Playback = new PlaybackViewModel(services, logger);
         Diagnostics = new DiagnosticsViewModel(services, Playback);
-        Timeline = new TimelineEditorViewModel(session, Playback, PickAudioFileAsync, MarkDirty);
-        Audio = new AudioViewModel(services.Audio, session, settings, SaveSettingsAsync);
+        AudioDevices = new AudioDeviceList(services.Audio);
+        Timeline = new TimelineEditorViewModel(session, Playback, PickAudioFileAsync, MarkDirty, AudioDevices);
+        Buttons = new ButtonsViewModel(session, Playback, Blackout, MarkDirty);
+        Audio = new AudioViewModel(services.Audio, AudioDevices, session, settings, SaveSettingsAsync);
+        _ = AudioDevices.RefreshAsync();
         Guide = new SetupGuideViewModel(session, settings, page => CurrentPage = page, () =>
         {
             CurrentPage = Page.Timeline;
             if (Timeline.Tracks.FirstOrDefault(t => t.IsLighting) is { } lighting) Timeline.EditChannels(lighting);
         });
         Timeline.ShowFixtures = () => CurrentPage = Page.Fixtures;
+        Timeline.Notice += message => StatusMessage = message;
 
         _unsavedChanges = new UnsavedChangesGuard(() => IsDirty, () => ShowName, Save, savePrompt);
         _tick = new DispatcherTimer(TickInterval, DispatcherPriority.Background, (_, _) => Tick());
@@ -93,7 +97,9 @@ public sealed partial class MainViewModel : ObservableObject
 
     public PlaybackViewModel Playback { get; }
     public TimelineEditorViewModel Timeline { get; }
+    public ButtonsViewModel Buttons { get; }
     public AudioViewModel Audio { get; }
+    public AudioDeviceList AudioDevices { get; }
     public SetupGuideViewModel Guide { get; }
     public ProfileLibraryViewModel Library { get; }
     public OutputsViewModel Outputs { get; }
@@ -448,6 +454,7 @@ public sealed partial class MainViewModel : ObservableObject
         Outputs.Reload();
         Playback.Reset();    // the old show's timelines stop at once
         Timeline.Reload();   // focuses the new show's first timeline
+        Buttons.Reload();
         Guide.Reset();
         await Outputs.ApplyOutputsAsync();
         OnPropertyChanged(nameof(Title));
@@ -487,6 +494,7 @@ public sealed partial class MainViewModel : ObservableObject
     void Tick()
     {
         Playback.Tick();   // the toolbar transport shows on every screen
+        Buttons.Tick();    // buttons light while what they run plays
         switch (CurrentPage)
         {
             case Page.Monitor: Monitor.Tick(ActiveUniverse); break;
@@ -500,6 +508,9 @@ public sealed partial class MainViewModel : ObservableObject
         if (CurrentPage == Page.DmxSetup && _tickCount % 60 == 0) _ = Outputs.WatchAdaptersAsync();
         if (CurrentPage == Page.Diagnostics) Diagnostics.Tick();
         if (CurrentPage == Page.Audio) Audio.Tick();
+        // Open the devices audio tracks are routed to before they're needed (cheap when nothing changed).
+        _services.Audio.UseOutputs(_session.Project.Timelines.SelectMany(t => t.Tracks)
+            .Where(t => t.Kind == TrackKind.Audio && !string.IsNullOrWhiteSpace(t.AudioDevice)).Select(t => t.AudioDevice!));
         RefreshWarnings();
         Guide.Refresh();
     }
@@ -513,6 +524,8 @@ public sealed partial class MainViewModel : ObservableObject
         if (overlaps > 0) warnings.Add($"{overlaps} patch warnings (e.g. overlapping addresses). See Fixtures.");
         foreach (var service in _outputs.Services.Where(s => s.Status == DmxOutputStatus.Faulted))
             warnings.Add($"Universe {service.Universe}: {service.LastError} Retrying.");
+        foreach (var output in _services.Audio.Status.MissingOutputs)
+            warnings.Add($"Audio output '{output}' isn't connected: its tracks play on the default output. See Audio.");
 
         if (warnings.SequenceEqual(Warnings)) return;
         Warnings.Clear();

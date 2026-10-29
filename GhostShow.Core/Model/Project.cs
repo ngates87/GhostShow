@@ -28,6 +28,9 @@ public sealed class Project
     public List<UniverseConfig> Universes { get; set; } = [new UniverseConfig { Number = 1, Name = "Universe 1" }];
     public List<FixtureInstance> Fixtures { get; set; } = [];
 
+    /// <summary>The buttons panel's buttons, in order (see <see cref="ShowButton"/>).</summary>
+    public List<ShowButton> Buttons { get; set; } = [];
+
     /// <summary>
     /// The show's sequences, in every folder; a new show has one, "Main", with a lighting and an audio track.
     /// Each is stored in its own file, not in show.json.

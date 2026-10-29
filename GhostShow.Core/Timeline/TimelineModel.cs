@@ -52,7 +52,7 @@ public sealed class ShowTimeline
         Name = name, Folder = Folder, Length = Length, Loop = Loop, Playback = Playback,
         Tracks = Tracks.Select(t => new TimelineTrack
         {
-            Name = t.Name, Kind = t.Kind, Enabled = t.Enabled, Color = t.Color, DrawLevelsBetweenClips = t.DrawLevelsBetweenClips, Volume = t.Volume,
+            Name = t.Name, Kind = t.Kind, Enabled = t.Enabled, Color = t.Color, DrawLevelsBetweenClips = t.DrawLevelsBetweenClips, Volume = t.Volume, AudioDevice = t.AudioDevice,
             Events = t.Events.Select(e => e.Clone()).ToList(),
             Channels = t.Channels.Select(c => c.Clone()).ToList(),
         }).ToList(),
@@ -154,6 +154,13 @@ public sealed class TimelineTrack
     /// (ambience under a voice-over) without touching their clips.
     /// </summary>
     public double Volume { get; set; } = 1.0;
+
+    /// <summary>
+    /// Audio tracks: the output device its clips play on, by name (as the Audio screen lists it); null for this
+    /// computer's default output. Like VenueMagic, it's chosen per track and saved in the show. A device this computer
+    /// doesn't have plays on the default output instead, with a warning, until it's plugged in.
+    /// </summary>
+    public string? AudioDevice { get; set; }
 
     /// <summary>The track's clips: audio events, or (lighting) <see cref="LightingClip"/>s.</summary>
     public List<TimelineEvent> Events { get; set; } = [];

@@ -199,6 +199,44 @@ public class UiTests
         Assert.Equal(255, rig.Lighting.Channels[0].StartLevel);
     });
 
+    [Fact]
+    public Task A_show_button_s_key_runs_its_timeline_from_any_screen_but_not_while_typing() => Ui.Run(() =>
+    {
+        using var rig = new WindowRig();
+        var scare = new ShowTimeline { Name = "Scare", Length = S(10) };
+        rig.Session.Project.Timelines.Add(scare);
+        rig.ViewModel.Buttons.AddCommand.Execute(null);
+        var button = rig.ViewModel.Buttons.Buttons.Single();
+        button.AddActionCommand.Execute("run");
+        button.Actions[0].Timeline = rig.ViewModel.Buttons.Timelines.Single(t => t.Id == scare.Id);
+        button.SelectedKey = ViewModels.ButtonsViewModel.AllKeys.Single(k => k.Key == "F5");
+        rig.ViewModel.Buttons.IsEditing = false;
+        WindowRig.Pump();
+
+        var tile = rig.Window.GetVisualDescendants().OfType<Button>().Single(b => b.Classes.Contains("showButton"));
+        Assert.True(tile.IsEffectivelyVisible);
+        rig.Click(rig.CenterOf(tile));
+        Assert.True(rig.Manager.IsRunning(scare.Id));
+        rig.Manager.StopTimeline(scare.Id);
+        rig.Manager.Tick();
+
+        rig.ViewModel.CurrentPage = ViewModels.Page.Monitor;   // another screen
+        WindowRig.Pump();
+        rig.Key(Key.F5);
+        Assert.True(rig.Manager.IsRunning(scare.Id));
+        Assert.True(rig.ViewModel.IsDirty);   // adding the button changed the show
+
+        rig.Manager.StopTimeline(scare.Id);
+        rig.Manager.Tick();
+        rig.ViewModel.CurrentPage = ViewModels.Page.Timeline;
+        rig.ViewModel.Buttons.IsEditing = true;
+        WindowRig.Pump();
+        var name = rig.Window.GetVisualDescendants().OfType<TextBox>().First(t => t.Text == button.Name);
+        name.Focus();
+        rig.Key(Key.F5);   // typing in a field: not a button press
+        Assert.False(rig.Manager.IsRunning(scare.Id));
+    });
+
     // ---- the Envelope Editor window ----
 
     /// <summary>Opens the Envelope Editor by double-clicking a clip, and returns its window and plot.</summary>

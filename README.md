@@ -29,13 +29,13 @@ View, and Playback; below it are the transport and Blackout. With a show open, t
 
 | Tab | Screen | For |
 |---|---|---|
-| Timeline | | Several timelines can play at once, with priorities and overrides that pause or keep the ambient and release back to it. A tree of the show's timelines in folders, open timelines as tabs, and the editor: lighting tracks with Level Control clips and envelopes (and an Envelope Editor window), audio tracks; drag, fade, copy/paste, undo/redo; edits apply while playing ([docs/timeline.md](docs/timeline.md)) |
+| Timeline | | Several timelines can play at once, with priorities and overrides that pause or keep the ambient and release back to it. A tree of the show's timelines in folders, open timelines as tabs, and the editor: lighting tracks with Level Control clips and envelopes (and an Envelope Editor window), audio tracks; drag, fade, copy/paste, undo/redo; edits apply while playing ([docs/timeline.md](docs/timeline.md)). Beside it, the show's **buttons**: run or stop timelines (a new copy each press, as VenueMagic does), stop all, blackout; each can have a key ([docs/plan-buttons.md](docs/plan-buttons.md)) |
 | Lighting | DMX setup | The show's universes, and which device (simulator or USB adapter) outputs each on this computer |
 | | Fixtures | A heat map of the universe above the fixture list, and an address map for re-addressing (drag a fixture). **Add fixtures…** is a two-step wizard: choose the type (grid by manufacturer or type, or search), then click green openings on the map to add one per click, or quick-add several in a row, and press Done |
 | | Control | Faders for a fixture's logical controls (intensity, colours) and every channel |
 | | Channels | Raw faders, as many as fit the window, paged through all 512 channels |
 | | Monitor | All 512 channels as actually sent to the device; changes highlighted |
-| Audio | | Output device and master volume for this computer, a test sound, and every sound file the show uses |
+| Audio | | Default output device and master volume for this computer, a test sound, the outputs audio tracks are routed to (each audio track picks its output device in its properties panel, as in VenueMagic), and every sound file the show uses |
 | Diagnostics | | Frame rate and timing per output, playback timing, audio status, UI responsiveness, memory, recent events |
 
 Problems that need attention (patch errors, an output that keeps failing) show as **⚠** on the toolbar.

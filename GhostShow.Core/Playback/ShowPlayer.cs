@@ -253,7 +253,7 @@ public sealed class ShowPlayer
         int generation = _audio.Generation;
         if (generation != _seenAudioGeneration)
         {
-            // The device was (re)opened and every instance is gone: start afresh from the current position.
+            // A device was (re)opened or lost: start every sound afresh from the current position (on its device).
             _activeAudio.Clear();
             _pausedAudio.Clear();
             _seenAudioGeneration = generation;
@@ -278,7 +278,7 @@ public sealed class ShowPlayer
             long? fileLength = _audio.GetLength(cue.Path)?.Ticks;
             var offset = TimeSpan.FromTicks(cue.FileOffsetAt(position, fileLength));
 
-            if (!_activeAudio.TryGetValue(cue.EventId, out var active) || active.Path != cue.Path || active.Loop != cue.Loop)
+            if (!_activeAudio.TryGetValue(cue.EventId, out var active) || active.Path != cue.Path || active.Loop != cue.Loop || active.Device != cue.Device)
             {
                 _audio.Start(cue, offset, volume);
                 _activeAudio[cue.EventId] = cue;

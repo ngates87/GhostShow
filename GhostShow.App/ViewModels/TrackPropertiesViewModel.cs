@@ -6,8 +6,8 @@ namespace GhostShow.App.ViewModels;
 
 /// <summary>
 /// A track's properties in the right-hand panel (right-click its name → Properties…): its name and, for a lighting
-/// track, VenueMagic's track options and each channel's starting level; for an audio track, its volume. Every change
-/// is an undoable edit.
+/// track, VenueMagic's track options and each channel's starting level; for an audio track, its volume and output.
+/// Every change is an undoable edit.
 /// </summary>
 public sealed partial class TrackPropertiesViewModel : ObservableObject
 {
@@ -46,6 +46,9 @@ public sealed partial class TrackPropertiesViewModel : ObservableObject
         get => (decimal)Math.Round(Track.Volume * 100);
         set => _editor.SetTrackVolume(Track, (double)Math.Clamp(value, 0, 100) / 100);
     }
+
+    /// <summary>Audio: the output device, as on the track's header.</summary>
+    public TrackRowViewModel Row => _row;
 
     public IReadOnlyList<ChannelStartViewModel> Channels { get; private set; }
 

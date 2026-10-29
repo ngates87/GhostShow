@@ -293,7 +293,8 @@ public static class TimelineCompiler
                   : !e.Loop && context.AudioLength(path) is { } fileLength ? (e.Start + fileLength - e.Offset).Ticks
                   : null;
         return new AudioCue(e.Id, Describe(e), path, e.Start.Ticks, end, e.Offset.Ticks,
-                            Math.Clamp(e.Volume, 0, 1) * Math.Clamp(track.Volume, 0, 1), e.FadeIn.Ticks, e.FadeOut.Ticks, e.Loop);
+                            Math.Clamp(e.Volume, 0, 1) * Math.Clamp(track.Volume, 0, 1), e.FadeIn.Ticks, e.FadeOut.Ticks, e.Loop,
+                            string.IsNullOrWhiteSpace(track.AudioDevice) ? null : track.AudioDevice);
     }
 
     static void CheckIds(ShowTimeline timeline, List<TimelineIssue> issues)

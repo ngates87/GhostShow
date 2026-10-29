@@ -15,27 +15,77 @@ public sealed record AudioDeviceChoice(string Label, string? Name)
     public override string ToString() => Label;
 }
 
+/// <summary>
+/// The output devices this computer has, shared by the Audio screen and the output pickers on audio tracks, and
+/// refreshed when either is opened (so a USB interface plugged in since shows up).
+/// </summary>
+public sealed class AudioDeviceList(AudioService audio)
+{
+    public IReadOnlyList<string> Names { get; private set; } = [];
+
+    /// <summary>Raised on the UI thread when <see cref="Names"/> changes.</summary>
+    public event Action? Changed;
+
+    public async Task RefreshAsync()
+    {
+        var names = await audio.ListDevicesAsync();
+        if (names.SequenceEqual(Names)) return;
+        Names = names;
+        Changed?.Invoke();
+    }
+
+    /// <summary>A short tone on a track's output (null: the default output). False if that device isn't open.</summary>
+    public bool PlayTestSound(string? device) => audio.PlayTestSound(device);
+
+    /// <summary>
+    /// The choices for an audio track's output: the default output, every device, and the track's own device marked
+    /// "not connected" if this computer doesn't have it (it stays chosen, and is used when it's plugged in).
+    /// </summary>
+    public static IReadOnlyList<AudioDeviceChoice> TrackChoices(IReadOnlyList<string> names, string? current)
+    {
+        var choices = new List<AudioDeviceChoice> { new("Default output", null) };
+        choices.AddRange(names.Select(n => new AudioDeviceChoice(n, n)));
+        if (current is not null && !names.Contains(current)) choices.Add(new AudioDeviceChoice($"{current} (not connected)", current));
+        return choices;
+    }
+}
+
+/// <summary>A device audio tracks are routed to, the tracks that use it, and whether it's connected.</summary>
+public sealed partial class RoutedOutputRow(AudioViewModel screen, string device, string usedBy, string status, bool missing)
+{
+    public string Device { get; } = device;
+    public string UsedBy { get; } = usedBy;
+    public string Status { get; } = status;
+    public bool Missing { get; } = missing;
+
+    [RelayCommand]
+    void Test() => screen.TestOutput(Device);
+}
+
 /// <summary>A sound file the show uses, and whether this computer can play it.</summary>
 public sealed record ShowSoundRow(string File, string Used, string Length, string Status, bool Missing);
 
 /// <summary>
-/// The Audio screen: which output device and master volume this computer uses (machine settings, not the show, like
-/// DMX adapters), the device's status, a test sound, and the sound files the show uses.
+/// The Audio screen: the default output device and master volume of this computer (machine settings, not the show,
+/// like DMX adapters), the other outputs the show's tracks are routed to and whether they're connected, test sounds,
+/// and the sound files the show uses.
 /// </summary>
 public sealed partial class AudioViewModel : ObservableObject
 {
     static readonly TimeSpan SaveDelay = TimeSpan.FromMilliseconds(600);
 
     readonly AudioService _audio;
+    readonly AudioDeviceList _deviceList;
     readonly ShowSession _session;
     readonly MachineSettings _settings;
     readonly Func<Task> _saveSettings;
     readonly DispatcherTimer _saveTimer;
     bool _updating;
 
-    public AudioViewModel(AudioService audio, ShowSession session, MachineSettings settings, Func<Task> saveSettings)
+    public AudioViewModel(AudioService audio, AudioDeviceList deviceList, ShowSession session, MachineSettings settings, Func<Task> saveSettings)
     {
         _audio = audio;
+        _deviceList = deviceList;
         _session = session;
         _settings = settings;
         _saveSettings = saveSettings;
@@ -58,6 +108,9 @@ public sealed partial class AudioViewModel : ObservableObject
     public ObservableCollection<AudioDeviceChoice> Devices { get; } = new();
 
     public ObservableCollection<ShowSoundRow> Sounds { get; } = new();
+
+    /// <summary>The devices the show's audio tracks are routed to (other than the default output).</summary>
+    public ObservableCollection<RoutedOutputRow> RoutedOutputs { get; } = new();
 
     [ObservableProperty]
     public partial AudioDeviceChoice? SelectedDevice { get; set; }
@@ -108,7 +161,8 @@ public sealed partial class AudioViewModel : ObservableObject
     [RelayCommand]
     async Task RefreshDevices()
     {
-        var names = await _audio.ListDevicesAsync();
+        await _deviceList.RefreshAsync();
+        var names = _deviceList.Names;
         _updating = true;
         try
         {
@@ -141,8 +195,31 @@ public sealed partial class AudioViewModel : ObservableObject
             _ => "Closed",
         };
         LastError = status.LastError;
+        RefreshRoutedOutputs(status);
         RefreshSounds();
     }
+
+    void RefreshRoutedOutputs(AudioStatus status)
+    {
+        var tracks = _session.Project.Timelines
+            .SelectMany(t => t.Tracks.Where(track => track.Kind == TrackKind.Audio && !string.IsNullOrWhiteSpace(track.AudioDevice))
+                                     .Select(track => (Device: track.AudioDevice!, Track: $"{t.Name}: {track.Name}")))
+            .ToLookup(x => x.Device, x => x.Track);
+        var rows = tracks.OrderBy(g => g.Key, StringComparer.CurrentCultureIgnoreCase).Select(g =>
+        {
+            var output = status.Outputs.FirstOrDefault(o => o.Name == g.Key);
+            bool open = output?.Open ?? g.Key == status.DeviceName;   // routed to the default output's own device
+            return new RoutedOutputRow(this, g.Key, string.Join(", ", g), open
+                ? $"Connected · {output?.Playing ?? 0} playing"
+                : "Not connected: plays on the default output", !open);
+        }).ToList();
+        if (rows.Select(r => (r.Device, r.UsedBy, r.Status)).SequenceEqual(RoutedOutputs.Select(r => (r.Device, r.UsedBy, r.Status)))) return;
+        RoutedOutputs.Clear();
+        foreach (var row in rows) RoutedOutputs.Add(row);
+    }
+
+    internal void TestOutput(string device) =>
+        Message = _audio.PlayTestSound(device) ? $"Playing a test tone on {device}." : $"{device} isn't connected.";
 
     /// <summary>Every audio event in every timeline, grouped by file.</summary>
     void RefreshSounds()

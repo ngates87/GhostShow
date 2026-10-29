@@ -279,4 +279,10 @@ public partial class TimelineView : UserControl
         if (width <= 0 || (x >= left && x <= left + width - 20)) return;
         LanesScroll.Offset = LanesScroll.Offset.WithX(Math.Max(0, x - width * 0.1));
     }
+
+    /// <summary>An audio track's output dropdown (its properties) opening: list the devices again, in case one was plugged in.</summary>
+    void OnOutputDropDownOpened(object? sender, EventArgs e)
+    {
+        if (sender is Control { DataContext: TrackPropertiesViewModel properties }) properties.Row.RefreshDeviceList();
+    }
 }

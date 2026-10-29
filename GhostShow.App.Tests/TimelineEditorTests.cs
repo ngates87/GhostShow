@@ -403,6 +403,36 @@ public class TimelineEditorTests : IDisposable
     }
 
     [Fact]
+    public void An_audio_tracks_output_is_picked_from_its_dropdown_and_undoable()
+    {
+        var row = _rig.Track(TrackKind.Audio);
+        Assert.Equal([new AudioDeviceChoice("Default output", null)], row.Outputs);   // no device list (tests): just the default
+        Assert.Null(row.SelectedOutput!.Name);
+
+        _rig.Editor.SetTrackAudioDevice(row.Track, "USB Audio CODEC");
+
+        Assert.Equal("USB Audio CODEC", row.Track.AudioDevice);
+        // Not on this computer: it stays chosen, marked as not connected.
+        Assert.Equal("USB Audio CODEC (not connected)", row.SelectedOutput!.Label);
+        Assert.Equal("Undo Change track output", Editor.UndoLabel);
+
+        Editor.UndoCommand.Execute(null);
+        Assert.Null(row.Track.AudioDevice);
+        Assert.Equal("Default output", row.SelectedOutput!.Label);
+    }
+
+    [Fact]
+    public void Clearing_the_output_list_under_the_dropdown_doesnt_change_the_track()
+    {
+        var row = _rig.Track(TrackKind.Audio);
+        row.Track.AudioDevice = "Lobby";
+
+        row.SelectedOutput = null;
+
+        Assert.Equal("Lobby", row.Track.AudioDevice);
+    }
+
+    [Fact]
     public void Rows_are_one_per_track_and_a_lighting_track_is_taller_expanded()
     {
         _rig.RedLane();

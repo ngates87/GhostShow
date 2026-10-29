@@ -1,0 +1,175 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:GhostShow.App.ViewModels"
+             x:Class="GhostShow.App.Views.ButtonsPanel"
+             x:DataType="vm:ButtonsViewModel">
+  <!-- The show's buttons, beside the timeline (self-contained, so it can become a dockable window later). -->
+  <UserControl.Styles>
+    <Style Selector="Button.showButton">
+      <Setter Property="Width" Value="116" />
+      <Setter Property="Height" Value="68" />
+      <Setter Property="Margin" Value="0,0,6,6" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="VerticalContentAlignment" Value="Stretch" />
+    </Style>
+    <Style Selector="Button.showButton Border.face">
+      <Setter Property="BorderBrush" Value="#30FFFFFF" />
+      <Setter Property="BorderThickness" Value="1" />
+    </Style>
+    <!-- Lit: a timeline it runs is playing. -->
+    <Style Selector="Button.showButton.lit Border.face">
+      <Setter Property="BorderBrush" Value="Gold" />
+      <Setter Property="BorderThickness" Value="3" />
+    </Style>
+    <Style Selector="Button.showButton.selected Border.face">
+      <Setter Property="BorderBrush" Value="White" />
+      <Setter Property="BorderThickness" Value="2" />
+    </Style>
+    <Style Selector="Button.small">
+      <Setter Property="Padding" Value="6,1" />
+      <Setter Property="MinHeight" Value="0" />
+    </Style>
+  </UserControl.Styles>
+
+  <Panel>
+    <!-- Folded away: a strip at the edge to bring it back. -->
+    <Button IsVisible="{Binding !IsOpen}" Command="{Binding ToggleOpenCommand}" VerticalAlignment="Stretch" Padding="4,8" Margin="6,0,0,0"
+            ToolTip.Tip="Show the buttons">
+      <LayoutTransformControl>
+        <LayoutTransformControl.LayoutTransform>
+          <RotateTransform Angle="90" />
+        </LayoutTransformControl.LayoutTransform>
+        <TextBlock Text="Buttons ▾" />
+      </LayoutTransformControl>
+    </Button>
+
+    <Border Classes="card" Width="268" Margin="8,0,0,0" Padding="8" IsVisible="{Binding IsOpen}">
+      <DockPanel>
+        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+          <Button DockPanel.Dock="Right" Classes="small" Content="»" Command="{Binding ToggleOpenCommand}" Margin="4,0,0,0" ToolTip.Tip="Fold the buttons away" />
+          <Button DockPanel.Dock="Right" Classes="small" Content="＋" Command="{Binding AddCommand}" Margin="4,0,0,0" ToolTip.Tip="Add a button" />
+          <ToggleButton DockPanel.Dock="Right" Classes="small" Content="Edit" IsChecked="{Binding IsEditing}" Padding="8,1" MinHeight="0"
+                        ToolTip.Tip="Edit mode: click a button to change its name, colour, key and actions (instead of pressing it)" />
+          <TextBlock Text="Buttons" FontWeight="SemiBold" VerticalAlignment="Center" />
+        </DockPanel>
+
+        <TextBlock DockPanel.Dock="Bottom" Text="{Binding Status}" Opacity="0.7" FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0"
+                   IsVisible="{Binding Status, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+        <!-- Editing the selected button -->
+        <ScrollViewer DockPanel.Dock="Bottom" MaxHeight="420" IsVisible="{Binding IsEditing}">
+          <ContentControl Content="{Binding Selected}" Margin="0,8,0,0">
+            <ContentControl.ContentTemplate>
+              <DataTemplate x:DataType="vm:ShowButtonViewModel">
+                <StackPanel Spacing="6">
+                  <TextBlock Text="Name" Opacity="0.75" />
+                  <TextBox Text="{Binding Name}" />
+                  <WrapPanel>
+                    <ItemsControl ItemsSource="{x:Static vm:ButtonsViewModel.Palette}">
+                      <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+                      </ItemsControl.ItemsPanel>
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="x:String">
+                          <Button Width="22" Height="22" MinWidth="0" MinHeight="0" Padding="0" Margin="0,0,4,4" Background="Transparent"
+                                  HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" ToolTip.Tip="{Binding}"
+                                  Command="{Binding $parent[ContentControl].((vm:ShowButtonViewModel)DataContext).PickColorCommand}" CommandParameter="{Binding}">
+                            <Border Background="{Binding}" CornerRadius="3" BorderBrush="#80FFFFFF" BorderThickness="1" />
+                          </Button>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </WrapPanel>
+                  <Grid ColumnDefinitions="Auto,*">
+                    <TextBlock Text="Key" Opacity="0.75" VerticalAlignment="Center" Margin="0,0,8,0" />
+                    <ComboBox Grid.Column="1" ItemsSource="{Binding KeyChoices}" SelectedItem="{Binding SelectedKey}" HorizontalAlignment="Stretch"
+                              ToolTip.Tip="Pressing this key anywhere in GhostShow presses the button (not while typing in a field)" />
+                  </Grid>
+
+                  <DockPanel Margin="0,6,0,0">
+                    <Button DockPanel.Dock="Right" Classes="small" Content="Add action ▾">
+                      <Button.Flyout>
+                        <MenuFlyout>
+                          <MenuItem Header="Run timeline" Command="{Binding AddActionCommand}" CommandParameter="run" />
+                          <MenuItem Header="Stop timeline" Command="{Binding AddActionCommand}" CommandParameter="stop" />
+                          <MenuItem Header="Stop all timelines" Command="{Binding AddActionCommand}" CommandParameter="stopAll" />
+                          <MenuItem Header="Blackout" Command="{Binding AddActionCommand}" CommandParameter="blackout" />
+                        </MenuFlyout>
+                      </Button.Flyout>
+                    </Button>
+                    <TextBlock Text="Actions (in order)" FontWeight="SemiBold" VerticalAlignment="Center" />
+                  </DockPanel>
+                  <TextBlock Text="None yet: pressing it does nothing." Opacity="0.6" FontSize="12" IsVisible="{Binding !Actions.Count}" />
+                  <ItemsControl ItemsSource="{Binding Actions}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="vm:ButtonActionViewModel">
+                        <Border Background="#22FFFFFF" CornerRadius="4" Padding="6" Margin="0,0,0,4">
+                          <StackPanel Spacing="4">
+                            <DockPanel>
+                              <Button DockPanel.Dock="Right" Classes="small" Content="×" Command="{Binding RemoveCommand}" ToolTip.Tip="Remove this action" />
+                              <Button DockPanel.Dock="Right" Classes="small" Content="↓" Command="{Binding MoveLaterCommand}" ToolTip.Tip="Later" />
+                              <Button DockPanel.Dock="Right" Classes="small" Content="↑" Command="{Binding MoveEarlierCommand}" ToolTip.Tip="Earlier" />
+                              <TextBlock Text="{Binding Kind}" VerticalAlignment="Center" />
+                            </DockPanel>
+                            <ComboBox ItemsSource="{Binding Timelines}" SelectedItem="{Binding Timeline}" HorizontalAlignment="Stretch"
+                                      IsVisible="{Binding HasTimeline}" PlaceholderText="(its timeline was deleted)" />
+                            <CheckBox Content="Play once only" IsChecked="{Binding PlayOnceOnly}" IsVisible="{Binding IsRun}"
+                                      ToolTip.Tip="Off: each press plays another copy, even while one is still playing. On: pressing while it plays does nothing." />
+                          </StackPanel>
+                        </Border>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+
+                  <WrapPanel Margin="0,6,0,0">
+                    <Button Classes="small" Content="◂" Command="{Binding MoveEarlierCommand}" Margin="0,0,4,4" ToolTip.Tip="Move earlier in the panel" />
+                    <Button Classes="small" Content="▸" Command="{Binding MoveLaterCommand}" Margin="0,0,4,4" ToolTip.Tip="Move later in the panel" />
+                    <Button Classes="small" Content="Duplicate" Command="{Binding DuplicateCommand}" Margin="0,0,4,4" />
+                    <Button Classes="small" Content="Delete…" Margin="0,0,4,4">
+                      <Button.Flyout>
+                        <Flyout>
+                          <StackPanel Spacing="6">
+                            <TextBlock Text="{Binding Name, StringFormat='Delete {0}? (No undo for buttons yet.)'}" />
+                            <Button Content="Delete" Command="{Binding RemoveCommand}" />
+                          </StackPanel>
+                        </Flyout>
+                      </Button.Flyout>
+                    </Button>
+                  </WrapPanel>
+                </StackPanel>
+              </DataTemplate>
+            </ContentControl.ContentTemplate>
+          </ContentControl>
+        </ScrollViewer>
+
+        <!-- The buttons -->
+        <ScrollViewer>
+          <StackPanel>
+            <TextBlock Text="No buttons yet. ＋ adds one: give it actions (Run timeline, Stop, Blackout…) and a key." TextWrapping="Wrap" Opacity="0.7"
+                       IsVisible="{Binding !HasButtons}" />
+            <ItemsControl ItemsSource="{Binding Buttons}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:ShowButtonViewModel">
+                  <Button Classes="showButton" Classes.lit="{Binding IsLit}" Classes.selected="{Binding IsSelected}" Command="{Binding ClickCommand}"
+                          ToolTip.Tip="{Binding Name}">
+                    <Border Classes="face" Background="{Binding Color}" CornerRadius="6" Padding="6,4">
+                      <Grid RowDefinitions="*,Auto">
+                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" Foreground="White" />
+                        <TextBlock Grid.Row="1" Text="{Binding KeyLabel}" HorizontalAlignment="Right" FontSize="11" Opacity="0.85" Foreground="White" />
+                      </Grid>
+                    </Border>
+                  </Button>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </ScrollViewer>
+      </DockPanel>
+    </Border>
+  </Panel>
+</UserControl>

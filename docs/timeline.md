@@ -334,4 +334,5 @@ events). Either way, saving writes a show folder.
 - A channel's starting level is fixed or its first clip's; VenueMagic's "current level when the timeline starts" isn't
   there yet (see docs/plan-timeline-venuemagic.md).
 - An event can't be dragged to another track (cut and paste instead).
-- Audio events play on the one output device; no per-event routing to other outputs yet.
+- Audio is routed per track (each audio track picks an output device, as in VenueMagic), not per clip, and to a whole
+  device: no picking individual channels of a multichannel interface yet.

@@ -385,6 +385,17 @@
                   </DockPanel>
                   <TextBlock Text="Name" Classes="label" />
                   <TextBox Text="{Binding Name}" />
+                  <StackPanel Spacing="4" IsVisible="{Binding IsAudio}">
+                    <TextBlock Text="Output device" Classes="label" />
+                    <DockPanel>
+                      <Button DockPanel.Dock="Right" Content="Test" Command="{Binding Row.TestOutputCommand}" Margin="6,0,0,0"
+                              ToolTip.Tip="Play a short tone on this output" />
+                      <ComboBox ItemsSource="{Binding Row.Outputs}" SelectedItem="{Binding Row.SelectedOutput}" HorizontalAlignment="Stretch"
+                                DropDownOpened="OnOutputDropDownOpened" />
+                    </DockPanel>
+                    <TextBlock TextWrapping="Wrap" Opacity="0.7" FontSize="12"
+                               Text="The sound card or speakers this track plays on. Saved in the show; on a computer without that device the track plays on the default output (set on the Audio screen)." />
+                  </StackPanel>
                   <Grid ColumnDefinitions="Auto,*" IsVisible="{Binding IsAudio}">
                     <TextBlock Text="Volume (%)" Classes="label" Margin="0,0,8,0" />
                     <NumericUpDown Grid.Column="1" Value="{Binding VolumePercent}" Minimum="0" Maximum="100" Increment="5" FormatString="0"
@@ -589,6 +600,8 @@
                       <MenuItem Header="Channels…" Command="{Binding EditChannelsCommand}" IsVisible="{Binding IsLighting}" />
                       <MenuItem Header="{Binding ExpandGlyph, StringFormat='{}{0} Expand / collapse'}" Command="{Binding ToggleExpandedCommand}" IsVisible="{Binding IsLighting}" />
                       <MenuItem Header="Properties…" Command="{Binding EditPropertiesCommand}" />
+                      <MenuItem Header="Test output" Command="{Binding TestOutputCommand}" IsVisible="{Binding IsAudio}"
+                                ToolTip.Tip="Play a short tone on this track's output device" />
                       <Separator />
                       <MenuItem Header="Rename" InputGesture="F2" Command="{Binding StartRenameCommand}" />
                       <MenuItem Header="{Binding MuteLabel}" Command="{Binding ToggleMuteCommand}" />
@@ -605,6 +618,8 @@
                     <CheckBox DockPanel.Dock="Right" IsChecked="{Binding Enabled}" ToolTip.Tip="Unchecked: the track is muted (not played)" MinWidth="0" VerticalAlignment="Center" />
                     <Button DockPanel.Dock="Right" Content="⚙" Command="{Binding EditChannelsCommand}" IsVisible="{Binding IsLighting}" VerticalAlignment="Center"
                             Padding="4,0" MinHeight="0" MinWidth="0" Background="Transparent" ToolTip.Tip="Channels this track controls…" />
+                    <Button DockPanel.Dock="Right" Content="⚙" Command="{Binding EditPropertiesCommand}" IsVisible="{Binding IsAudio}" VerticalAlignment="Center"
+                            Padding="4,0" MinHeight="0" MinWidth="0" Background="Transparent" ToolTip.Tip="{Binding OutputTip, StringFormat='Track properties… ({0})'}" />
                     <!-- The name: double-click or F2 to rename (a plain text box here was too easy to edit by accident). -->
                     <Panel VerticalAlignment="Center">
                       <TextBlock Classes="trackName" Text="{Binding Name}" Padding="4,2" FontSize="12" IsVisible="{Binding !IsRenaming}"

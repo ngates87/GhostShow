@@ -26,7 +26,8 @@ public sealed record LaneRowViewModel(ChannelLane Lane, string Label, string Col
 
 /// <summary>
 /// A track header: name, kind, mute; for a lighting track also its channels (right-click → Channels…) and whether
-/// it's expanded (tall, its clips showing their envelopes). Edits go through the history like everything else.
+/// it's expanded (tall, its clips showing their envelopes); for an audio track its volume (its output device is in
+/// its properties, right-click → Properties… or ⚙). Edits go through the history like everything else.
 /// </summary>
 public sealed partial class TrackRowViewModel : ObservableObject
 {
@@ -38,6 +39,7 @@ public sealed partial class TrackRowViewModel : ObservableObject
         _editor = editor;
         IsExpanded = editor.IsExpanded(track);
         RefreshLanes();
+        RefreshOutputs();
     }
 
     TimelineEditorViewModel editor => _editor;
@@ -141,6 +143,41 @@ public sealed partial class TrackRowViewModel : ObservableObject
 
     public string VolumeLabel => $"{VolumePercent:0}%";
 
+    /// <summary>Audio: the devices its output can be (the properties panel's dropdown).</summary>
+    public ObservableCollection<AudioDeviceChoice> Outputs { get; } = new();
+
+    /// <summary>Audio: the device its clips play on; "Default output" is this computer's (the Audio screen's).</summary>
+    public AudioDeviceChoice? SelectedOutput
+    {
+        get => Outputs.FirstOrDefault(o => o.Name == Track.AudioDevice);
+        set
+        {
+            // Null when the list is rebuilt under the dropdown: not a choice.
+            if (value is not null) editor.SetTrackAudioDevice(Track, value.Name);
+        }
+    }
+
+    public string OutputTip => $"Output: {Track.AudioDevice ?? "this computer's default output (see Audio)"}";
+
+    /// <summary>Lists the devices again, e.g. when the dropdown opens (a USB interface may have been plugged in).</summary>
+    public void RefreshDeviceList() => _ = _editor.AudioDevices?.RefreshAsync();
+
+    [RelayCommand]
+    void TestOutput() => _editor.TestTrackOutput(this);
+
+    internal void RefreshOutputs()
+    {
+        if (!IsAudio) return;
+        var choices = AudioDeviceList.TrackChoices(_editor.AudioDevices?.Names ?? [], Track.AudioDevice);
+        if (!choices.SequenceEqual(Outputs))
+        {
+            Outputs.Clear();
+            foreach (var choice in choices) Outputs.Add(choice);
+        }
+        OnPropertyChanged(nameof(SelectedOutput));
+        OnPropertyChanged(nameof(OutputTip));
+    }
+
     public bool Enabled
     {
         get => Track.Enabled;
@@ -161,6 +198,7 @@ public sealed partial class TrackRowViewModel : ObservableObject
         OnPropertyChanged(nameof(MuteLabel));
         OnPropertyChanged(nameof(VolumePercent));
         OnPropertyChanged(nameof(VolumeLabel));
+        RefreshOutputs();
         RefreshLanes();
     }
 
@@ -198,9 +236,15 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
     readonly HashSet<Guid> _selection = [];
     List<(int Track, TimelineEvent Event)> _clipboard = [];
 
-    public TimelineEditorViewModel(ShowSession session, PlaybackViewModel playback, Func<Task<string?>> pickAudioFile, Action markDirty)
+    public TimelineEditorViewModel(ShowSession session, PlaybackViewModel playback, Func<Task<string?>> pickAudioFile, Action markDirty,
+                                   AudioDeviceList? audioDevices = null)
     {
         _session = session;
+        AudioDevices = audioDevices;
+        if (audioDevices is not null) audioDevices.Changed += () =>
+        {
+            foreach (var row in Tracks) row.RefreshOutputs();
+        };
         _playback = playback;
         _pickAudioFile = pickAudioFile;
         _markDirty = markDirty;
@@ -227,6 +271,12 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
     public partial EditHistory History { get; private set; } = new();
 
     public PlaybackViewModel Playback => _playback;
+
+    /// <summary>This computer's audio devices, for audio tracks' outputs; null without audio (tests).</summary>
+    public AudioDeviceList? AudioDevices { get; }
+
+    /// <summary>Raised with a short message for the status bar (e.g. a test tone on a track's output).</summary>
+    public event Action<string>? Notice;
 
     public TimelineTreeViewModel Tree { get; }
 
@@ -769,6 +819,25 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
         if (track.Volume == volume) return;
         double old = track.Volume;
         History.Execute("Change track volume", () => track.Volume = volume, () => track.Volume = old, (track.Id, "volume"));
+    }
+
+    /// <summary>
+    /// An audio track's output device (null: this computer's default output). Saved in the show, like VenueMagic's
+    /// per-track device; a device another computer doesn't have plays on its default output until it's plugged in.
+    /// </summary>
+    public void SetTrackAudioDevice(TimelineTrack track, string? device)
+    {
+        if (track.AudioDevice == device) return;
+        string? old = track.AudioDevice;
+        History.Execute("Change track output", () => track.AudioDevice = device, () => track.AudioDevice = old);
+    }
+
+    /// <summary>A short tone on the track's output, to check which speakers it is.</summary>
+    public void TestTrackOutput(TrackRowViewModel row)
+    {
+        string name = row.Track.AudioDevice ?? "the default output";
+        bool played = AudioDevices?.PlayTestSound(row.Track.AudioDevice) ?? false;
+        Notice?.Invoke(played ? $"Playing a test tone on {name}." : $"Couldn't play on {name}: it isn't connected (or is still opening).");
     }
 
     /// <summary>Moves a track up (-1) or down (+1), keeping it selected.</summary>

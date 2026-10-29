@@ -189,8 +189,11 @@
 
     <Panel Margin="8,0,8,0">
       <views:HomeView IsVisible="{Binding CurrentPage, Converter={x:Static vm:Converters.PageIs}, ConverterParameter={x:Static vm:Page.Home}}" />
-      <views:TimelineView DataContext="{Binding Timeline}"
-                          IsVisible="{Binding $parent[Window].((vm:MainViewModel)DataContext).CurrentPage, Converter={x:Static vm:Converters.PageIs}, ConverterParameter={x:Static vm:Page.Timeline}}" />
+      <!-- The timeline, with the show's buttons beside it -->
+      <DockPanel IsVisible="{Binding CurrentPage, Converter={x:Static vm:Converters.PageIs}, ConverterParameter={x:Static vm:Page.Timeline}}">
+        <views:ButtonsPanel DockPanel.Dock="Right" DataContext="{Binding Buttons}" />
+        <views:TimelineView DataContext="{Binding Timeline}" />
+      </DockPanel>
       <views:DiagnosticsView DataContext="{Binding Diagnostics}"
                              IsVisible="{Binding $parent[Window].((vm:MainViewModel)DataContext).CurrentPage, Converter={x:Static vm:Converters.PageIs}, ConverterParameter={x:Static vm:Page.Diagnostics}}" />
       <views:OutputsView DataContext="{Binding Outputs}"

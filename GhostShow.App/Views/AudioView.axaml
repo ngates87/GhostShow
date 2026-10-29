@@ -5,11 +5,11 @@
              x:DataType="vm:AudioViewModel">
   <ScrollViewer>
     <StackPanel Margin="0,16" Spacing="12" MaxWidth="860" HorizontalAlignment="Left">
-      <TextBlock Text="Audio output" Classes="heading" />
+      <TextBlock Text="Default output" Classes="heading" />
       <Border Classes="card">
         <StackPanel Spacing="10">
           <TextBlock TextWrapping="Wrap" Opacity="0.75"
-                     Text="Where show audio plays on this computer. Like DMX adapters, this is saved with this computer's settings, not in the show, so a show moves between computers without changes." />
+                     Text="Where show audio plays on this computer, unless its track picks another output (Output device in the track's properties: ⚙ on an audio track). Like DMX adapters, this is saved with this computer's settings, not in the show." />
           <Grid ColumnDefinitions="110,*,Auto" RowDefinitions="Auto,10,Auto,10,Auto">
             <TextBlock Text="Device" VerticalAlignment="Center" />
             <ComboBox Grid.Column="1" ItemsSource="{Binding Devices}" SelectedItem="{Binding SelectedDevice}" HorizontalAlignment="Stretch" />
@@ -29,6 +29,29 @@
                      IsVisible="{Binding LastError, Converter={x:Static ObjectConverters.IsNotNull}}" />
           <TextBlock Text="{Binding Message}" TextWrapping="Wrap" Opacity="0.8"
                      IsVisible="{Binding Message, Converter={x:Static ObjectConverters.IsNotNull}}" />
+        </StackPanel>
+      </Border>
+
+      <TextBlock Text="Track outputs" Classes="heading" />
+      <Border Classes="card">
+        <StackPanel Spacing="4">
+          <TextBlock TextWrapping="Wrap" Opacity="0.7" IsVisible="{Binding !RoutedOutputs.Count}"
+                     Text="Every audio track plays on the default output. To send a track somewhere else (another sound card, a USB interface), pick its Output device in the track's properties (⚙ on the track, or right-click → Properties…)." />
+          <Grid ColumnDefinitions="2*,2*,2*,Auto" Opacity="0.7" IsVisible="{Binding !!RoutedOutputs.Count}">
+            <TextBlock Text="Device" /><TextBlock Grid.Column="1" Text="Tracks" /><TextBlock Grid.Column="2" Text="Status" />
+          </Grid>
+          <ItemsControl ItemsSource="{Binding RoutedOutputs}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:RoutedOutputRow">
+                <Grid ColumnDefinitions="2*,2*,2*,Auto" Margin="0,2">
+                  <TextBlock Text="{Binding Device}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Device}" VerticalAlignment="Center" />
+                  <TextBlock Grid.Column="1" Text="{Binding UsedBy}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding UsedBy}" VerticalAlignment="Center" />
+                  <TextBlock Grid.Column="2" Text="{Binding Status}" TextWrapping="Wrap" Classes.fault="{Binding Missing}" VerticalAlignment="Center" />
+                  <Button Grid.Column="3" Content="Test" Command="{Binding TestCommand}" Margin="8,0,0,0" ToolTip.Tip="Play a short tone on this output" />
+                </Grid>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
         </StackPanel>
       </Border>
 

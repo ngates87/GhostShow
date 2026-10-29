@@ -43,8 +43,9 @@ public interface IAudioOutput
     TimeSpan? GetLength(string path);
 
     /// <summary>
-    /// Goes up whenever the output device is (re)opened, e.g. after a lost device comes back or the user picks
-    /// another. Every instance is gone at that point; the player starts what should be playing again.
+    /// Goes up whenever an output device is (re)opened or lost, e.g. after a lost device comes back or the user picks
+    /// another. Instances may be gone at that point; the player starts what should be playing again (each on its
+    /// cue's <see cref="AudioCue.Device"/>).
     /// </summary>
     int Generation { get; }
 }

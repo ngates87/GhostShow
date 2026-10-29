@@ -153,6 +153,42 @@ public class AudioServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_cue_routed_to_a_missing_output_plays_on_the_default_output_and_is_reported()
+    {
+        var cue = Cue("silence-3s.wav") with { Device = "Not plugged in" };
+
+        _audio.Start(cue, TimeSpan.Zero, 1);
+
+        Assert.Equal(AudioInstanceState.Playing, _audio.GetState(cue.EventId));
+        await Eventually.True(() => _audio.Status.MissingOutputs.Contains("Not plugged in"), "the output is listed as missing", TimeSpan.FromSeconds(5));
+        await Eventually.True(() => _log.Entries.Any(e => e.Level == LogLevel.Error && e.Message.Contains("Not plugged in")), "it's reported", TimeSpan.FromSeconds(5));
+        Assert.False(_audio.PlayTestSound("Not plugged in"));
+    }
+
+    [Fact]
+    public void Outputs_the_show_no_longer_uses_are_dropped()
+    {
+        _audio.UseOutputs(["Graveyard", "Lobby"]);
+        Assert.Equal(["Graveyard", "Lobby"], _audio.Status.Outputs.Select(o => o.Name));
+
+        _audio.UseOutputs(["Lobby"]);
+
+        Assert.Equal(["Lobby"], _audio.Status.Outputs.Select(o => o.Name));
+    }
+
+    [Fact]
+    public void A_track_routed_to_the_default_outputs_own_device_plays_there_directly()
+    {
+        var cue = Cue("silence-3s.wav") with { Device = _audio.Status.DeviceName };
+
+        _audio.Start(cue, TimeSpan.Zero, 1);
+        _audio.UseOutputs([_audio.Status.DeviceName!]);
+
+        Assert.Equal(AudioInstanceState.Playing, _audio.GetState(cue.EventId));
+        Assert.Empty(_audio.Status.Outputs);
+    }
+
+    [Fact]
     public async Task Measuring_a_file_also_makes_its_waveform()
     {
         // 1 s of silence, then 1 s of a 440 Hz tone at half volume: 16-bit mono at 44.1 kHz (decoding converts it).

@@ -45,6 +45,17 @@ public class AudioCueTests : IDisposable
     }
 
     [Fact]
+    public void Cues_play_on_their_tracks_output_device()
+    {
+        var routed = new TimelineTrack { Kind = TrackKind.Audio, AudioDevice = "USB Audio CODEC", Events = [new AudioEvent { File = "thunder.wav" }] };
+        var unrouted = new TimelineTrack { Kind = TrackKind.Audio, AudioDevice = " ", Events = [new AudioEvent { File = "thunder.wav", Start = S(5) }] };
+
+        var compiled = Compile(Timeline(routed, unrouted), Context(showFolder: _dir.Path));
+
+        Assert.Equal(["USB Audio CODEC", null], compiled.AudioCues.Select(c => c.Device));
+    }
+
+    [Fact]
     public void Missing_files_are_reported_with_the_path_looked_for()
     {
         var e = new AudioEvent { File = "nope.wav" };

@@ -22,8 +22,9 @@ readonly record struct LevelStep(long Start, long Fade, int Slot, int Index, byt
 }
 
 /// <param name="End">When the cue stops; null when it plays until the file ends on its own (length unknown).</param>
+/// <param name="Device">The output device to play on (its track's); null for the default output.</param>
 public sealed record AudioCue(Guid EventId, string Name, string Path, long Start, long? End, long Offset,
-                              double Volume, long FadeIn, long FadeOut, bool Loop)
+                              double Volume, long FadeIn, long FadeOut, bool Loop, string? Device = null)
 {
     /// <summary>Volume at timeline position t from the event volume and its fade-in/out (evaluated from time, not stepped).</summary>
     public double VolumeAt(long t)

@@ -15,13 +15,31 @@ namespace GhostShow.Audio;
 
 public enum AudioDeviceState { Closed, Open, Failed }
 
-/// <param name="DeviceName">The device in use (or last tried).</param>
-/// <param name="Playing">Instances currently playing or paused.</param>
-public sealed record AudioStatus(AudioDeviceState State, string? DeviceName, int Playing, string? LastError);
+/// <param name="DeviceName">The default output's device in use (or last tried).</param>
+/// <param name="Playing">Instances currently playing or paused, on every device.</param>
+/// <param name="Outputs">The other devices tracks play on, and whether each is open.</param>
+public sealed record AudioStatus(AudioDeviceState State, string? DeviceName, int Playing, string? LastError,
+                                 IReadOnlyList<RoutedOutputStatus>? Outputs = null)
+{
+    public IReadOnlyList<RoutedOutputStatus> Outputs { get; init; } = Outputs ?? [];
+
+    /// <summary>Routed devices that aren't open (not plugged in, or failed): their tracks play on the default output.</summary>
+    public IEnumerable<string> MissingOutputs => Outputs.Where(o => !o.Open).Select(o => o.Name);
+}
+
+/// <param name="Open">False: not connected or failed to open, retried every few seconds.</param>
+public sealed record RoutedOutputStatus(string Name, bool Open, int Playing);
 
 /// <summary>
-/// Show audio through SoundFlow (MIT; miniaudio underneath: WASAPI, Core Audio, PulseAudio/ALSA). One output device,
-/// one SoundFlow player per audio event, all mixed by the device's master mixer, so any number can overlap.
+/// Show audio through SoundFlow (MIT; miniaudio underneath: WASAPI, Core Audio, PulseAudio/ALSA). One SoundFlow
+/// player per audio event, mixed by its device's master mixer, so any number can overlap.
+///
+/// Devices: the default output (this computer's choice, <see cref="OpenAsync"/>) plays every cue without a
+/// <see cref="AudioCue.Device"/>. A cue routed to another device (its track's output, VenueMagic-style) plays there
+/// once that device is open; devices are opened in the background (<see cref="UseOutputs"/>, or on first use), never
+/// on the playback thread. Until a routed device is open (not plugged in, or still opening) its cues play on the
+/// default output, and the device is retried every 3 s; when it opens or is lost, <see cref="Generation"/> goes up and
+/// the player restarts its sounds where they belong.
 ///
 /// Files are streamed (not loaded whole) and decoded by miniaudio, converting to the device's sample rate and channels:
 /// WAV and MP3, plus FLAC. Opening a file takes ~15 ms;
@@ -55,6 +73,9 @@ public sealed class AudioService : IAudioOutput, IDisposable
     readonly ConcurrentDictionary<string, Waveform> _waveforms = new();
     readonly ConcurrentDictionary<string, byte> _reported = new();   // "path: error" already logged
     readonly Timer _recovery;
+    /// <summary>Routed devices by name; null while not open (missing, failed, or opening).</summary>
+    readonly Dictionary<string, AudioPlaybackDevice?> _routed = new();
+    readonly HashSet<string> _opening = new();
     AudioPlaybackDevice? _device;
     string? _requestedDevice;
     double _masterVolume = 1.0;
@@ -62,8 +83,12 @@ public sealed class AudioService : IAudioOutput, IDisposable
     AudioStatus _status = new(AudioDeviceState.Closed, null, 0, null);
     bool _disposed;
 
-    sealed class Instance(SoundPlayer? player, StreamDataProvider? provider, Stream? stream)
+    /// <param name="device">The device whose mixer plays it; null when it failed.</param>
+    /// <param name="fallback">A routed cue playing on the default output because its device isn't open.</param>
+    sealed class Instance(SoundPlayer? player, StreamDataProvider? provider, Stream? stream, AudioPlaybackDevice? device = null, string? fallback = null)
     {
+        public AudioPlaybackDevice? Device { get; } = device;
+        public string? FallbackFor { get; } = fallback;
         public SoundPlayer? Player { get; } = player;
         public StreamDataProvider? Provider { get; } = provider;
         public Stream? Stream { get; } = stream;
@@ -82,7 +107,17 @@ public sealed class AudioService : IAudioOutput, IDisposable
 
     public AudioStatus Status
     {
-        get { lock (_lock) return _status with { Playing = _instances.Values.Count(i => !i.Failed && !i.Finished) }; }
+        get
+        {
+            lock (_lock)
+            {
+                var playing = _instances.Values.Where(i => !i.Failed && !i.Finished).ToList();
+                var outputs = _routed.OrderBy(r => r.Key, StringComparer.CurrentCultureIgnoreCase)
+                    .Select(r => new RoutedOutputStatus(r.Key, r.Value is not null, r.Value is null ? 0 : playing.Count(i => i.Device == r.Value)))
+                    .ToList();
+                return _status with { Playing = playing.Count, Outputs = outputs };
+            }
+        }
     }
 
     /// <summary>Raised (on any thread) when the device opens, fails or recovers.</summary>
@@ -101,7 +136,7 @@ public sealed class AudioService : IAudioOutput, IDisposable
             lock (_lock)
             {
                 _masterVolume = Math.Clamp(value, 0, 1);
-                if (_device is not null) _device.MasterMixer.Volume = (float)_masterVolume;
+                foreach (var device in AllDevices()) device.MasterMixer.Volume = (float)_masterVolume;
             }
         }
     }
@@ -117,9 +152,9 @@ public sealed class AudioService : IAudioOutput, IDisposable
     });
 
     /// <summary>
-    /// Opens a device by name (null: the system default; a name that isn't present falls back to the default, with a
-    /// warning). Playing instances are dropped and <see cref="Generation"/> goes up, so the player restarts them on the
-    /// new device. Runs off the calling thread. Returns whether a device is now open.
+    /// Opens the default output by name (null: the system default; a name that isn't present falls back to the system
+    /// default, with a warning). Its instances are dropped and <see cref="Generation"/> goes up, so the player restarts
+    /// them on the new device. Runs off the calling thread. Returns whether a device is now open.
     /// </summary>
     public Task<bool> OpenAsync(string? deviceName) => Task.Run(() =>
     {
@@ -169,7 +204,8 @@ public sealed class AudioService : IAudioOutput, IDisposable
         lock (_lock)
         {
             Remove(cue.EventId);
-            if (_device is null)
+            var (device, fallback) = DeviceFor(cue.Device);
+            if (device is null)
             {
                 _instances[cue.EventId] = new Instance(null, null, null);
                 ReportOnce(cue.Path, "no audio device is open");
@@ -180,7 +216,7 @@ public sealed class AudioService : IAudioOutput, IDisposable
             try
             {
                 stream = File.OpenRead(cue.Path);
-                _instances[cue.EventId] = Play(stream, volume, cue.Loop ? TimeSpan.FromTicks(cue.Offset) : null, fileOffset);
+                _instances[cue.EventId] = Play(device, stream, volume, cue.Loop ? TimeSpan.FromTicks(cue.Offset) : null, fileOffset, fallback);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException
                                            or InvalidDataException or InvalidOperationException or ArgumentException)
@@ -193,24 +229,123 @@ public sealed class AudioService : IAudioOutput, IDisposable
     }
 
     /// <summary>
-    /// Plays a short tone (A440, half a second) on the open device at the master volume, so an operator can check
-    /// the right speakers are connected. Returns false if no device is open.
+    /// Under _lock: where a cue for this device plays now. A routed device that isn't open yet is opened in the
+    /// background (unless it's being tried already) and the cue plays on the default output meanwhile.
     /// </summary>
-    public bool PlayTestSound()
+    (AudioPlaybackDevice? Device, string? FallbackFor) DeviceFor(string? name)
+    {
+        if (name is null || IsDefaultOutput(name)) return (_device, null);
+        if (_routed.TryGetValue(name, out var routed) && routed is not null) return (routed, null);
+        if (!_routed.ContainsKey(name))
+        {
+            _routed[name] = null;
+            OpenRoutedInBackground(name);
+        }
+        return (_device, name);
+    }
+
+    /// <summary>Under _lock: the default output is this device already, so routing to it needs no second device.</summary>
+    bool IsDefaultOutput(string name) => name == _requestedDevice || (_device is not null && name == _status.DeviceName);
+
+    /// <summary>
+    /// The devices the show's tracks play on (besides the default output): opens the ones not open yet, in the
+    /// background, and closes routed devices no longer used. Cheap to call often (e.g. once a second).
+    /// </summary>
+    public void UseOutputs(IEnumerable<string> names)
+    {
+        lock (_lock)
+        {
+            if (_disposed) return;
+            var wanted = names.Where(n => !string.IsNullOrWhiteSpace(n) && !IsDefaultOutput(n)).ToHashSet();
+            bool changed = false;
+            foreach (var name in _routed.Keys.Where(n => !wanted.Contains(n)).ToList())
+            {
+                if (_instances.Values.Any(i => (i.Device is not null && i.Device == _routed[name]) || i.FallbackFor == name)) continue;   // still playing: next time
+                CloseRouted(name);
+                _routed.Remove(name);
+                changed = true;
+            }
+            foreach (var name in wanted.Where(n => !_routed.ContainsKey(n)))
+            {
+                _routed[name] = null;
+                OpenRoutedInBackground(name);
+                changed = true;
+            }
+            if (changed) StatusChanged?.Invoke();
+        }
+    }
+
+    void OpenRoutedInBackground(string name)
+    {
+        if (!_opening.Add(name)) return;
+        Task.Run(() =>
+        {
+            try
+            {
+                if (!OpenRouted(name)) _recovery.Change(RecoveryInterval, RecoveryInterval);
+            }
+            finally
+            {
+                lock (_lock) _opening.Remove(name);
+            }
+        });
+    }
+
+    /// <summary>Opens a routed device if it's wanted and not open. Returns whether it's open (or no longer wanted).</summary>
+    bool OpenRouted(string name)
+    {
+        lock (_lock)
+        {
+            if (_disposed || !_routed.TryGetValue(name, out var existing)) return true;
+            if (existing is not null) return true;
+            try
+            {
+                _engine.UpdateAudioDevicesInfo();
+                DeviceInfo? info = _engine.PlaybackDevices.Cast<DeviceInfo?>().FirstOrDefault(d => d!.Value.Name == name);
+                if (info is null)
+                {
+                    ReportOutputOnce(name, "it isn't connected; its tracks play on the default output until it is");
+                    return false;
+                }
+                var device = _engine.InitializePlaybackDevice(info, _format, new MiniAudioDeviceConfig());
+                device.MasterMixer.Volume = (float)_masterVolume;
+                device.Start();
+                _routed[name] = device;
+                _logger.LogInformation("Audio output opened: {Device}.", name);
+                // Sounds meant for it are on the default output: the player moves them (restarting every sound once).
+                if (_instances.Values.Any(i => i.FallbackFor == name)) _generation++;
+                StatusChanged?.Invoke();
+                return true;
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                ReportOutputOnce(name, $"couldn't open it ({ex.Message}); its tracks play on the default output");
+                return false;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Plays a short tone (A440, half a second) at the master volume, so an operator can check the right speakers are
+    /// connected: on the default output, or on a routed device by name. Returns false if that device isn't open.
+    /// </summary>
+    public bool PlayTestSound(string? deviceName = null)
     {
         lock (_lock)
         {
             Remove(TestSoundId);
-            if (_device is null) return false;
-            _instances[TestSoundId] = Play(TestTone(), 0.5, loopFrom: null, TimeSpan.Zero);
+            var device = deviceName is null || IsDefaultOutput(deviceName) ? _device
+                       : _routed.GetValueOrDefault(deviceName);
+            if (device is null) return false;
+            _instances[TestSoundId] = Play(device, TestTone(), 0.5, loopFrom: null, TimeSpan.Zero, fallback: null);
             return true;
         }
     }
 
     static readonly Guid TestSoundId = new("7e57501d-0000-4000-8000-000000000001");
 
-    /// <summary>Starts a player for a stream on the device (caller holds the lock and has checked the device). Throws if the stream can't be decoded.</summary>
-    Instance Play(Stream stream, double volume, TimeSpan? loopFrom, TimeSpan fileOffset)
+    /// <summary>Starts a player for a stream on a device (caller holds the lock). Throws if the stream can't be decoded.</summary>
+    Instance Play(AudioPlaybackDevice device, Stream stream, double volume, TimeSpan? loopFrom, TimeSpan fileOffset, string? fallback)
     {
         // The format overload makes miniaudio convert to the device's rate and channels while decoding. The
         // other constructor doesn't: a 44.1 kHz or mono file then plays at the wrong speed (measured).
@@ -219,9 +354,9 @@ public sealed class AudioService : IAudioOutput, IDisposable
         {
             var player = new SoundPlayer(_engine, _format, provider) { Volume = (float)volume, IsLooping = loopFrom is not null };
             if (loopFrom is { } loopStart) player.SetLoopPoints(loopStart, null);
-            var instance = new Instance(player, provider, stream);
+            var instance = new Instance(player, provider, stream, device, fallback);
             player.PlaybackEnded += (_, _) => { if (loopFrom is null) instance.Finished = true; };
-            _device!.MasterMixer.AddComponent(player);
+            device.MasterMixer.AddComponent(player);
             if (fileOffset > TimeSpan.Zero) player.Seek(fileOffset, SeekOrigin.Begin);
             player.Play();
             return instance;
@@ -356,11 +491,31 @@ public sealed class AudioService : IAudioOutput, IDisposable
 
     void OnDeviceStopped(object? sender, DeviceEventArgs e)
     {
+        string? routed;
         lock (_lock)
         {
-            if (_disposed || e.Device != _device || _status.State != AudioDeviceState.Open) return;
+            if (_disposed) return;
+            routed = _routed.FirstOrDefault(r => r.Value is not null && r.Value == e.Device).Key;
+            if (routed is null && (e.Device != _device || _status.State != AudioDeviceState.Open)) return;
         }
-        HandleDeviceLost("The audio device stopped (unplugged or taken by the system).");
+        if (routed is not null) HandleRoutedLost(routed);
+        else HandleDeviceLost("The audio device stopped (unplugged or taken by the system).");
+    }
+
+    /// <summary>A routed device went away: its sounds move to the default output, and it's retried until it's back.</summary>
+    internal void HandleRoutedLost(string name)
+    {
+        lock (_lock)
+        {
+            if (!_routed.ContainsKey(name)) return;
+            CloseRouted(name);
+            _routed[name] = null;
+            _generation++;
+            StatusChanged?.Invoke();
+        }
+        _logger.LogError("Audio output {Device} stopped (unplugged or taken by the system); its tracks play on the default output. Retrying every {Seconds} s.",
+                         name, RecoveryInterval.TotalSeconds);
+        _recovery.Change(RecoveryInterval, RecoveryInterval);
     }
 
     /// <summary>The device went away: drop it and its instances, report it, and start trying to reopen it.</summary>
@@ -377,11 +532,22 @@ public sealed class AudioService : IAudioOutput, IDisposable
 
     void TryRecover()
     {
-        if (Open(_requestedDevice))
+        bool ok = true;
+        bool defaultDown;
+        List<string> missing;
+        lock (_lock)
         {
-            _recovery.Change(Timeout.Infinite, Timeout.Infinite);
-            _logger.LogInformation("Audio device is back; playing audio resumes.");
+            if (_disposed) return;
+            defaultDown = _device is null;
+            missing = _routed.Where(r => r.Value is null && !_opening.Contains(r.Key)).Select(r => r.Key).ToList();
         }
+        if (defaultDown)
+        {
+            if (Open(_requestedDevice)) _logger.LogInformation("Audio device is back; playing audio resumes.");
+            else ok = false;
+        }
+        foreach (var name in missing) ok &= OpenRouted(name);
+        if (ok) _recovery.Change(Timeout.Infinite, Timeout.Infinite);
     }
 
     void Remove(Guid eventId)
@@ -395,21 +561,43 @@ public sealed class AudioService : IAudioOutput, IDisposable
         if (instance.Player is { } player)
         {
             player.Stop();
-            _device?.MasterMixer.RemoveComponent(player);
+            instance.Device?.MasterMixer.RemoveComponent(player);
             player.Dispose();
         }
         instance.Provider?.Dispose();
         instance.Stream?.Dispose();
     }
 
-    /// <summary>Under _lock: drops every instance and the device.</summary>
+    /// <summary>Under _lock: drops the default output and its instances (sounds on routed devices carry on).</summary>
     void CloseDevice()
     {
-        foreach (var instance in _instances.Values) Dispose(instance);
-        _instances.Clear();
+        DropInstances(i => i.Device is null || i.Device == _device);
         if (_device is null) return;
         var device = _device;
         _device = null;
+        StopAndDispose(device);
+    }
+
+    /// <summary>Under _lock: drops a routed device and its instances (the entry stays, for the caller to decide).</summary>
+    void CloseRouted(string name)
+    {
+        if (_routed.GetValueOrDefault(name) is not { } device) return;
+        DropInstances(i => i.Device == device);
+        _routed[name] = null;
+        StopAndDispose(device);
+    }
+
+    void DropInstances(Func<Instance, bool> which)
+    {
+        foreach (var (id, instance) in _instances.Where(kv => which(kv.Value)).ToList())
+        {
+            _instances.Remove(id);
+            Dispose(instance);
+        }
+    }
+
+    void StopAndDispose(AudioPlaybackDevice device)
+    {
         try
         {
             device.Stop();
@@ -421,9 +609,21 @@ public sealed class AudioService : IAudioOutput, IDisposable
         device.Dispose();
     }
 
+    /// <summary>Under _lock: every open device, default output first.</summary>
+    IEnumerable<AudioPlaybackDevice> AllDevices()
+    {
+        if (_device is not null) yield return _device;
+        foreach (var device in _routed.Values) if (device is not null) yield return device;
+    }
+
     void ReportOnce(string path, string error)
     {
         if (_reported.TryAdd($"{path}: {error}", 0)) _logger.LogError("Audio file {Path}: {Error}", path, error);
+    }
+
+    void ReportOutputOnce(string device, string error)
+    {
+        if (_reported.TryAdd($"output {device}: {error}", 0)) _logger.LogError("Audio output {Device}: {Error}", device, error);
     }
 
     void SetStatus(AudioStatus status)
@@ -439,6 +639,8 @@ public sealed class AudioService : IAudioOutput, IDisposable
             if (_disposed) return;
             _disposed = true;
             _recovery.Dispose();
+            foreach (var name in _routed.Keys.ToList()) CloseRouted(name);
+            _routed.Clear();
             CloseDevice();
             SetStatus(new AudioStatus(AudioDeviceState.Closed, null, 0, null));
         }

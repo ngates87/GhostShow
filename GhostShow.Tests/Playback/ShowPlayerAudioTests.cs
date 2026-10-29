@@ -62,6 +62,23 @@ public class ShowPlayerAudioTests : IDisposable
     }
 
     [Fact]
+    public void Changing_a_tracks_output_moves_its_playing_sound_to_the_new_device()
+    {
+        var sound = Sound("thunder.wav", start: 0, length: 10);
+        var track = new TimelineTrack { Kind = TrackKind.Audio, Events = [sound] };
+        _player.Load(Compile(Timeline(track), Context(showFolder: _dir.Path)));
+        _player.Play();
+        _player.Tick();
+        After(2);
+
+        track.AudioDevice = "Graveyard speakers";
+        _player.Load(Compile(Timeline(track), Context(showFolder: _dir.Path)));
+        After(0.01);
+
+        Assert.Equal(["start thunder.wav @0", "start thunder.wav @2.01"], _audio.Calls);
+    }
+
+    [Fact]
     public void A_late_update_starts_the_cue_at_the_matching_file_offset()
     {
         Load(Sound("thunder.wav", start: 2, length: 5));

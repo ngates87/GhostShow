@@ -125,6 +125,36 @@ public sealed partial class PlaybackViewModel : ObservableObject
         return compiled;
     }
 
+    /// <summary>Loads a timeline for playback if it isn't yet (compiling it now), so it can play without being open in the editor.</summary>
+    public void EnsureLoaded(ShowTimeline timeline)
+    {
+        if (Manager.IsLoaded(timeline.Id)) return;
+        foreach (var file in AudioFiles(timeline)) _services.Audio.GetLength(file);
+        Load(timeline);
+    }
+
+    /// <summary>
+    /// Runs a timeline from its start (a show button): as a new copy if it's already running, as VenueMagic does,
+    /// or, with playOnceOnly, not at all while it's running. Returns whether it started.
+    /// </summary>
+    public bool Launch(ShowTimeline timeline, bool playOnceOnly = false)
+    {
+        EnsureLoaded(timeline);
+        if (playOnceOnly && Manager.IsRunning(timeline.Id)) return false;
+        bool started = Manager.Launch(timeline.Id) is not null;
+        Tick();
+        return started;
+    }
+
+    /// <summary>Stops a timeline and every copy of it playing.</summary>
+    public void StopTimeline(ShowTimeline timeline)
+    {
+        Manager.StopTimeline(timeline.Id);
+        Tick();
+    }
+
+    public bool IsRunning(Guid timelineId) => Manager.IsRunning(timelineId);
+
     /// <summary>A timeline deleted from the show stops and is forgotten.</summary>
     public void Unload(ShowTimeline timeline) => Manager.Unload(timeline.Id);
 
@@ -231,7 +261,7 @@ public sealed partial class PlaybackViewModel : ObservableObject
         for (int i = 0; i < running.Count; i++)
         {
             var (r, row) = (running[i], Running[i]);
-            row.Name = r.Name;
+            row.Name = r.Id == r.TimelineId ? r.Name : $"{r.Name} (copy)";
             row.IsFocused = r.Id == _timeline?.Id;
             string state = r.Status.State == TransportState.Paused ? (r.Status.AtEnd ? "end" : "paused") : "▶";
             row.Detail = $"{state} {Format(r.Status.Position)}" + (r.Priority != 0 ? $" · priority {r.Priority}" : "");
