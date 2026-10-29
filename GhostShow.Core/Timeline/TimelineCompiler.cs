@@ -9,12 +9,14 @@ namespace GhostShow.Core.Timeline;
 /// <param name="Universes">The universes the show defines.</param>
 /// <param name="ResolveAudioPath">Turns an event's file reference into a full path (see <see cref="AudioPaths"/>).</param>
 /// <param name="AudioLength">The length of an audio file at a full path, if known; null if not (yet).</param>
+/// <param name="Timelines">The show's timelines, to check what event tracks run; null to skip the check.</param>
 public sealed record TimelineContext(
     IReadOnlyDictionary<Guid, PatchedFixture> Fixtures,
     IReadOnlySet<Guid> AllFixtureIds,
     IReadOnlyCollection<int> Universes,
     Func<string, string> ResolveAudioPath,
-    Func<string, TimeSpan?> AudioLength);
+    Func<string, TimeSpan?> AudioLength,
+    IReadOnlySet<Guid>? Timelines = null);
 
 /// <summary>
 /// Validates a timeline and flattens it for playback (<see cref="CompiledTimeline"/>). Problems are reported per event
@@ -27,6 +29,7 @@ public static class TimelineCompiler
         var issues = new List<TimelineIssue>();
         var steps = new List<(LevelStep Step, int Track, int Event, int Level, byte? From)>();
         var audio = new List<AudioCue>();
+        var cues = new List<TimelineCue>();
         var universeSlots = new Dictionary<int, int>();
         long contentEnd = 0;
 
@@ -77,6 +80,15 @@ public static class TimelineCompiler
                             contentEnd = Math.Max(contentEnd, cue.End ?? cue.Start);
                         }
                         break;
+                    case TimelineCommandEvent command:
+                        if (context.Timelines is { } timelines && !timelines.Contains(command.TimelineId))
+                        {
+                            issues.Add(Error(e, $"'{Describe(e)}': the timeline it {(command.Command == TimelineCommand.Run ? "runs" : "stops")} isn't in the show."));
+                            break;
+                        }
+                        cues.Add(new TimelineCue(command.Id, command.Start.Ticks, command.TimelineId, command.Command, command.PlayOnceOnly));
+                        contentEnd = Math.Max(contentEnd, command.Start.Ticks);
+                        break;
                     case LightingClip clip:
                         // Played per channel, above (clips carry on from each other).
                         contentEnd = Math.Max(contentEnd, (clip.Start + clip.Length).Ticks);
@@ -91,7 +103,7 @@ public static class TimelineCompiler
         long length = timeline.Length?.Ticks ?? contentEnd;
 
         return new CompiledTimeline(finalSteps, universes, audio.OrderBy(a => a.Start).ToArray(),
-                                    length, timeline.Loop, issues, timeline.Playback);
+                                    length, timeline.Loop, issues, timeline.Playback, cues.OrderBy(c => c.Time).ToArray());
     }
 
     /// <summary>
@@ -306,6 +318,7 @@ public static class TimelineCompiler
     public static string Describe(TimelineEvent e) => e.Name ?? e switch
     {
         AudioEvent a => Path.GetFileName(a.File),
+        TimelineCommandEvent c => $"{c.Command} timeline at {e.Start:hh\\:mm\\:ss\\.fff}",
         LevelsEvent => $"Levels at {e.Start:hh\\:mm\\:ss\\.fff}",
         _ => $"Event at {e.Start:hh\\:mm\\:ss\\.fff}",
     };

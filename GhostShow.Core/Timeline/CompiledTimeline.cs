@@ -21,6 +21,9 @@ readonly record struct LevelStep(long Start, long Fade, int Slot, int Index, byt
     }
 }
 
+/// <summary>An event track's command, flattened: at Time (ticks), run or stop another timeline.</summary>
+public sealed record TimelineCue(Guid EventId, long Time, Guid Timeline, TimelineCommand Command, bool PlayOnceOnly);
+
 /// <param name="End">When the cue stops; null when it plays until the file ends on its own (length unknown).</param>
 /// <param name="Device">The output device to play on (its track's); null for the default output.</param>
 public sealed record AudioCue(Guid EventId, string Name, string Path, long Start, long? End, long Offset,
@@ -82,8 +85,9 @@ public sealed class CompiledTimeline
 
     internal CompiledTimeline(LevelStep[] steps, IReadOnlyList<int> universes, IReadOnlyList<AudioCue> audio,
                               long length, bool loop, IReadOnlyList<TimelineIssue> issues,
-                              TimelinePlayback? playback = null)
+                              TimelinePlayback? playback = null, IReadOnlyList<TimelineCue>? cues = null)
     {
+        Cues = cues ?? [];
         _steps = steps;
         Playback = playback ?? new TimelinePlayback();
         Channels = steps.Select(s => (universes[s.Slot], s.Index + 1)).ToHashSet();
@@ -101,6 +105,12 @@ public sealed class CompiledTimeline
 
     /// <summary>Sorted by start.</summary>
     public IReadOnlyList<AudioCue> AudioCues { get; }
+
+    /// <summary>Event tracks' commands, sorted by time.</summary>
+    public IReadOnlyList<TimelineCue> Cues { get; }
+
+    /// <summary>The timelines its event tracks run or stop.</summary>
+    public IEnumerable<Guid> CueTargets => Cues.Select(c => c.Timeline).Distinct();
 
     /// <summary>In ticks.</summary>
     public long Length { get; }

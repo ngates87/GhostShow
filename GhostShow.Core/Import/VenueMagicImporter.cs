@@ -16,8 +16,9 @@ public sealed record ImportResult(Project Project, IReadOnlyList<FixtureProfile>
 ///   control tracks become lighting tracks (Level Control clips with their envelopes; the "Lightning Storm" and
 ///   "Brownout" expressions become the Lightning and Brown out effects), audio tracks keep their clips (files found
 ///   in the project's folder).
-/// What can't be converted (event tracks' Run Timeline events, other expressions, volume envelopes, channels not in
-/// the patch, timelines missing or saved by older VenueMagic versions) is left out and listed in the notes.
+/// - event tracks keep their Run Timeline events, each running the timeline of that name.
+/// What can't be converted (other expressions, volume envelopes, channels not in the patch, Run Timeline events whose
+/// timeline isn't found, timelines missing or saved by older VenueMagic versions) is left out and listed in the notes.
 /// </summary>
 public static class VenueMagicImporter
 {
@@ -67,6 +68,7 @@ public static class VenueMagicImporter
         }
 
         // Each timeline, in the same folders, so the tree matches VenueMagic's.
+        var runs = new List<(TimelineCommandEvent Event, string Target, ShowTimeline From, TimelineTrack Track)>();
         foreach (var path in source.Timelines)
         {
             var timeline = new ShowTimeline { Name = Path.GetFileNameWithoutExtension(path), Folder = Path.GetDirectoryName(path)?.Replace('\\', '/') ?? "" };
@@ -97,8 +99,22 @@ public static class VenueMagicImporter
             }
             if (read.Version != 475)
                 notes.Add($"{timeline.TreePath}: saved by an older VenueMagic (record version {read.Version}), which isn't read yet; left empty.");
-            timeline.Tracks = read.Tracks.Select(t => ConvertTrack(t, timeline.TreePath, placed, source.Folder, notes)).OfType<TimelineTrack>().ToList();
+            timeline.Tracks = read.Tracks.Select(t => ConvertTrack(t, timeline, placed, source.Folder, runs, notes)).OfType<TimelineTrack>().ToList();
             if (timeline.Tracks.Count == 0) timeline.Tracks = NewTracks();
+        }
+        // Run Timeline events name their timeline: now every timeline is there, find it (by name; in the same folder
+        // first, as names can repeat across rooms).
+        foreach (var (run, target, from, track) in runs)
+        {
+            var named = project.Timelines.Where(t => string.Equals(t.Name, target, StringComparison.OrdinalIgnoreCase)).ToList();
+            var found = named.FirstOrDefault(t => t.Folder == from.Folder) ?? (named.Count == 1 ? named[0] : null);
+            if (found is not null) run.TimelineId = found.Id;
+            else
+            {
+                track.Events.Remove(run);
+                notes.Add($"{from.TreePath} · {track.Name}: runs \"{target}\" at {run.Start.TotalSeconds:0.##} s, "
+                          + (named.Count == 0 ? "which isn't in the project; left out." : "and more than one timeline has that name; left out."));
+            }
         }
         if (project.Timelines.Count == 0) project.Timelines.Add(Project.NewTimeline("Main"));
         // The same note many times (a missing file used by ten clips) once, with a count.
@@ -108,9 +124,10 @@ public static class VenueMagicImporter
 
     static List<TimelineTrack> NewTracks() => Project.NewTimeline("").Tracks;
 
-    static TimelineTrack? ConvertTrack(VmTrack source, string timeline, IReadOnlyDictionary<string, (VmFixture Source, FixtureInstance Fixture)> placed,
-                                       string projectFolder, List<string> notes)
+    static TimelineTrack? ConvertTrack(VmTrack source, ShowTimeline owner, IReadOnlyDictionary<string, (VmFixture Source, FixtureInstance Fixture)> placed,
+                                       string projectFolder, List<(TimelineCommandEvent, string, ShowTimeline, TimelineTrack)> runs, List<string> notes)
     {
+        string timeline = owner.TreePath;
         // A track left unnamed in VenueMagic shows its ID where the name would be.
         var track = source.Name.StartsWith('$') || source.Name.Length == 0 ? source with { Name = $"{source.Kind} Track" } : source;
         string where = $"{timeline} · {track.Name}";
@@ -194,9 +211,17 @@ public static class VenueMagicImporter
                 return result;
             }
             case "Event":
+            {
+                // Run Timeline events: their timelines are found once every timeline is imported (see Import).
+                var result = new TimelineTrack { Name = track.Name, Kind = TrackKind.Event };
                 foreach (var run in track.Items.OfType<VmRunTimeline>().OrderBy(r => r.Start))
-                    notes.Add($"{where}: runs \"{run.Timeline}\" at {run.Start:0.##} s; GhostShow has no event tracks yet, so it's left out.");
-                return null;
+                {
+                    var e = new TimelineCommandEvent { Start = Seconds(run.Start), Command = TimelineCommand.Run };
+                    result.Events.Add(e);
+                    runs.Add((e, run.Timeline, owner, result));
+                }
+                return result;
+            }
             default:
                 notes.Add($"{where}: a {track.Kind} track, which isn't imported.");
                 return null;

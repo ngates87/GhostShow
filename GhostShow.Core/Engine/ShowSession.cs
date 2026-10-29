@@ -149,7 +149,8 @@ public sealed class ShowSession
             Project.Fixtures.Select(f => f.Id).ToHashSet(),
             Project.Universes.Select(u => u.Number).ToArray(),
             reference => AudioPaths.Resolve(reference, folder),
-            audioLength);
+            audioLength,
+            Project.Timelines.Select(t => t.Id).ToHashSet());
         return TimelineCompiler.Compile(timeline, context);
     }
 

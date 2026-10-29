@@ -237,6 +237,30 @@ public class UiTests
         Assert.False(rig.Manager.IsRunning(scare.Id));
     });
 
+    [Fact]
+    public Task Dragging_a_timeline_from_the_tree_onto_the_lanes_adds_a_run_timeline_event_there() => Ui.Run(() =>
+    {
+        using var rig = new WindowRig();
+        var main = rig.Editor.SelectedTimeline!;
+        rig.Editor.Tree.NewTimelineCommand.Execute(null);   // a second timeline in the tree
+        WindowRig.Pump();
+        var room = rig.Session.Project.Timelines.Single(t => t != main);
+        rig.Editor.OpenTimeline(main);
+        WindowRig.Pump();
+        var node = rig.Editor.Tree.AllNodes().OfType<TimelineNode>().Single(n => n.Timeline == room);
+        var data = new DataTransfer();
+        data.Add(DataTransferItem.Create(Controls.TimelineCanvas.TreeNodeFormat, (TimelineTreeNode)node));
+        var at = rig.At(rig.TrackRow("Lighting"), 4);
+
+        rig.Window.DragDrop(at, Avalonia.Input.Raw.RawDragEventType.DragEnter, data, DragDropEffects.Move | DragDropEffects.Link, RawInputModifiers.None);
+        rig.Window.DragDrop(at, Avalonia.Input.Raw.RawDragEventType.DragOver, data, DragDropEffects.Move | DragDropEffects.Link, RawInputModifiers.None);
+        rig.Window.DragDrop(at, Avalonia.Input.Raw.RawDragEventType.Drop, data, DragDropEffects.Move | DragDropEffects.Link, RawInputModifiers.None);
+        WindowRig.Pump();
+
+        var e = Assert.IsType<TimelineCommandEvent>(Assert.Single(rig.Editor.SelectedTimeline!.Tracks.Single(t => t.Kind == TrackKind.Event).Events));
+        Assert.Equal((4.0, room.Id), (Math.Round(e.Start.TotalSeconds, 1), e.TimelineId));
+    });
+
     // ---- the Envelope Editor window ----
 
     /// <summary>Opens the Envelope Editor by double-clicking a clip, and returns its window and plot.</summary>

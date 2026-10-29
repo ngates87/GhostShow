@@ -16,6 +16,7 @@ namespace GhostShow.App.Controls;
 /// track headers), drawn the way VenueMagic draws them:
 /// - Lighting track: its Level Control clips, each drawing its envelopes inside itself, every channel in its colour:
 ///   collapsed, as a preview; expanded (taller), with their handles. Between clips, each channel's held level.
+/// - Event: a diamond on each event's time (green: runs a timeline, red: stops one), with what it runs or stops.
 /// - Audio: a clip over the time it plays, showing the file's waveform at the loudness it will play (the clip's volume
 ///   and fades, and the track's volume), with its fade-in and fade-out drawn as a volume outline; dashed when the
 ///   file's length isn't known yet (its waveform appears once it has been measured).
@@ -33,11 +34,15 @@ namespace GhostShow.App.Controls;
 /// first clip's start handle sets the channel's start level, when the channel starts at its first clip. Clicking or
 /// dragging on the ruler moves the playhead; dragging on empty space draws a selection box.
 ///
+/// Drag a timeline from the tree onto the lanes: a Run timeline event for it where it's dropped (on an event track;
+/// elsewhere, on the first event track, made if needed).
+///
 /// Drawn directly (only the part scrolled into view) rather than built from controls, so long shows stay cheap.
 /// </summary>
 public sealed class TimelineCanvas : Control
 {
     public const double RulerHeight = 26;
+    const double EventMark = 7;   // half an event's diamond
     const double EdgeGrab = 6, MinBlockWidth = 6, DragThreshold = 3, HandleSize = 3.5, HandleGrab = 7, ClipPad = 3, ClipTitle = 15;
     static readonly TimeSpan TailRoom = TimeSpan.FromSeconds(10);
     static readonly double[] RulerSteps = [0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600];
@@ -113,11 +118,78 @@ public sealed class TimelineCanvas : Control
     ChannelLane? _startChannel;   // the channel whose start level is being dragged (applied as it moves: one undo step)
     int _startDrags;
 
+    /// <summary>A node of the timeline tree being dragged (the tree's own drag; here, a timeline dropped on the lanes).</summary>
+    public static readonly DataFormat<TimelineTreeNode> TreeNodeFormat = DataFormat.CreateInProcessFormat<TimelineTreeNode>("ghostshow/timeline-tree-node");
+
+    (TimelineRow? Row, TimeSpan At)? _dropPreview;   // where a timeline being dragged over would land (a ghost diamond)
+
     public TimelineCanvas()
     {
         Focusable = true;
         ClipToBounds = true;
+        DragDrop.SetAllowDrop(this, true);
+        AddHandler(DragDrop.DragOverEvent, OnDragOver);
+        AddHandler(DragDrop.DragLeaveEvent, (_, _) => ClearDropPreview());
+        AddHandler(DragDrop.DropEvent, OnDrop);
     }
+
+    /// <summary>A timeline from the tree, over the lanes: shows where its Run timeline event would go (VenueMagic's drag onto an event track).</summary>
+    void OnDragOver(object? sender, DragEventArgs e)
+    {
+        if (Editor is not { } editor || e.DataTransfer.TryGetValue(TreeNodeFormat) is not TimelineNode { Timeline: var timeline } || timeline == editor.SelectedTimeline)
+        {
+            e.DragEffects = DragDropEffects.None;
+            ClearDropPreview();
+            return;
+        }
+        var point = e.GetPosition(this);
+        var row = RowAt(point.Y);
+        var target = row is { Track.Kind: TrackKind.Event } ? row : editor.Rows.FirstOrDefault(r => r.Track.Kind == TrackKind.Event);
+        _dropPreview = (target, editor.SnapTime(TimeAt(point.X)));
+        e.DragEffects = DragDropEffects.Link;
+        e.Handled = true;
+        InvalidateVisual();
+    }
+
+    void OnDrop(object? sender, DragEventArgs e)
+    {
+        var preview = _dropPreview;
+        ClearDropPreview();
+        if (Editor is not { } editor || e.DataTransfer.TryGetValue(TreeNodeFormat) is not TimelineNode { Timeline: var timeline }) return;
+        var point = e.GetPosition(this);
+        editor.DropTimeline(timeline, RowAt(point.Y)?.Track, preview?.At ?? TimeAt(point.X));
+        e.Handled = true;
+    }
+
+    void ClearDropPreview()
+    {
+        if (_dropPreview is null) return;
+        _dropPreview = null;
+        InvalidateVisual();
+    }
+
+    static readonly IBrush DropFill = new SolidColorBrush(Color.FromArgb(150, 0x43, 0xA0, 0x47));
+
+    /// <summary>The ghost of a timeline being dragged over: a diamond where its event would go (on a new event track's row when there's none: below the tracks).</summary>
+    void DrawDropPreview(DrawingContext context, TimelineEditorViewModel editor)
+    {
+        if (_dropPreview is not { } preview) return;
+        double y = preview.Row is { } row ? RulerHeight + row.Top + row.Height / 2 : RulerHeight + editor.ContentHeight + EventTrackGhost;
+        double x = X(preview.At);
+        var diamond = new StreamGeometry();
+        using (var g = diamond.Open())
+        {
+            g.BeginFigure(new Point(x, y - EventMark), true);
+            g.LineTo(new Point(x + EventMark, y));
+            g.LineTo(new Point(x, y + EventMark));
+            g.LineTo(new Point(x - EventMark, y));
+            g.EndFigure(true);
+        }
+        context.DrawGeometry(DropFill, SnapGuidePen, diamond);
+        context.DrawLine(SnapGuidePen, new Point(x, RulerHeight), new Point(x, Bounds.Height));
+    }
+
+    const double EventTrackGhost = 20;
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
@@ -255,6 +327,7 @@ public sealed class TimelineCanvas : Control
 
         if (_snapGuide is { } guide) context.DrawLine(SnapGuidePen, new Point(X(guide), RulerHeight), new Point(X(guide), bounds.Height));
         if (_drag == DragKind.Box) context.DrawRectangle(BoxFill, BoxPen, new Rect(_dragStart, _boxEnd).Normalize());
+        DrawDropPreview(context, editor);
         DrawRuler(context, step, left, right, bounds.Width);
     }
 
@@ -273,6 +346,7 @@ public sealed class TimelineCanvas : Control
         {
             var (start, eventLength) = Displayed(editor, e);
             double x = X(start), width = Math.Max(MinBlockWidth, X(eventLength));
+            if (e is TimelineCommandEvent) (x, width) = (x - EventMark, EventMark * 2);   // a diamond on its time
             if (x > right || x + Math.Max(width, 120) < left) continue;
             int next = Array.BinarySearch(starts, start + TimeSpan.FromTicks(1));
             if (next < 0) next = ~next;
@@ -354,12 +428,41 @@ public sealed class TimelineCanvas : Control
                 DrawText(context, TimelineCompiler.Describe(audio), rect.TopLeft + new Point(4, 1), Math.Min(labelRoom, rect.Width - 8 - icons));
                 break;
             }
+            case TimelineCommandEvent command:
+                DrawCommand(context, editor, command, rect, labelRoom, selected, error);
+                return;
             default:
                 return;
         }
         if (error) context.DrawRectangle(ErrorPen, rect.Inflate(1), 4);
         if (selected) context.DrawRectangle(SelectedPen, rect.Inflate(1), 4);
     }
+
+    static readonly IBrush RunFill = new SolidColorBrush(Color.Parse("#43A047")), StopFill = new SolidColorBrush(Color.Parse("#E53935"));
+
+    /// <summary>
+    /// An event track's event: a diamond on its time (green: run, red: stop), with its name or the timeline it runs
+    /// or stops beside it.
+    /// </summary>
+    void DrawCommand(DrawingContext context, TimelineEditorViewModel editor, TimelineCommandEvent command, Rect rect, double labelRoom, bool selected, bool error)
+    {
+        double cx = rect.X + EventMark, cy = rect.Y + rect.Height / 2;
+        var diamond = new StreamGeometry();
+        using (var g = diamond.Open())
+        {
+            g.BeginFigure(new Point(cx, cy - EventMark), true);
+            g.LineTo(new Point(cx + EventMark, cy));
+            g.LineTo(new Point(cx, cy + EventMark));
+            g.LineTo(new Point(cx - EventMark, cy));
+            g.EndFigure(true);
+        }
+        context.DrawGeometry(command.Command == TimelineCommand.Run ? RunFill : StopFill, selected ? SelectedPen : error ? ErrorPen : HandleOutline, diamond);
+        string target = editor.TimelinePath(command.TimelineId) ?? "(choose a timeline)";
+        string label = command.Command == TimelineCommand.Run ? $"▶ {command.Name ?? target}" : $"■ {command.Name ?? target}";
+        DrawText(context, label, new Point(cx + EventMark + 3, cy - 8), Math.Min(labelRoom - EventMark, 260), error ? ErrorText : Brushes.White, 11);
+    }
+
+    static readonly IBrush ErrorText = new SolidColorBrush(Color.Parse("#FF8A80"));
 
     /// <summary>A padlock (locked) and a chain (linked) at a clip's top right; returns the width they take.</summary>
     static double DrawClipIcons(DrawingContext context, TimelineEvent e, Rect rect, double y)
@@ -675,6 +778,7 @@ public sealed class TimelineCanvas : Control
             var e = events[i];
             double x = X(e.Start);
             double width = Math.Max(MinBlockWidth, X(editor.LengthOf(e)));
+            if (e is TimelineCommandEvent) (x, width) = (x - EventMark, EventMark * 2);
             if (point.X >= x - 2 && point.X <= x + width + 2) return (e, Edge.None);
         }
         return (null, Edge.None);
@@ -952,7 +1056,7 @@ public sealed class TimelineCanvas : Control
 
     void ShowEmptyMenu(TimelineEditorViewModel editor, TimelineRow row, TimeSpan at)
     {
-        string what = row.Track.Kind switch { TrackKind.Lighting => "Level Control clip", _ => "sound…" };
+        string what = row.Track.Kind switch { TrackKind.Lighting => "Level Control clip", TrackKind.Event => "Run timeline event", _ => "sound…" };
         var add = new MenuItem { Header = $"Add {what} here" };
         add.Click += (_, _) => _ = editor.AddEventAtAsync(row.TrackIndex, at);
         var paste = new MenuItem { Header = "Paste here", IsEnabled = editor.CanPaste };

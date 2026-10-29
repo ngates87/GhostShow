@@ -196,11 +196,13 @@
           <MenuFlyout>
             <MenuItem Header="Lighting track" Command="{Binding AddTrackCommand}" CommandParameter="{x:Static tl:TrackKind.Lighting}" />
             <MenuItem Header="Audio track" Command="{Binding AddTrackCommand}" CommandParameter="{x:Static tl:TrackKind.Audio}" />
+            <MenuItem Header="Event track" Command="{Binding AddTrackCommand}" CommandParameter="{x:Static tl:TrackKind.Event}"
+                      ToolTip.Tip="Events that run or stop other timelines when the playhead gets to them" />
           </MenuFlyout>
         </Button.Flyout>
       </Button>
-      <Button Command="{Binding AddEventCommand}" MinWidth="90" IsVisible="{Binding IsAudioTrackSelected}"
-              ToolTip.Tip="Add a sound to the selected track at the playhead (or double-click a row, or right-click → Add here)">
+      <Button Command="{Binding AddEventCommand}" MinWidth="90" IsVisible="{Binding IsAddButtonShown}"
+              ToolTip.Tip="Add a sound or an event to the selected track at the playhead (or double-click a row, or right-click → Add here)">
         <TextBlock Text="{Binding AddLabel}" />
       </Button>
       <Button ToolTip.Tip="Add a Level Control clip or a built-in effect at the playhead, on the selected lighting track">
@@ -545,6 +547,17 @@
                       <TextBlock TextWrapping="Wrap" Opacity="0.7" FontSize="12"
                                  Text="An effect works on every channel of the track: dimmers flash or dim, colour channels take its colour (a fixture without a dimmer on the track dims through its colours), anything else (pan, gobo, …) is left alone. It starts from where the previous clip left the lights." />
                     </StackPanel>
+                  </StackPanel>
+
+                  <!-- Event track: run or stop a timeline -->
+                  <StackPanel Spacing="6" IsVisible="{Binding IsCommand}" IsEnabled="{Binding IsUnlocked}">
+                    <ComboBox ItemsSource="{x:Static vm:EventPropertiesViewModel.Commands}" SelectedIndex="{Binding CommandIndex}" HorizontalAlignment="Stretch" />
+                    <TextBlock Text="Timeline" Classes="label" />
+                    <ComboBox ItemsSource="{Binding Timelines}" SelectedItem="{Binding Target}" HorizontalAlignment="Stretch" PlaceholderText="(choose a timeline)" />
+                    <CheckBox Content="Play once only" IsChecked="{Binding PlayOnceOnly}" IsVisible="{Binding IsRun}"
+                              ToolTip.Tip="Off: each time the playhead gets here another copy plays, even while one is still playing. On: nothing while it's still playing." />
+                    <TextBlock TextWrapping="Wrap" Opacity="0.7" FontSize="12"
+                               Text="When this timeline's playhead gets here, it runs (from its start) or stops the other timeline, as VenueMagic's Run Timeline event does. A room's play timeline can start its lights and sounds this way." />
                   </StackPanel>
 
                   <!-- Audio -->

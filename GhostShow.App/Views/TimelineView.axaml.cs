@@ -16,7 +16,7 @@ namespace GhostShow.App.Views;
 /// </summary>
 public partial class TimelineView : UserControl
 {
-    static readonly DataFormat<TimelineTreeNode> TreeNodeFormat = DataFormat.CreateInProcessFormat<TimelineTreeNode>("ghostshow/timeline-tree-node");
+    static DataFormat<TimelineTreeNode> TreeNodeFormat => Controls.TimelineCanvas.TreeNodeFormat;   // shared: a timeline can be dropped on the lanes
     const double DragThreshold = 6;
 
     TimelineEditorViewModel? _editor;
@@ -200,7 +200,7 @@ public partial class TimelineView : UserControl
         _pressed = null;
         var data = new DataTransfer();
         data.Add(DataTransferItem.Create(TreeNodeFormat, node));
-        await DragDrop.DoDragDropAsync(pressed, data, DragDropEffects.Move);
+        await DragDrop.DoDragDropAsync(pressed, data, DragDropEffects.Move | DragDropEffects.Link);   // Link: onto the lanes, as an event
     }
 
     /// <summary>Dropping on a folder puts it in that folder; on a timeline, in that timeline's folder; on empty space, at the top level.</summary>

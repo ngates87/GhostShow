@@ -45,6 +45,7 @@ public class ShowFolderStoreTests : IDisposable
     [Fact]
     public async Task Saved_show_reloads_with_its_universes_fixtures_and_timelines()
     {
+        var lobbyId = Guid.NewGuid();
         var fixture = new FixtureInstance { Name = "Graveyard wash", ProfileId = "generic/rgbw", ModeName = "4 channel", StartAddress = 17, Group = "Graveyard", Enabled = false };
         var red = new ChannelLane { Target = LaneTarget.FixtureControl(fixture.Id, ChannelFunction.Red), Color = "#FF0000" };
         var block = new LightingClip
@@ -65,9 +66,17 @@ public class ShowFolderStoreTests : IDisposable
                     Name = "Storm", Kind = TrackKind.Lighting, Channels = [new ChannelLane { Target = red.Target }],
                     Events = [new LightingClip { Start = TimeSpan.FromSeconds(3), Effect = new LightingEffect { Kind = EffectKind.Lightning, Strength = 0.8, Rate = 3, Color = "#CCDDFF", Seed = 42, Ending = EffectEnding.Dark } }],
                 },
+                new TimelineTrack
+                {
+                    Name = "Starts", Kind = TrackKind.Event,
+                    Events = [new TimelineCommandEvent { Name = "Lobby", Start = TimeSpan.FromSeconds(1.5), TimelineId = lobbyId, Command = TimelineCommand.Run, PlayOnceOnly = true },
+                              new TimelineCommandEvent { Start = TimeSpan.FromSeconds(7), TimelineId = lobbyId, Command = TimelineCommand.Stop }],
+                },
             ],
         };
-        var project = Show(lightning, Timeline("Lobby"));
+        var lobby = Timeline("Lobby");
+        lobby.Id = lobbyId;
+        var project = Show(lightning, lobby);
         project.Universes = [new UniverseConfig { Number = 1, Name = "Front" }, new UniverseConfig { Number = 3, Name = "Back" }];
         project.Fixtures = [fixture];
         project.AddFolder("Empty for now");
@@ -109,6 +118,10 @@ public class ShowFolderStoreTests : IDisposable
                      Assert.Single(reloadedBlock.Lanes).Points.Select(p => (p.Time, p.Value, p.Curve)));
         Assert.Equal([null, Guid.Parse("6b1f0a52-0000-4000-8000-000000000001"), null], reloadedBlock.Lanes[0].Points.Select(p => p.Group));
         Assert.Equal((false, 0.4, 1.0), (timeline.Tracks[1].Enabled, timeline.Tracks[1].Volume, timeline.Tracks[0].Volume));
+        var starts = timeline.Tracks[3];
+        Assert.Equal(TrackKind.Event, starts.Kind);
+        Assert.Equal([("Lobby", 1.5, lobbyId, TimelineCommand.Run, true), (null, 7.0, lobbyId, TimelineCommand.Stop, false)],
+                     starts.Events.Cast<TimelineCommandEvent>().Select(e => (e.Name, e.Start.TotalSeconds, e.TimelineId, e.Command, e.PlayOnceOnly)));
         var storm = Assert.IsType<LightingClip>(Assert.Single(timeline.Tracks[2].Events)).Effect!;
         Assert.Equal((EffectKind.Lightning, 0.8, 3.0, "#CCDDFF", 42, EffectEnding.Dark), (storm.Kind, storm.Strength, storm.Rate, storm.Color, storm.Seed, storm.Ending));
         Assert.Null(((LightingClip)timeline.Tracks[0].Events[0]).Effect);

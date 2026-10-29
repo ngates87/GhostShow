@@ -858,6 +858,63 @@ public class TimelineEditorTests : IDisposable
     }
 
     [Fact]
+    public void An_event_track_s_event_runs_another_timeline_when_played_and_its_properties_change_it()
+    {
+        var room = new ShowTimeline { Name = "Room lights", Folder = "Rooms", Length = S(30), Tracks = [] };
+        var other = new ShowTimeline { Name = "Room sound", Folder = "Rooms", Length = S(30), Tracks = [] };
+        _rig.Session.Project.Timelines.AddRange([room, other]);
+        Editor.AddTrackCommand.Execute(TrackKind.Event);
+        Assert.Equal(("Events 1", "+ Event", true), (Editor.SelectedTrack!.Name, Editor.AddLabel, Editor.IsAddButtonShown));
+
+        _rig.Playback.Seek(S(1));
+        Editor.AddEventCommand.Execute(null);
+
+        var e = Assert.IsType<TimelineCommandEvent>(Assert.Single(Editor.SelectedTrack.Track.Events));
+        Assert.Equal((S(1), TimelineCommand.Run, room.Id), (e.Start, e.Command, e.TimelineId));   // the first other timeline in the tree
+        var properties = Editor.Properties!;
+        Assert.Equal((true, "Event", "Rooms/Room lights"), (properties.IsCommand, properties.Kind, properties.Target?.Path));
+        properties.Target = properties.Timelines.Single(t => t.Id == other.Id);
+        properties.PlayOnceOnly = true;
+        Assert.Equal((other.Id, true), (e.TimelineId, e.PlayOnceOnly));
+
+        _rig.Playback.Seek(S(0));
+        _rig.Play();
+        Thread.Sleep(1200);
+        _rig.Manager.Tick();
+        _rig.Manager.Tick();
+        Assert.True(_rig.Manager.IsRunning(other.Id));   // loaded ahead (it isn't open anywhere) and run when the playhead got there
+
+        properties.CommandIndex = 1;
+        Assert.Equal(TimelineCommand.Stop, e.Command);
+        Editor.UndoCommand.Execute(null);
+        Assert.Equal(TimelineCommand.Run, e.Command);
+    }
+
+    [Fact]
+    public void Dropping_a_timeline_on_the_lanes_adds_an_event_that_runs_it_making_an_event_track_if_needed()
+    {
+        var room = new ShowTimeline { Name = "Room lights", Length = S(30), Tracks = [] };
+        _rig.Session.Project.Timelines.Add(room);
+        var lighting = _rig.Track(TrackKind.Lighting);
+
+        var e = Editor.DropTimeline(room, lighting, S(3.04))!;   // on a lighting track: on a new event track
+
+        var events = Editor.SelectedTimeline!.Tracks.Single(t => t.Kind == TrackKind.Event);
+        Assert.Equal((S(3), TimelineCommand.Run, room.Id), (e.Start, e.Command, e.TimelineId));   // snapped
+        Assert.Same(e, Assert.Single(events.Events));
+        Assert.Equal([e.Id], Editor.Selection);
+
+        var second = Editor.DropTimeline(room, Editor.Tracks.Single(t => t.Kind == TrackKind.Event), S(8))!;
+        Assert.Equal(2, events.Events.Count);   // onto the event track it was dropped on
+        Assert.Null(Editor.DropTimeline(Editor.SelectedTimeline!, lighting, S(1)));   // not onto itself
+
+        Editor.UndoCommand.Execute(null);
+        Editor.UndoCommand.Execute(null);
+        Assert.DoesNotContain(Editor.SelectedTimeline!.Tracks, t => t.Kind == TrackKind.Event);   // the track it made goes too
+        _ = second;
+    }
+
+    [Fact]
     public void Selecting_a_handle_clears_selected_clips_and_the_other_way_round()
     {
         var sound = _rig.AddSound(1);

@@ -43,6 +43,8 @@ public sealed class ShowPlayer
     int _loops;               // bumped when a looping timeline wraps: audio restarts
     bool _atEnd;
     long _startedAt;          // when it last started playing from stopped: on equal priority, the later started wins
+    long _cueFrom = -1;       // event cues after this position (ticks) and up to the playhead fire on the next update
+    readonly List<TimelineCue> _fired = new();
 
     // Playback-thread state: only touched by Tick.
     LevelsFrame? _frame;
@@ -110,10 +112,12 @@ public sealed class ShowPlayer
         lock (_lock)
         {
             if (_state == TransportState.Playing) return;
-            if (_state == TransportState.Stopped) _startedAt = _clock.Now;
+            bool fromStopped = _state == TransportState.Stopped;
+            if (fromStopped) _startedAt = _clock.Now;
             long position = _atEnd ? 0 : _anchorPosition;   // at the end, Play starts the show again
             _atEnd = false;
             if (position != _anchorPosition) _jumps++;
+            if (fromStopped || position != _anchorPosition) _cueFrom = position - 1;   // events right where it starts fire
             _state = TransportState.Playing;
             Anchor(position);
         }
@@ -151,6 +155,7 @@ public sealed class ShowPlayer
             _atEnd = false;
             Anchor(0);
             _jumps++;
+            _cueFrom = -1;
         }
     }
 
@@ -165,16 +170,18 @@ public sealed class ShowPlayer
             _atEnd = false;
             Anchor(Math.Max(0, position.Ticks));
             _jumps++;
+            _cueFrom = Math.Max(0, position.Ticks);   // a seek skips over events (they don't all fire)
         }
     }
 
     /// <summary>One playback update: levels and audio for the current position. Called by one thread only.</summary>
     public void Tick()
     {
-        var (state, position, timeline, jumps, edits, loops) = AdvanceTransport();
+        var (state, position, timeline, jumps, edits, loops, ended) = AdvanceTransport();
         bool jumped = jumps != _seenJumps;
         bool wrapped = loops != _seenLoops;
 
+        FireCues(state, position, timeline, wrapped, ended);
         UpdateLevels(state, position, timeline);
         ReconcileAudio(state, position, timeline, resync: jumped || wrapped, edited: edits != _seenEdits);
 
@@ -184,14 +191,40 @@ public sealed class ShowPlayer
         _seenLoops = loops;
     }
 
+    /// <summary>
+    /// The event track commands the playhead passed in the last update (run or stop another timeline), for the
+    /// <see cref="PlaybackManager"/> to carry out. Playback thread only; replaced every update.
+    /// </summary>
+    public IReadOnlyList<TimelineCue> FiredCues => _fired;
+
+    /// <summary>
+    /// While playing, the cues after where the last update got to, up to the playhead (on a loop: to the end, then from
+    /// the start). Starting or restarting fires cues right at the start; a seek skips the cues it jumps over.
+    /// </summary>
+    void FireCues(TransportState state, long position, CompiledTimeline timeline, bool wrapped, bool ended)
+    {
+        _fired.Clear();
+        long from;
+        lock (_lock) from = _cueFrom;
+        // Playing, or has just reached the end in this update (and stopped or holds there).
+        if (state == TransportState.Playing || ended)
+        {
+            foreach (var cue in timeline.Cues)
+                if (wrapped ? cue.Time > from || cue.Time <= position : cue.Time > from && cue.Time <= position) _fired.Add(cue);
+        }
+        lock (_lock)
+            if (_cueFrom == from) _cueFrom = state == TransportState.Stopped ? -1 : position;   // unless a transport call moved it meanwhile
+    }
+
     /// <summary>Takes the transport snapshot for this tick, handling the end of the timeline (loop or hold).</summary>
-    (TransportState, long, CompiledTimeline, int Jumps, int Edits, int Loops) AdvanceTransport()
+    (TransportState, long, CompiledTimeline, int Jumps, int Edits, int Loops, bool Ended) AdvanceTransport()
     {
         lock (_lock)
         {
             long now = _clock.Now;
             long position = PositionAt(now);
             long length = _timeline.Length;
+            bool ended = _state == TransportState.Playing && position >= length && !(_timeline.Loop && length > 0);
             if (_state == TransportState.Playing && position >= length)
             {
                 if (_timeline.Loop && length > 0)
@@ -218,7 +251,7 @@ public sealed class ShowPlayer
                     _anchorPosition = position;
                 }
             }
-            return (_state, position, _timeline, _jumps, _edits, _loops);
+            return (_state, position, _timeline, _jumps, _edits, _loops, ended);
         }
     }
 

@@ -21,7 +21,10 @@ public sealed record RunningTimeline(Guid Id, string Name, PlaybackStatus Status
 /// - Release: when a timeline stops (or ends, if set to release), its channels fade from where it left them to
 ///   whatever is underneath (a lower timeline, or the manual level) over its release fade.
 ///
-/// Copies: <see cref="Launch"/> (a show button's Run Timeline) plays a timeline from its start as a new copy when
+/// Event tracks: a timeline's commands (<see cref="CompiledTimeline.Cues"/>) run or stop other timelines when its
+/// playhead reaches them, the same way as a button: Run is a <see cref="Launch"/>, Stop a <see cref="StopTimeline"/>.
+///
+/// Copies: <see cref="Launch"/> (a show button's Run Timeline, or an event track's) plays a timeline from its start as a new copy when
 /// it's already running (as VenueMagic does), so a scare fired twice plays twice, sounds overlapping. A copy is a
 /// timeline of its own for the rules above, is forgotten once it stops, and follows edits to its timeline. The
 /// timeline's own transport (the editor's) controls its first copy; <see cref="StopTimeline"/> stops them all.
@@ -250,6 +253,11 @@ public sealed class PlaybackManager
 
         foreach (var slot in slots) slot.Player.Tick();
 
+        // Event tracks: what the timelines just reached runs or stops other timelines (from the next update).
+        foreach (var slot in slots)
+            foreach (var cue in slot.Player.FiredCues)
+                CarryOut(cue);
+
         foreach (var slot in slots)
         {
             var state = slot.Player.Status.State;
@@ -269,6 +277,27 @@ public sealed class PlaybackManager
         while (_toRemove.TryTake(out var id))
             lock (_lock)
                 if (_slots.TryGetValue(id, out var slot) && slot.Player.Status.State == TransportState.Stopped) _slots.Remove(id);
+    }
+
+    /// <summary>
+    /// Raised (on the playback thread) when an event track runs a timeline that isn't loaded, so nothing happens. The
+    /// app loads every timeline that event tracks run before playing (see PlaybackViewModel), so this means a bug or
+    /// a timeline removed meanwhile.
+    /// </summary>
+    public event Action<TimelineCue>? CueNotLoaded;
+
+    void CarryOut(TimelineCue cue)
+    {
+        switch (cue.Command)
+        {
+            case TimelineCommand.Run:
+                if (cue.PlayOnceOnly && IsRunning(cue.Timeline)) return;
+                if (Launch(cue.Timeline) is null) CueNotLoaded?.Invoke(cue);
+                break;
+            case TimelineCommand.Stop:
+                StopTimeline(cue.Timeline);
+                break;
+        }
     }
 
     /// <summary>An override that pauses: pause every playing lower-priority timeline sharing a channel with it.</summary>

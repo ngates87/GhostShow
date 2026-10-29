@@ -50,6 +50,7 @@ public sealed partial class PlaybackViewModel : ObservableObject
         _logger = logger;
         services.Audio.LengthMeasured += _ => Dispatcher.UIThread.Post(RecompileAll);
         services.Session.Applied += RecompileAll;   // patch changes can make fixture channels valid or invalid
+        Manager.CueNotLoaded += cue => _logger.LogWarning("An event track runs a timeline that isn't loaded ({Timeline}); it was skipped.", cue.Timeline);
     }
 
     PlaybackManager Manager => _services.Playback;
@@ -122,7 +123,24 @@ public sealed partial class PlaybackViewModel : ObservableObject
         if (timeline is null) return CompiledTimeline.Empty;
         var compiled = _services.Session.CompileTimeline(timeline, _services.Audio.GetLength);
         Manager.Load(timeline.Id, timeline.Name, compiled);
+        LoadTargets(compiled, [timeline.Id]);
         return compiled;
+    }
+
+    /// <summary>
+    /// The timelines a timeline's event tracks run or stop, and theirs in turn, loaded now if they aren't: the
+    /// playback thread starts them when the events come, and never compiles anything itself.
+    /// </summary>
+    void LoadTargets(CompiledTimeline compiled, HashSet<Guid> seen)
+    {
+        foreach (var id in compiled.CueTargets)
+        {
+            if (!seen.Add(id) || Manager.IsLoaded(id) || _services.Session.Project.Timelines.FirstOrDefault(t => t.Id == id) is not { } target) continue;
+            foreach (var file in AudioFiles(target)) _services.Audio.GetLength(file);
+            var loaded = _services.Session.CompileTimeline(target, _services.Audio.GetLength);
+            Manager.Load(target.Id, target.Name, loaded);
+            LoadTargets(loaded, seen);
+        }
     }
 
     /// <summary>Loads a timeline for playback if it isn't yet (compiling it now), so it can play without being open in the editor.</summary>

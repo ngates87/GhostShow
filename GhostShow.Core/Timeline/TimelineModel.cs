@@ -135,7 +135,14 @@ public static class TimelineNames
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter<TrackKind>))]
-public enum TrackKind { Lighting, Audio }
+public enum TrackKind
+{
+    Lighting,
+    Audio,
+
+    /// <summary>VenueMagic's event track: <see cref="TimelineCommandEvent"/>s that run or stop other timelines at times.</summary>
+    Event,
+}
 
 public sealed class TimelineTrack
 {
@@ -311,6 +318,7 @@ public sealed class CurvePoint
 [JsonDerivedType(typeof(LightingClip), "lighting")]
 [JsonDerivedType(typeof(LevelsEvent), "levels")]
 [JsonDerivedType(typeof(AudioEvent), "audio")]
+[JsonDerivedType(typeof(TimelineCommandEvent), "timelineCommand")]
 public abstract class TimelineEvent
 {
     public Guid Id { get; set; } = Guid.NewGuid();
@@ -531,6 +539,39 @@ public sealed class LevelsEvent : TimelineEvent
 /// </summary>
 /// <param name="From">Where a fade starts. Null: from whatever the timeline had on that channel when the fade starts (0 if nothing).</param>
 public sealed record Level(byte To, int? Channel = null, ChannelFunction? Control = null, byte? From = null);
+
+/// <summary>What a <see cref="TimelineCommandEvent"/> does to its timeline.</summary>
+[JsonConverter(typeof(JsonStringEnumConverter<TimelineCommand>))]
+public enum TimelineCommand
+{
+    /// <summary>Plays it from its start: a new copy if it's already running (unless play once only).</summary>
+    Run,
+
+    /// <summary>Stops it, every copy (each releasing its lights with its release fade).</summary>
+    Stop,
+}
+
+/// <summary>
+/// On an event track: when the timeline playing it reaches <see cref="TimelineEvent.Start"/>, runs or stops another
+/// timeline (VenueMagic's Run Timeline event). A room's "play" timeline starts its lights and sounds this way, and a
+/// "start zone" timeline its rooms. It takes no time: it happens at its start.
+/// </summary>
+public sealed class TimelineCommandEvent : TimelineEvent
+{
+    public TimelineCommand Command { get; set; }
+
+    /// <summary>The timeline it runs or stops (<see cref="ShowTimeline.Id"/>).</summary>
+    public Guid TimelineId { get; set; }
+
+    /// <summary>Run: do nothing while that timeline is still running (otherwise each run plays another copy).</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool PlayOnceOnly { get; set; }
+
+    public override TimelineEvent Clone() => new TimelineCommandEvent
+    {
+        Name = Name, Start = Start, Enabled = Enabled, Command = Command, TimelineId = TimelineId, PlayOnceOnly = PlayOnceOnly,
+    };
+}
 
 /// <summary>Plays (part of) an audio file. The file is referenced, never embedded.</summary>
 public sealed class AudioEvent : TimelineEvent

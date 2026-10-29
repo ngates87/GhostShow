@@ -135,7 +135,9 @@ public class VenueMagicImportTests : IDisposable
         var result = VenueMagicImporter.Import(VenueMagicProject.Read(path), "Haunt 2024");
 
         var timeline = result.Project.FindTimeline("Zone 2/cages/cage-lights")!;
-        Assert.Equal([("Room lights", TrackKind.Lighting), ("Screams", TrackKind.Audio)], timeline.Tracks.Select(t => (t.Name, t.Kind)));
+        Assert.Equal([("Room lights", TrackKind.Lighting), ("Screams", TrackKind.Audio), ("Events", TrackKind.Event)], timeline.Tracks.Select(t => (t.Name, t.Kind)));
+        var run = Assert.IsType<TimelineCommandEvent>(Assert.Single(timeline.Tracks[2].Events));
+        Assert.Equal((TimeSpan.FromSeconds(1.5), TimelineCommand.Run, timeline.Id), (run.Start, run.Command, run.TimelineId));   // it runs "cage-lights": itself, here
         var lights = timeline.Tracks[0];
         var dimmer = result.Project.Fixtures.Single(f => f.Name == "Zone_1_Area_1_Dim_1");
         Assert.Equal((LaneTarget.FixtureChannel(dimmer.Id, 2), (byte)51), (Assert.Single(lights.Channels).Target, lights.Channels[0].StartLevel));   // 20%: where the first clip starts
@@ -148,7 +150,6 @@ public class VenueMagicImportTests : IDisposable
         var sound = Assert.IsType<AudioEvent>(Assert.Single(timeline.Tracks[1].Events));
         Assert.Equal((TimeSpan.FromSeconds(3), (TimeSpan?)TimeSpan.FromSeconds(6.5), Path.Combine(folder, "audio", "scream.wav"), 0.8),
                      (sound.Start, sound.Length, sound.File, sound.Volume));
-        Assert.Contains(result.Notes, n => n.Contains("runs \"cage-lights\" at 1.5 s"));
         Assert.Contains(result.Notes, n => n.Contains("Lightning Storm") && n.Contains("Lightning effect"));
         Assert.Contains(result.Notes, n => n.StartsWith("SartShow") && n.Contains("wasn't found"));
     }

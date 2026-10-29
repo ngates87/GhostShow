@@ -16,7 +16,8 @@ File → Import VenueMagic Project… (a `.vmp`, or its `.vmp.bak` backup) makes
      and Explosion effects, with GhostShow's usual settings;
    - audio tracks keep their clips (start, length, volume); files are looked for in the project's folder, by their
      path under it, else by name.
-   Left out, and listed in the notes: event tracks (Run Timeline at a time: GhostShow has no event tracks yet), other
+   - event tracks keep their Run Timeline events; each runs the timeline of that name (in the same folder first).
+   Left out, and listed in the notes: Run Timeline events whose timeline isn't in the project, other
    expressions ("Chaos", "Flash", "Electric Short", …), volume fades and pan, channels not in the patch, timelines
    whose file is missing, and timelines saved by older VenueMagic versions (record version 381).
 3. **Cue buttons** and what else turns up (not yet).

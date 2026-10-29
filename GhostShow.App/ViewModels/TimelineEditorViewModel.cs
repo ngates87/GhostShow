@@ -121,7 +121,7 @@ public sealed partial class TrackRowViewModel : ObservableObject
 
     public TrackKind Kind => Track.Kind;
 
-    public string KindLabel => Track.Kind switch { TrackKind.Lighting => "Lighting", _ => "Audio" };
+    public string KindLabel => Track.Kind switch { TrackKind.Lighting => "Lighting", TrackKind.Event => "Events", _ => "Audio" };
 
     public string Name
     {
@@ -442,16 +442,21 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
         if (newValue is not null) newValue.IsSelected = true;
         OnPropertyChanged(nameof(AddLabel));
         OnPropertyChanged(nameof(IsAudioTrackSelected));
+        OnPropertyChanged(nameof(IsAddButtonShown));
     }
 
     /// <summary>The toolbar's Add button is for sounds; lighting clips (Level Control and effects) are in the Effects menu.</summary>
     public bool IsAudioTrackSelected => SelectedTrack?.Kind == TrackKind.Audio;
+
+    /// <summary>The Add button shows for audio and event tracks (lighting clips come from the Effects menu).</summary>
+    public bool IsAddButtonShown => SelectedTrack?.Kind is TrackKind.Audio or TrackKind.Event;
 
     /// <summary>The toolbar's Add button says what it adds to the selected track.</summary>
     public string AddLabel => SelectedTrack?.Kind switch
     {
         TrackKind.Lighting => "+ Level Control",
         TrackKind.Audio => "+ Sound…",
+        TrackKind.Event => "+ Event",
         _ => "+ Add",
     };
 
@@ -639,6 +644,11 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
             AddClipAt(row, at);
             return;
         }
+        if (row.Kind == TrackKind.Event)
+        {
+            AddCommandEventAt(row, at);
+            return;
+        }
         if (await NewAudioEventAsync(at) is not { } e) return;
         var track = row.Track;
         History.Execute($"Add {Describe(e)}", () => track.Events.Add(e), () => track.Events.Remove(e));
@@ -646,6 +656,46 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
         _selection.Add(e.Id);
         SelectionChanged();
     }
+
+    /// <summary>
+    /// An event track's event at a time: runs a timeline (the first other one in the tree, to start with; the
+    /// properties panel picks another, or Stop).
+    /// </summary>
+    TimelineCommandEvent AddCommandEventAt(TrackRowViewModel row, TimeSpan at)
+    {
+        var target = _session.Project.Timelines.Where(t => t != SelectedTimeline).OrderBy(t => t.TreePath, StringComparer.OrdinalIgnoreCase).FirstOrDefault();
+        var e = new TimelineCommandEvent { Start = at, Command = TimelineCommand.Run, TimelineId = target?.Id ?? Guid.Empty };
+        var track = row.Track;
+        History.Execute("Add Run timeline event", () => track.Events.Add(e), () => track.Events.Remove(e));
+        _selection.Clear();
+        _selection.Add(e.Id);
+        SelectionChanged();
+        return e;
+    }
+
+    /// <summary>
+    /// A timeline dragged from the tree onto the lanes (as in VenueMagic): a Run timeline event for it at the time, on
+    /// the event track it was dropped on; dropped on another kind of track, on this timeline's first event track, which
+    /// is made if there isn't one. One undo step. Nothing for the open timeline itself (it would run itself).
+    /// </summary>
+    public TimelineCommandEvent? DropTimeline(ShowTimeline target, TrackRowViewModel? row, TimeSpan at)
+    {
+        if (SelectedTimeline is not { } timeline || target == timeline) return null;
+        var existing = row is { Kind: TrackKind.Event } ? row.Track : timeline.Tracks.FirstOrDefault(t => t.Kind == TrackKind.Event);
+        var track = existing ?? new TimelineTrack { Kind = TrackKind.Event, Name = "Events 1" };
+        var e = new TimelineCommandEvent { Start = SnapTime(at < TimeSpan.Zero ? TimeSpan.Zero : at), Command = TimelineCommand.Run, TimelineId = target.Id };
+        History.Execute($"Run {target.Name} here",
+                        () => { if (existing is null) timeline.Tracks.Add(track); track.Events.Add(e); },
+                        () => { track.Events.Remove(e); if (existing is null) timeline.Tracks.Remove(track); });
+        SelectedTrack = Tracks.FirstOrDefault(t => t.Track == track);
+        _selection.Clear();
+        _selection.Add(e.Id);
+        SelectionChanged();
+        return e;
+    }
+
+    /// <summary>A timeline's place in the tree ("Rooms/Lobby"), or null if it isn't in the show.</summary>
+    public string? TimelinePath(Guid id) => _session.Project.Timelines.FirstOrDefault(t => t.Id == id)?.TreePath;
 
     async Task<AudioEvent?> NewAudioEventAsync(TimeSpan at)
     {
@@ -780,7 +830,7 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
     {
         if (SelectedTimeline is not { } timeline) return;
         int count = timeline.Tracks.Count(t => t.Kind == kind) + 1;
-        var track = new TimelineTrack { Kind = kind, Name = kind switch { TrackKind.Lighting => $"Lighting {count}", _ => $"Audio {count}" } };
+        var track = new TimelineTrack { Kind = kind, Name = kind switch { TrackKind.Lighting => $"Lighting {count}", TrackKind.Event => $"Events {count}", _ => $"Audio {count}" } };
         History.Execute("Add track", () => timeline.Tracks.Add(track), () => timeline.Tracks.Remove(track));
         SelectedTrack = Tracks.FirstOrDefault(t => t.Track == track);
     }
@@ -956,12 +1006,12 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
         return null;
     }
 
-    static TrackKind KindOf(TimelineEvent e) => e switch { LightingClip => TrackKind.Lighting, _ => TrackKind.Audio };
+    static TrackKind KindOf(TimelineEvent e) => e switch { LightingClip => TrackKind.Lighting, TimelineCommandEvent => TrackKind.Event, _ => TrackKind.Audio };
 
     /// <summary>"clip", "sounds", or "items" for a mix.</summary>
     string SelectedKind(int count)
     {
-        var kinds = SelectedEvents().Select(e => e switch { LightingClip => "clip", _ => "sound" }).Distinct().ToList();
+        var kinds = SelectedEvents().Select(e => e switch { LightingClip => "clip", TimelineCommandEvent => "event", _ => "sound" }).Distinct().ToList();
         string kind = kinds.Count == 1 ? kinds[0] : "item";
         return count == 1 ? kind : kind + "s";
     }
@@ -970,6 +1020,7 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
     {
         LightingClip { Effect: not null } clip => $"{clip.KindName} effect",
         LightingClip => "Level Control clip",
+        TimelineCommandEvent { Command: var command } => $"{command} timeline event",
         _ => "audio clip",
     };
 }

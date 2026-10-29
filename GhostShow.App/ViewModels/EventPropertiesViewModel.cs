@@ -42,6 +42,7 @@ public sealed partial class EventPropertiesViewModel : ObservableObject
     {
         LightingClip { Effect: not null } clip => $"{clip.KindName} effect",
         LightingClip clip => clip.KindName,
+        TimelineCommandEvent => "Event",
         _ => "Audio clip",
     };
 
@@ -98,6 +99,50 @@ public sealed partial class EventPropertiesViewModel : ObservableObject
         set
         {
             if (Event is LightingClip clip) Change(value ? "Scale envelopes on resize" : "Crop envelopes on resize", clip.ScaleOnResize, value, v => clip.ScaleOnResize = v, "scale");
+        }
+    }
+
+    // ---- event track: run or stop a timeline ----
+
+    TimelineCommandEvent? Command => Event as TimelineCommandEvent;
+
+    public bool IsCommand => Command is not null;
+
+    public static IReadOnlyList<string> Commands { get; } = ["Run timeline", "Stop timeline"];
+
+    /// <summary>0: run, 1: stop.</summary>
+    public int CommandIndex
+    {
+        get => Command?.Command == TimelineCommand.Stop ? 1 : 0;
+        set
+        {
+            if (Command is { } e) Change(value == 1 ? "Make it Stop timeline" : "Make it Run timeline", e.Command, value == 1 ? TimelineCommand.Stop : TimelineCommand.Run, v => e.Command = v, "command");
+            OnPropertyChanged(nameof(IsRun));
+        }
+    }
+
+    public bool IsRun => Command?.Command == TimelineCommand.Run;
+
+    /// <summary>Every timeline in the show, by its place in the tree.</summary>
+    public IReadOnlyList<TimelineChoice> Timelines =>
+        _session.Project.Timelines.OrderBy(t => t.TreePath, StringComparer.OrdinalIgnoreCase).Select(t => new TimelineChoice(t.Id, t.TreePath)).ToList();
+
+    /// <summary>The timeline it runs or stops; null if none is chosen (or it was deleted).</summary>
+    public TimelineChoice? Target
+    {
+        get => Command is { } e ? Timelines.FirstOrDefault(t => t.Id == e.TimelineId) : null;
+        set
+        {
+            if (Command is { } e && value is not null) Change("Change the event's timeline", e.TimelineId, value.Id, v => e.TimelineId = v, "target");
+        }
+    }
+
+    public bool PlayOnceOnly
+    {
+        get => Command?.PlayOnceOnly == true;
+        set
+        {
+            if (Command is { } e) Change(value ? "Play once only" : "Play every time", e.PlayOnceOnly, value, v => e.PlayOnceOnly = v, "once");
         }
     }
 

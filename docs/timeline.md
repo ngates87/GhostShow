@@ -47,6 +47,7 @@ To export or back up a show, copy or zip the whole folder.
 | `LightingEffect` | Kind, Strength (0–1), Rate, Color, Seed, Ending (BackToBefore, Dark) | A built-in effect's settings; its envelopes are made from them |
 | `LaneTarget` | A fixture and its control (Intensity, Red, …) or channel number; or a universe and DMX address | Fixture targets follow the fixture when it's re-addressed |
 | `CurvePoint` | Time, Value (0–255), Curve (Linear, Step, Spline) | An envelope handle: a level at a time. Curve says how the level gets here from the previous handle |
+| `TimelineCommandEvent` | Start, Command (Run, Stop), TimelineId, PlayOnceOnly | On an event track: runs or stops another timeline when the playhead gets there |
 | `AudioEvent` | Start, File, Length (optional), Offset, Volume, FadeIn, FadeOut, Loop | Plays from Offset into the file; for Length if set, otherwise to the end of the file (forever, if looping) |
 
 Every event (clip) has an ID, a name (optional; a description is generated when there's none), Enabled, Locked
@@ -92,6 +93,29 @@ flattened into sorted per-channel steps (`CompiledTimeline`). Playback then only
 - **The timeline only controls channels it has reached.** Once it sets a channel, it holds it until playback stops.
 - **Problems don't stop the show.** A missing or unpatched fixture, an undefined universe, a missing audio file, a
   negative time: that event is reported (Timeline screen, Diagnostics) and skipped; everything else plays.
+
+### Event tracks
+
+An event track (Add track ▾ → Event track) holds events that **run or stop other timelines** when the playhead
+gets to them, as VenueMagic's Run Timeline event does: a room's "play" timeline starts its lights and its sounds a
+moment apart, a "start zone" timeline starts its rooms, a show's start timeline its zones.
+
+- **Run timeline** plays it from its start: another copy if it's already running (as a show button does), or, with
+  **Play once only**, nothing while it's still running. **Stop timeline** stops it, every copy, each releasing its
+  lights with its own release fade.
+- **When they fire:** while playing, each update fires the events the playhead passed since the last one; events
+  right at the start fire on Play and Restart, and again each time a looping timeline goes round; an event at the very
+  end fires as the timeline gets there; a seek skips the events it jumps over. A timeline run this way starts on the
+  next update (25 ms), and its own event tracks work the same way, so chains (show → zone → room → lights) work.
+- **Loading:** the timelines a timeline's events run (and theirs, in turn) are compiled and loaded when it is, so
+  they start instantly and don't have to be open. An event whose timeline was deleted is reported (red) and skipped.
+- **Editing:** **drag a timeline from the tree onto the lanes** (as in VenueMagic): a Run timeline event for it where
+  it's dropped (snapped), on the event track under the pointer, or else on the timeline's first event track (made if
+  there's none; one undo step); a ghost diamond shows where it will go. A timeline can't be dropped on itself. Or
+  "+ Event" (with an event track selected) or a double-click on the row adds a Run timeline event, for the first
+  other timeline in the tree; the properties panel picks Run or Stop, the timeline and Play once only. Events
+  are diamonds (green: run, red: stop) labelled with their timeline; they move, copy, paste, lock and delete like
+  clips. They take no time.
 
 ### Built-in effects
 
