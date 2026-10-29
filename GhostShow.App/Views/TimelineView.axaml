@@ -556,6 +556,18 @@
                     <ComboBox ItemsSource="{Binding Timelines}" SelectedItem="{Binding Target}" HorizontalAlignment="Stretch" PlaceholderText="(choose a timeline)" />
                     <CheckBox Content="Play once only" IsChecked="{Binding PlayOnceOnly}" IsVisible="{Binding IsRun}"
                               ToolTip.Tip="Off: each time the playhead gets here another copy plays, even while one is still playing. On: nothing while it's still playing." />
+                    <TextBlock Text="Symbol" Classes="label" />
+                    <ComboBox ItemsSource="{x:Static vm:EventPropertiesViewModel.Symbols}" SelectedItem="{Binding Symbol}" HorizontalAlignment="Stretch"
+                              ToolTip.Tip="How it's marked on the lane (green: run, red: stop)">
+                      <ComboBox.ItemTemplate>
+                        <DataTemplate x:DataType="tl:EventSymbol">
+                          <StackPanel Orientation="Horizontal" Spacing="8">
+                            <controls:EventSymbolIcon Symbol="{Binding}" Width="16" Height="16" VerticalAlignment="Center" />
+                            <TextBlock Text="{Binding}" VerticalAlignment="Center" />
+                          </StackPanel>
+                        </DataTemplate>
+                      </ComboBox.ItemTemplate>
+                    </ComboBox>
                     <TextBlock TextWrapping="Wrap" Opacity="0.7" FontSize="12"
                                Text="When this timeline's playhead gets here, it runs (from its start) or stops the other timeline, as VenueMagic's Run Timeline event does. A room's play timeline can start its lights and sounds this way." />
                   </StackPanel>

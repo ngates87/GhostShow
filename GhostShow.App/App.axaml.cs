@@ -45,6 +45,7 @@ public partial class App : Application
             .AddProvider(_recentEvents)
             .AddSimpleConsole(options => { options.SingleLine = true; options.TimestampFormat = "HH:mm:ss "; }));
         _probe = new UiResponsivenessProbe();
+        Controls.TimelineCanvas.Log = _loggerFactory.CreateLogger<Controls.TimelineCanvas>();
 
         var paths = AppPaths.Default;
         var settings = await MachineSettingsStore.LoadAsync(paths);

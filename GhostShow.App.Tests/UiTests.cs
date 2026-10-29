@@ -261,6 +261,56 @@ public class UiTests
         Assert.Equal((4.0, room.Id), (Math.Round(e.Start.TotalSeconds, 1), e.TimelineId));
     });
 
+    [Fact]
+    public Task A_tree_drag_that_arrives_without_its_in_process_data_still_drops_the_timeline() => Ui.Run(() =>
+    {
+        // On Linux a drag can go through XDND even inside the app, which carries only text: the lanes fall back to
+        // the node the tree says it's dragging.
+        using var rig = new WindowRig();
+        var main = rig.Editor.SelectedTimeline!;
+        rig.Editor.Tree.NewTimelineCommand.Execute(null);
+        WindowRig.Pump();
+        var room = rig.Session.Project.Timelines.Single(t => t != main);
+        rig.Editor.OpenTimeline(main);
+        WindowRig.Pump();
+        var data = new DataTransfer();
+        data.Add(DataTransferItem.Create(DataFormat.Text, room.Name));
+        var at = rig.At(rig.TrackRow("Lighting"), 3);
+        Controls.TimelineCanvas.DraggedNode = rig.Editor.Tree.AllNodes().OfType<TimelineNode>().Single(n => n.Timeline == room);
+        try
+        {
+            rig.Window.DragDrop(at, Avalonia.Input.Raw.RawDragEventType.DragEnter, data, DragDropEffects.Move | DragDropEffects.Link, RawInputModifiers.None);
+            rig.Window.DragDrop(at, Avalonia.Input.Raw.RawDragEventType.DragOver, data, DragDropEffects.Move | DragDropEffects.Link, RawInputModifiers.None);
+            rig.Window.DragDrop(at, Avalonia.Input.Raw.RawDragEventType.Drop, data, DragDropEffects.Move | DragDropEffects.Link, RawInputModifiers.None);
+        }
+        finally
+        {
+            Controls.TimelineCanvas.DraggedNode = null;
+        }
+        WindowRig.Pump();
+
+        var e = Assert.IsType<TimelineCommandEvent>(Assert.Single(main.Tracks.Single(t => t.Kind == TrackKind.Event).Events));
+        Assert.Equal(room.Id, e.TimelineId);
+    });
+
+    [Fact]
+    public Task Dragging_the_open_timeline_onto_its_own_lanes_is_refused() => Ui.Run(() =>
+    {
+        using var rig = new WindowRig();
+        var main = rig.Editor.SelectedTimeline!;
+        var node = rig.Editor.Tree.AllNodes().OfType<TimelineNode>().Single(n => n.Timeline == main);
+        var data = new DataTransfer();
+        data.Add(DataTransferItem.Create(Controls.TimelineCanvas.TreeNodeFormat, (TimelineTreeNode)node));
+        var at = rig.At(rig.TrackRow("Lighting"), 4);
+
+        rig.Window.DragDrop(at, Avalonia.Input.Raw.RawDragEventType.DragEnter, data, DragDropEffects.Move | DragDropEffects.Link, RawInputModifiers.None);
+        rig.Window.DragDrop(at, Avalonia.Input.Raw.RawDragEventType.DragOver, data, DragDropEffects.Move | DragDropEffects.Link, RawInputModifiers.None);
+        rig.Window.DragDrop(at, Avalonia.Input.Raw.RawDragEventType.Drop, data, DragDropEffects.Move | DragDropEffects.Link, RawInputModifiers.None);
+        WindowRig.Pump();
+
+        Assert.DoesNotContain(main.Tracks, t => t.Kind == TrackKind.Event);
+    });
+
     // ---- the Envelope Editor window ----
 
     /// <summary>Opens the Envelope Editor by double-clicking a clip, and returns its window and plot.</summary>

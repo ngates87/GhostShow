@@ -200,7 +200,16 @@ public partial class TimelineView : UserControl
         _pressed = null;
         var data = new DataTransfer();
         data.Add(DataTransferItem.Create(TreeNodeFormat, node));
-        await DragDrop.DoDragDropAsync(pressed, data, DragDropEffects.Move | DragDropEffects.Link);   // Link: onto the lanes, as an event
+        data.Add(DataTransferItem.Create(DataFormat.Text, node.Name));   // something the desktop's drag protocol can carry too
+        Controls.TimelineCanvas.DraggedNode = node;
+        try
+        {
+            await DragDrop.DoDragDropAsync(pressed, data, DragDropEffects.Move | DragDropEffects.Link);   // Link: onto the lanes, as an event
+        }
+        finally
+        {
+            Controls.TimelineCanvas.DraggedNode = null;
+        }
     }
 
     /// <summary>Dropping on a folder puts it in that folder; on a timeline, in that timeline's folder; on empty space, at the top level.</summary>
@@ -213,12 +222,12 @@ public partial class TimelineView : UserControl
 
     void OnTreeDragOver(object? sender, DragEventArgs e)
     {
-        e.DragEffects = e.DataTransfer.TryGetValue(TreeNodeFormat) is not null ? DragDropEffects.Move : DragDropEffects.None;
+        e.DragEffects = Controls.TimelineCanvas.NodeIn(e.DataTransfer) is not null ? DragDropEffects.Move : DragDropEffects.None;
     }
 
     void OnTreeDrop(object? sender, DragEventArgs e)
     {
-        if (_editor is null || e.DataTransfer.TryGetValue(TreeNodeFormat) is not { } node) return;
+        if (_editor is null || Controls.TimelineCanvas.NodeIn(e.DataTransfer) is not { } node) return;
         _editor.Tree.Move(node, TargetFolderOf(e.Source));
         e.Handled = true;
     }

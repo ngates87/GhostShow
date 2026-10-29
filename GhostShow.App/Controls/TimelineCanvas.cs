@@ -8,6 +8,7 @@ using Avalonia.Media;
 using Avalonia.VisualTree;
 using GhostShow.App.ViewModels;
 using GhostShow.Core.Timeline;
+using Microsoft.Extensions.Logging;
 
 namespace GhostShow.App.Controls;
 
@@ -42,7 +43,7 @@ namespace GhostShow.App.Controls;
 public sealed class TimelineCanvas : Control
 {
     public const double RulerHeight = 26;
-    const double EventMark = 7;   // half an event's diamond
+    const double EventMark = 15;   // half an event's symbol
     const double EdgeGrab = 6, MinBlockWidth = 6, DragThreshold = 3, HandleSize = 3.5, HandleGrab = 7, ClipPad = 3, ClipTitle = 15;
     static readonly TimeSpan TailRoom = TimeSpan.FromSeconds(10);
     static readonly double[] RulerSteps = [0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600];
@@ -121,7 +122,19 @@ public sealed class TimelineCanvas : Control
     /// <summary>A node of the timeline tree being dragged (the tree's own drag; here, a timeline dropped on the lanes).</summary>
     public static readonly DataFormat<TimelineTreeNode> TreeNodeFormat = DataFormat.CreateInProcessFormat<TimelineTreeNode>("ghostshow/timeline-tree-node");
 
-    (TimelineRow? Row, TimeSpan At)? _dropPreview;   // where a timeline being dragged over would land (a ghost diamond)
+    /// <summary>
+    /// The tree node being dragged, while the tree drags one. On Linux a drag can go through the desktop's drag
+    /// protocol (XDND) even within the app, which carries no in-process data: this finds the node then.
+    /// </summary>
+    public static TimelineTreeNode? DraggedNode { get; set; }
+
+    /// <summary>The tree node a drag carries, if it's one.</summary>
+    public static TimelineTreeNode? NodeIn(IDataTransfer data) => data.TryGetValue(TreeNodeFormat) ?? DraggedNode;
+
+    /// <summary>Logs what a drag over the lanes carries (set by the app; where a drag is refused, this says why).</summary>
+    public static ILogger? Log { get; set; }
+
+    (TimelineRow? Row, TimeSpan At, string? Refused)? _dropPreview;   // where a timeline being dragged over would land (a ghost diamond), or why it can't
 
     public TimelineCanvas()
     {
@@ -136,7 +149,10 @@ public sealed class TimelineCanvas : Control
     /// <summary>A timeline from the tree, over the lanes: shows where its Run timeline event would go (VenueMagic's drag onto an event track).</summary>
     void OnDragOver(object? sender, DragEventArgs e)
     {
-        if (Editor is not { } editor || e.DataTransfer.TryGetValue(TreeNodeFormat) is not TimelineNode { Timeline: var timeline } || timeline == editor.SelectedTimeline)
+        if (_dropPreview is null)
+            Log?.LogInformation("Drag over the lanes: formats [{Formats}], in-process node {InProcess}, tree dragging {Dragged}, allowed {Effects}",
+                string.Join(", ", e.DataTransfer.Formats), e.DataTransfer.TryGetValue(TreeNodeFormat)?.Name ?? "none", DraggedNode?.Name ?? "none", e.DragEffects);
+        if (Editor is not { } editor || NodeIn(e.DataTransfer) is not TimelineNode { Timeline: var timeline })
         {
             e.DragEffects = DragDropEffects.None;
             ClearDropPreview();
@@ -145,8 +161,11 @@ public sealed class TimelineCanvas : Control
         var point = e.GetPosition(this);
         var row = RowAt(point.Y);
         var target = row is { Track.Kind: TrackKind.Event } ? row : editor.Rows.FirstOrDefault(r => r.Track.Kind == TrackKind.Event);
-        _dropPreview = (target, editor.SnapTime(TimeAt(point.X)));
-        e.DragEffects = DragDropEffects.Link;
+        // The open timeline itself can't go on its own lanes (each run would start another copy of itself): say so
+        // where it would have gone, rather than just refusing the drop.
+        bool itself = timeline == editor.SelectedTimeline;
+        _dropPreview = (target, editor.SnapTime(TimeAt(point.X)), itself ? $"{timeline.Name} is the timeline open here: it can't run itself" : null);
+        e.DragEffects = itself ? DragDropEffects.None : DragDropEffects.Link;
         e.Handled = true;
         InvalidateVisual();
     }
@@ -155,7 +174,7 @@ public sealed class TimelineCanvas : Control
     {
         var preview = _dropPreview;
         ClearDropPreview();
-        if (Editor is not { } editor || e.DataTransfer.TryGetValue(TreeNodeFormat) is not TimelineNode { Timeline: var timeline }) return;
+        if (Editor is not { } editor || NodeIn(e.DataTransfer) is not TimelineNode { Timeline: var timeline } || preview?.Refused is not null) return;
         var point = e.GetPosition(this);
         editor.DropTimeline(timeline, RowAt(point.Y)?.Track, preview?.At ?? TimeAt(point.X));
         e.Handled = true;
@@ -176,18 +195,20 @@ public sealed class TimelineCanvas : Control
         if (_dropPreview is not { } preview) return;
         double y = preview.Row is { } row ? RulerHeight + row.Top + row.Height / 2 : RulerHeight + editor.ContentHeight + EventTrackGhost;
         double x = X(preview.At);
-        var diamond = new StreamGeometry();
-        using (var g = diamond.Open())
-        {
-            g.BeginFigure(new Point(x, y - EventMark), true);
-            g.LineTo(new Point(x + EventMark, y));
-            g.LineTo(new Point(x, y + EventMark));
-            g.LineTo(new Point(x - EventMark, y));
-            g.EndFigure(true);
-        }
-        context.DrawGeometry(DropFill, SnapGuidePen, diamond);
+        context.DrawGeometry(preview.Refused is null ? DropFill : DropRefusedFill, SnapGuidePen, EventSymbols.Of(EventSymbol.Diamond, new Point(x, y), EventMark));
         context.DrawLine(SnapGuidePen, new Point(x, RulerHeight), new Point(x, Bounds.Height));
+        if (preview.Refused is { } why)
+        {
+            // On a dark tag above the lane, so it reads over the events already there.
+            var text = new FormattedText(why, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, Font, 12, ErrorText);
+            var tag = new Rect(x + EventMark + 4, y - EventMark - 26, text.Width + 12, text.Height + 6);
+            context.DrawRectangle(RefusedTag, null, tag, 3);
+            context.DrawText(text, tag.TopLeft + new Vector(6, 3));
+        }
     }
+
+    static readonly IBrush DropRefusedFill = new SolidColorBrush(Color.FromArgb(150, 0xE5, 0x39, 0x35));
+    static readonly IBrush RefusedTag = new SolidColorBrush(Color.FromArgb(235, 0x1A, 0x1A, 0x1A));
 
     const double EventTrackGhost = 20;
 
@@ -429,7 +450,7 @@ public sealed class TimelineCanvas : Control
                 break;
             }
             case TimelineCommandEvent command:
-                DrawCommand(context, editor, command, rect, labelRoom, selected, error);
+                DrawCommand(context, command, rect, selected, error);
                 return;
             default:
                 return;
@@ -441,25 +462,21 @@ public sealed class TimelineCanvas : Control
     static readonly IBrush RunFill = new SolidColorBrush(Color.Parse("#43A047")), StopFill = new SolidColorBrush(Color.Parse("#E53935"));
 
     /// <summary>
-    /// An event track's event: a diamond on its time (green: run, red: stop), with its name or the timeline it runs
-    /// or stops beside it.
+    /// An event track's event: its symbol on its time (green: run, red: stop). What it runs or stops is its tooltip
+    /// (and in its properties), so close events stay readable.
     /// </summary>
-    void DrawCommand(DrawingContext context, TimelineEditorViewModel editor, TimelineCommandEvent command, Rect rect, double labelRoom, bool selected, bool error)
+    void DrawCommand(DrawingContext context, TimelineCommandEvent command, Rect rect, bool selected, bool error)
     {
         double cx = rect.X + EventMark, cy = rect.Y + rect.Height / 2;
-        var diamond = new StreamGeometry();
-        using (var g = diamond.Open())
-        {
-            g.BeginFigure(new Point(cx, cy - EventMark), true);
-            g.LineTo(new Point(cx + EventMark, cy));
-            g.LineTo(new Point(cx, cy + EventMark));
-            g.LineTo(new Point(cx - EventMark, cy));
-            g.EndFigure(true);
-        }
-        context.DrawGeometry(command.Command == TimelineCommand.Run ? RunFill : StopFill, selected ? SelectedPen : error ? ErrorPen : HandleOutline, diamond);
+        context.DrawGeometry(command.Command == TimelineCommand.Run ? RunFill : StopFill, selected ? SelectedPen : error ? ErrorPen : HandleOutline,
+            EventSymbols.Of(command.Symbol, new Point(cx, cy), EventMark));
+    }
+
+    /// <summary>What an event does, for its tooltip: its name, or the timeline it runs ("Stop …" for a stop).</summary>
+    static string CommandLabel(TimelineEditorViewModel editor, TimelineCommandEvent command)
+    {
         string target = editor.TimelinePath(command.TimelineId) ?? "(choose a timeline)";
-        string label = command.Command == TimelineCommand.Run ? $"▶ {command.Name ?? target}" : $"■ {command.Name ?? target}";
-        DrawText(context, label, new Point(cx + EventMark + 3, cy - 8), Math.Min(labelRoom - EventMark, 260), error ? ErrorText : Brushes.White, 11);
+        return command.Name ?? (command.Command == TimelineCommand.Run ? $"Run {target}" : $"Stop {target}");
     }
 
     static readonly IBrush ErrorText = new SolidColorBrush(Color.Parse("#FF8A80"));
@@ -1117,6 +1134,8 @@ public sealed class TimelineCanvas : Control
                        : handle.Point is not null ? new Cursor(StandardCursorType.Hand)
                        : row is not null && HitEvent(editor, row, point).Edge != Edge.None ? new Cursor(StandardCursorType.SizeWestEast)
                        : Cursor.Default;
+                var hovered = row is null ? null : HitEvent(editor, row, point).Event ?? LockedEventAt(editor, row, point);
+                ToolTip.SetTip(this, hovered is TimelineCommandEvent command ? CommandLabel(editor, command) : null);
                 return;
             case DragKind.Scrub:
                 editor.SeekTo(TimeAt(point.X));

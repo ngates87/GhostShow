@@ -915,6 +915,21 @@ public class TimelineEditorTests : IDisposable
     }
 
     [Fact]
+    public void An_event_can_be_marked_with_another_symbol_and_undone()
+    {
+        var room = new ShowTimeline { Name = "Room lights", Length = S(30), Tracks = [] };
+        _rig.Session.Project.Timelines.Add(room);
+        var e = Editor.DropTimeline(room, null, S(2))!;
+        Assert.Equal(EventSymbol.Diamond, e.Symbol);
+
+        Editor.Properties!.Symbol = EventSymbol.Ghost;
+        Assert.Equal(EventSymbol.Ghost, e.Symbol);
+
+        Editor.UndoCommand.Execute(null);
+        Assert.Equal(EventSymbol.Diamond, e.Symbol);
+    }
+
+    [Fact]
     public void Selecting_a_handle_clears_selected_clips_and_the_other_way_round()
     {
         var sound = _rig.AddSound(1);

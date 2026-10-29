@@ -146,6 +146,18 @@ public sealed partial class EventPropertiesViewModel : ObservableObject
         }
     }
 
+    public static IReadOnlyList<EventSymbol> Symbols { get; } = Enum.GetValues<EventSymbol>();
+
+    /// <summary>The marker it's drawn with on its lane.</summary>
+    public EventSymbol Symbol
+    {
+        get => Command?.Symbol ?? EventSymbol.Diamond;
+        set
+        {
+            if (Command is { } e) Change($"Mark it with a {value.ToString().ToLowerInvariant()}", e.Symbol, value, v => e.Symbol = v, "symbol");
+        }
+    }
+
     // ---- built-in effect ----
 
     LightingClip? EffectClip => Event as LightingClip is { Effect: not null } clip ? clip : null;

@@ -551,6 +551,10 @@ public enum TimelineCommand
     Stop,
 }
 
+/// <summary>How an event track's event is drawn on its lane (a marker to tell events apart at a glance).</summary>
+[JsonConverter(typeof(JsonStringEnumConverter<EventSymbol>))]
+public enum EventSymbol { Diamond, Circle, Square, Triangle, Star, Flag, Bolt, Skull, Ghost }
+
 /// <summary>
 /// On an event track: when the timeline playing it reaches <see cref="TimelineEvent.Start"/>, runs or stops another
 /// timeline (VenueMagic's Run Timeline event). A room's "play" timeline starts its lights and sounds this way, and a
@@ -567,9 +571,13 @@ public sealed class TimelineCommandEvent : TimelineEvent
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public bool PlayOnceOnly { get; set; }
 
+    /// <summary>The marker it's drawn with on its lane.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public EventSymbol Symbol { get; set; }
+
     public override TimelineEvent Clone() => new TimelineCommandEvent
     {
-        Name = Name, Start = Start, Enabled = Enabled, Command = Command, TimelineId = TimelineId, PlayOnceOnly = PlayOnceOnly,
+        Name = Name, Start = Start, Enabled = Enabled, Command = Command, TimelineId = TimelineId, PlayOnceOnly = PlayOnceOnly, Symbol = Symbol,
     };
 }
 

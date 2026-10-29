@@ -69,7 +69,7 @@ public class ShowFolderStoreTests : IDisposable
                 new TimelineTrack
                 {
                     Name = "Starts", Kind = TrackKind.Event,
-                    Events = [new TimelineCommandEvent { Name = "Lobby", Start = TimeSpan.FromSeconds(1.5), TimelineId = lobbyId, Command = TimelineCommand.Run, PlayOnceOnly = true },
+                    Events = [new TimelineCommandEvent { Name = "Lobby", Start = TimeSpan.FromSeconds(1.5), TimelineId = lobbyId, Command = TimelineCommand.Run, PlayOnceOnly = true, Symbol = EventSymbol.Skull },
                               new TimelineCommandEvent { Start = TimeSpan.FromSeconds(7), TimelineId = lobbyId, Command = TimelineCommand.Stop }],
                 },
             ],
@@ -120,8 +120,8 @@ public class ShowFolderStoreTests : IDisposable
         Assert.Equal((false, 0.4, 1.0), (timeline.Tracks[1].Enabled, timeline.Tracks[1].Volume, timeline.Tracks[0].Volume));
         var starts = timeline.Tracks[3];
         Assert.Equal(TrackKind.Event, starts.Kind);
-        Assert.Equal([("Lobby", 1.5, lobbyId, TimelineCommand.Run, true), (null, 7.0, lobbyId, TimelineCommand.Stop, false)],
-                     starts.Events.Cast<TimelineCommandEvent>().Select(e => (e.Name, e.Start.TotalSeconds, e.TimelineId, e.Command, e.PlayOnceOnly)));
+        Assert.Equal([("Lobby", 1.5, lobbyId, TimelineCommand.Run, true, EventSymbol.Skull), (null, 7.0, lobbyId, TimelineCommand.Stop, false, EventSymbol.Diamond)],
+                     starts.Events.Cast<TimelineCommandEvent>().Select(e => (e.Name, e.Start.TotalSeconds, e.TimelineId, e.Command, e.PlayOnceOnly, e.Symbol)));
         var storm = Assert.IsType<LightingClip>(Assert.Single(timeline.Tracks[2].Events)).Effect!;
         Assert.Equal((EffectKind.Lightning, 0.8, 3.0, "#CCDDFF", 42, EffectEnding.Dark), (storm.Kind, storm.Strength, storm.Rate, storm.Color, storm.Seed, storm.Ending));
         Assert.Null(((LightingClip)timeline.Tracks[0].Events[0]).Effect);

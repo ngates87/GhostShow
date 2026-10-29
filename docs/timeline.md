@@ -111,10 +111,12 @@ moment apart, a "start zone" timeline starts its rooms, a show's start timeline 
   they start instantly and don't have to be open. An event whose timeline was deleted is reported (red) and skipped.
 - **Editing:** **drag a timeline from the tree onto the lanes** (as in VenueMagic): a Run timeline event for it where
   it's dropped (snapped), on the event track under the pointer, or else on the timeline's first event track (made if
-  there's none; one undo step); a ghost diamond shows where it will go. A timeline can't be dropped on itself. Or
+  there's none; one undo step); a ghost diamond shows where it will go. The open timeline can't be dropped on its own
+  lanes (it would start copies of itself): the lane says so instead. Or
   "+ Event" (with an event track selected) or a double-click on the row adds a Run timeline event, for the first
-  other timeline in the tree; the properties panel picks Run or Stop, the timeline and Play once only. Events
-  are diamonds (green: run, red: stop) labelled with their timeline; they move, copy, paste, lock and delete like
+  other timeline in the tree; the properties panel picks Run or Stop, the timeline, Play once only and the
+  event's symbol (diamond, circle, square, triangle, star, flag, bolt, skull or ghost; green: run, red: stop),
+  with what it runs or stops in its tooltip; they move, copy, paste, lock and delete like
   clips. They take no time.
 
 ### Built-in effects
@@ -325,8 +327,8 @@ same files. The Audio screen lists every sound the show uses and whether it was 
   deleting asks first.
 
 The transport is under the timeline, as in VenueMagic: back to the start (Home), play/pause (Space), stop, loop,
-and the position and state. The top bar shows the open timeline's position on every screen, and **Space** plays and
-pauses it from any screen (except while typing in a field); the Playback menu has the same commands.
+and the position and state. Blackout (and ⚠ when something needs attention) is at the right of the menu bar on every
+screen, and **Space** plays and pauses the open timeline from any screen (except while typing in a field); the Playback menu has the same commands.
 
 ## Older shows
 
