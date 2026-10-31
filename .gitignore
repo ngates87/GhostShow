@@ -41,3 +41,7 @@ Thumbs.db
 
 # Logs
 *.log
+
+# The web remote's built page (GhostShow.Web builds it from client/ with Node)
+GhostShow.Web/wwwroot/
+node_modules/

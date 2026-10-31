@@ -249,7 +249,7 @@ public sealed partial class EventPropertiesViewModel : ObservableObject
     public string FileLengthLabel => FileLength() is { } length ? $"File length {PlaybackViewModel.Format(length)}" : "File length not known yet";
 
     TimeSpan? FileLength() => IsAudio && !string.IsNullOrWhiteSpace(Audio.File)
-        ? _playback.AudioLength(AudioPaths.Resolve(Audio.File, _session.ShowFolder))
+        ? _playback.AudioLength(Audio.File)
         : null;
 
     /// <summary>Checked: play only Length; unchecked: to the end of the file.</summary>

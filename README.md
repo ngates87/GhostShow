@@ -5,7 +5,8 @@ audio, played together from timelines. Built with C# / .NET 10 (LTS), Avalonia a
 
 ## Build, test, run
 
-Requires the .NET 10 SDK.
+Requires the .NET 10 SDK. Node.js 20.19 or newer builds the web remote's page (without it the build still works,
+and the page says it wasn't built).
 
     dotnet build
     dotnet test
@@ -60,6 +61,7 @@ or with `ghostshow library download`), the QLC+ library (~1,400) if QLC+ happens
 
 - [Architecture](docs/architecture.md): structure, UI technology choice, threading, failure and blackout policy, extension points
 - [Timelines and playback](docs/timeline.md): model, playback rules, transport, editing while playing, audio, the Timeline screen
+- [Remote access](docs/remote.md): running the show from an iPad, laptop or phone on the show's network
 - [Hardware](docs/hardware.md): Open DMX setup, testing procedure, troubleshooting
 - [Fixture profiles](docs/fixture-profiles.md): profile format, QLC+ import, patch validation
 - [Performance](docs/performance.md): targets, method, measured results, known limitations

@@ -12,7 +12,8 @@ Phase 2 added timelines, show playback and audio. Timelines, playback and audio 
 | `GhostShow.Core` | Engine state and commands, universe model, fixture profiles/patching/validation, storage, diagnostics primitives, timeline model and compiler, players (one per timeline), the playback manager that merges them, and the playback loop | `Microsoft.Extensions.Logging.Abstractions` only |
 | `GhostShow.Dmx` | Output service, device interface, simulator, Open DMX / USB Pro / Art-Net drivers, adapter discovery | Core, `System.IO.Ports` |
 | `GhostShow.Audio` | Audio output (`AudioService`, implementing Core's `IAudioOutput`): devices, streaming WAV/MP3, mixing, device-loss recovery | Core, SoundFlow (MIT) |
-| `GhostShow.App` | Avalonia desktop UI | Core, Dmx, Audio (Dmx and Audio are used at startup and on their setup screens) |
+| `GhostShow.App` | Avalonia desktop UI | Core, Dmx, Audio, Web (Dmx and Audio are used at startup and on their setup screens) |
+| `GhostShow.Web` | The web remote: an ASP.NET Core server inside the app, pairing, the live WebSocket, and the web app (`client/`: Svelte, built with Node and embedded); see [remote.md](remote.md) | Core, ASP.NET Core (shared framework) |
 | `GhostShow.Cli` | Running without a UI: timeline playback, soak tests | Core, Dmx, Audio |
 | `GhostShow.Tests` | xUnit v3 unit and integration tests for the engine, DMX output, fixtures, storage, timelines, playback and audio | Core, Dmx, Audio |
 | `GhostShow.App.Tests` | xUnit v3 tests for the app's view models (add-fixtures wizard, profile browser, paging, save guard, timeline editor, undo/redo); no UI is shown | App, Core |
@@ -161,6 +162,21 @@ object and everything in it, or only an object's own properties and lists, becau
 takes tens of milliseconds and a clip or envelope well under one. The timeline tree and the show buttons go through it
 too, on the show's own history. Undo takes back the latest of that and the open timeline's. Only the setup screens
 (fixtures, universes) still change the model directly, with `ShowSession.Apply` (see [plan-remote.md](plan-remote.md)).
+
+## Playback on the show computer
+
+`Core/Playback/ShowPlayback` is playback as the show computer runs it.
+- **Loading:** it decides which timelines are loaded into the `PlaybackManager`, together with the timelines their
+  event tracks run.
+- **Keeping them current:** it compiles loaded timelines again whenever the show changes (an edit from any device, a
+  patch change, a newly measured sound), and stops and forgets deleted ones.
+- **The transport:** play, pause, seek, run a copy, stop; for each timeline, by its ID.
+- **Problems:** it keeps each timeline's problems from its last compile.
+
+The desktop's `PlaybackViewModel` is only the screen side (labels, the Playing list, the transport buttons) and asks
+`ShowPlayback` for everything. This split is what lets the same screens run elsewhere, on a laptop: there, a remote
+version of these calls goes over the network to the show computer's `ShowPlayback` (see
+[plan-remote.md](plan-remote.md)).
 
 ## Connection and failure behaviour
 

@@ -71,7 +71,7 @@ sealed class TimelineRig : IDisposable
         var services = new AppServices(Session, new OutputManager(Session.Engine, NullLoggerFactory.Instance), Manager,
                                        new PlaybackLoop(Manager, NullLogger.Instance), Audio, new MachineSettings(),
                                        new AppPaths(_configDirectory), new RecentEventsLog(), _probe);
-        Playback = new PlaybackViewModel(services, NullLogger.Instance);
+        Playback = new PlaybackViewModel(new ShowPlayback(Session, Manager, services.Audio));
         Editor = new TimelineEditorViewModel(Session, Playback, () => Task.FromResult(PickedFile), () => Dirty = true);
     }
 

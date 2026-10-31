@@ -1,12 +1,8 @@
 using System.Collections.ObjectModel;
-using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using GhostShow.Audio;
-using GhostShow.Core.Editing;
 using GhostShow.Core.Playback;
 using GhostShow.Core.Timeline;
-using Microsoft.Extensions.Logging;
 
 namespace GhostShow.App.ViewModels;
 
@@ -32,43 +28,37 @@ public sealed partial class RunningRowViewModel(Guid id, PlaybackViewModel owner
 }
 
 /// <summary>
-/// The transport and what's playing. Several timelines can play at once (see <see cref="PlaybackManager"/>); the
-/// transport controls the <em>focused</em> one, the timeline open in the editor, and the "Playing" list shows them all.
-/// Keeps every loaded timeline's compiled version up to date (after an edit, a patch change, or a newly measured audio
-/// length): edits during playback take effect on the next playback update.
+/// The transport and what's playing, as the screens show them. Several timelines can play at once; the transport
+/// controls the <em>focused</em> one (the timeline open in the editor), and the "Playing" list shows them all.
 ///
-/// The players run on the playback thread; this only sends commands and reads their status for display.
+/// The playing itself happens on the show computer, where the DMX adapters and speakers are plugged in; this only asks
+/// <see cref="IPlayback"/> to do things and shows its status. On the show computer that's <see cref="ShowPlayback"/>
+/// (it plays); in the browser build it's RemotePlayback (it sends the request over the network). This class is the
+/// same in both.
 /// </summary>
 public sealed partial class PlaybackViewModel : ObservableObject
 {
-    readonly AppServices _services;
-    readonly ILogger _logger;
     ShowTimeline? _timeline;
 
-    public PlaybackViewModel(AppServices services, ILogger logger)
+    public PlaybackViewModel(IPlayback playback)
     {
-        _services = services;
-        _logger = logger;
-        services.Audio.LengthMeasured += _ => Dispatcher.UIThread.Post(RecompileAll);
-        services.Session.Applied += RecompileAll;   // patch changes can make fixture channels valid or invalid
-        // Edits to other loaded timelines (a running one changed from another device, or one an event runs): theirs
-        // too. The focused one is recompiled by the editor, after it has caught up with the change.
-        services.Session.Document.Changed += change =>
+        Show = playback;
+        Show.Compiled += id =>
         {
-            // A deleted timeline stops (with its copies) and is forgotten.
-            foreach (var op in change.Ops)
-                if (op is RemoveOp { Path: var path } && path.StartsWith("timelines/", StringComparison.Ordinal) && Guid.TryParse(path["timelines/".Length..], out var removed))
-                    Manager.Unload(removed);
-            foreach (var timeline in _services.Session.Project.Timelines.Where(t => t != _timeline && change.Timelines.Contains(t.Id) && Manager.IsLoaded(t.Id)))
-                Load(timeline);
+            if (id == _timeline?.Id) ShowIssues();
         };
-        Manager.CueNotLoaded += cue => _logger.LogWarning("An event track runs a timeline that isn't loaded ({Timeline}); it was skipped.", cue.Timeline);
     }
 
-    PlaybackManager Manager => _services.Playback;
+    /// <summary>Playback: the real thing on the show computer, or the show computer's, over the network.</summary>
+    public IPlayback Show { get; }
 
     /// <summary>The focused timeline: the one the transport controls.</summary>
     public ShowTimeline? Timeline => _timeline;
+
+    volatile object? _focusedId;   // boxed Guid, for other threads (the web remote's status)
+
+    /// <summary>The focused timeline's ID; safe to read from any thread.</summary>
+    public Guid? FocusedId => _focusedId is Guid id ? id : null;
 
     /// <summary>Problems in the focused timeline (missing fixtures or files, ...); those parts are skipped.</summary>
     public ObservableCollection<TimelineIssue> Issues { get; } = new();
@@ -109,59 +99,27 @@ public sealed partial class PlaybackViewModel : ObservableObject
     {
         if (timeline == _timeline) return;
         _timeline = timeline;
-        foreach (var file in AudioFiles(timeline)) _services.Audio.GetLength(file);   // start measuring now, in the background
+        _focusedId = timeline?.Id;
         Recompile();
     }
 
-    /// <summary>Recompiles the focused timeline and swaps it into its player. Cheap enough to do on every edit.</summary>
+    /// <summary>Compiles the focused timeline again and swaps it into its player.</summary>
     public void Recompile()
     {
-        var compiled = Load(_timeline);
-        Issues.Clear();
-        foreach (var issue in compiled.Issues) Issues.Add(issue);
-        Compiled?.Invoke();
+        if (_timeline is not null) Show.Load(_timeline.Id);
+        else ShowIssues();
         Tick();
     }
 
-    /// <summary>After a patch change or a newly measured sound: every loaded timeline (so running ones stay right too).</summary>
-    void RecompileAll()
+    void ShowIssues()
     {
-        foreach (var timeline in _services.Session.Project.Timelines.Where(t => t != _timeline && Manager.IsLoaded(t.Id))) Load(timeline);
-        Recompile();
+        Issues.Clear();
+        foreach (var issue in _timeline is null ? [] : Show.IssuesOf(_timeline.Id)) Issues.Add(issue);
+        Compiled?.Invoke();
     }
 
-    CompiledTimeline Load(ShowTimeline? timeline)
-    {
-        if (timeline is null) return CompiledTimeline.Empty;
-        var compiled = _services.Session.CompileTimeline(timeline, _services.Audio.GetLength);
-        Manager.Load(timeline.Id, timeline.Name, compiled);
-        LoadTargets(compiled, [timeline.Id]);
-        return compiled;
-    }
-
-    /// <summary>
-    /// The timelines a timeline's event tracks run or stop, and theirs in turn, loaded now if they aren't: the
-    /// playback thread starts them when the events come, and never compiles anything itself.
-    /// </summary>
-    void LoadTargets(CompiledTimeline compiled, HashSet<Guid> seen)
-    {
-        foreach (var id in compiled.CueTargets)
-        {
-            if (!seen.Add(id) || Manager.IsLoaded(id) || _services.Session.Project.Timelines.FirstOrDefault(t => t.Id == id) is not { } target) continue;
-            foreach (var file in AudioFiles(target)) _services.Audio.GetLength(file);
-            var loaded = _services.Session.CompileTimeline(target, _services.Audio.GetLength);
-            Manager.Load(target.Id, target.Name, loaded);
-            LoadTargets(loaded, seen);
-        }
-    }
-
-    /// <summary>Loads a timeline for playback if it isn't yet (compiling it now), so it can play without being open in the editor.</summary>
-    public void EnsureLoaded(ShowTimeline timeline)
-    {
-        if (Manager.IsLoaded(timeline.Id)) return;
-        foreach (var file in AudioFiles(timeline)) _services.Audio.GetLength(file);
-        Load(timeline);
-    }
+    /// <summary>Loads a timeline for playback if it isn't yet, so it can play without being open in the editor.</summary>
+    public void EnsureLoaded(ShowTimeline timeline) => Show.EnsureLoaded(timeline.Id);
 
     /// <summary>
     /// Runs a timeline from its start (a show button): as a new copy if it's already running, as VenueMagic does,
@@ -169,9 +127,7 @@ public sealed partial class PlaybackViewModel : ObservableObject
     /// </summary>
     public bool Launch(ShowTimeline timeline, bool playOnceOnly = false)
     {
-        EnsureLoaded(timeline);
-        if (playOnceOnly && Manager.IsRunning(timeline.Id)) return false;
-        bool started = Manager.Launch(timeline.Id) is not null;
+        bool started = Show.Launch(timeline.Id, playOnceOnly);
         Tick();
         return started;
     }
@@ -179,28 +135,25 @@ public sealed partial class PlaybackViewModel : ObservableObject
     /// <summary>Stops a timeline and every copy of it playing.</summary>
     public void StopTimeline(ShowTimeline timeline)
     {
-        Manager.StopTimeline(timeline.Id);
+        Show.StopTimeline(timeline.Id);
         Tick();
     }
 
-    public bool IsRunning(Guid timelineId) => Manager.IsRunning(timelineId);
-
-    /// <summary>A timeline deleted from the show stops and is forgotten.</summary>
-    public void Unload(ShowTimeline timeline) => Manager.Unload(timeline.Id);
+    public bool IsRunning(Guid timelineId) => Show.IsRunning(timelineId);
 
     /// <summary>A new or opened show: everything stops at once (no release fades) and is forgotten.</summary>
     public void Reset()
     {
-        Manager.UnloadAll();
+        Show.Reset();
         _timeline = null;
+        _focusedId = null;
     }
 
     [RelayCommand]
     void PlayPause()
     {
         if (_timeline is null) return;
-        if (IsPlaying) Manager.Pause(_timeline.Id);
-        else Manager.Play(_timeline.Id);
+        Show.PlayOrPause(_timeline.Id);
         Tick();
     }
 
@@ -215,7 +168,7 @@ public sealed partial class PlaybackViewModel : ObservableObject
     void Restart()
     {
         if (_timeline is null) return;
-        Manager.Restart(_timeline.Id);
+        Show.Restart(_timeline.Id);
         Tick();
     }
 
@@ -227,13 +180,14 @@ public sealed partial class PlaybackViewModel : ObservableObject
     [RelayCommand]
     void StopAll()
     {
-        Manager.StopAll();
+        Show.StopAll();
         Tick();
     }
 
-    public void StopTimeline(Guid id)
+    /// <summary>Stops one player (a row of the Playing list: a timeline, or a copy of one).</summary>
+    public void StopTimeline(Guid playerId)
     {
-        Manager.Stop(id);
+        Show.StopPlayer(playerId);
         Tick();
     }
 
@@ -242,7 +196,7 @@ public sealed partial class PlaybackViewModel : ObservableObject
     public void Seek(TimeSpan position)
     {
         if (_timeline is null) return;
-        Manager.Seek(_timeline.Id, position);
+        Show.Seek(_timeline.Id, position);
         Tick();
     }
 
@@ -252,21 +206,15 @@ public sealed partial class PlaybackViewModel : ObservableObject
     /// </summary>
     public void Cue(TimeSpan position)
     {
-        if (_timeline is null || IsPlaying) return;
-        Manager.Seek(_timeline.Id, position);
-        if (Manager.StatusOf(_timeline.Id).State == TransportState.Stopped)
-        {
-            Manager.Play(_timeline.Id);
-            Manager.Pause(_timeline.Id);
-            Manager.Seek(_timeline.Id, position);
-        }
+        if (_timeline is null) return;
+        Show.Cue(_timeline.Id, position);
         Tick();
     }
 
     /// <summary>Called by the UI's refresh timer (30 Hz): reads the players' status for display. Never drives playback.</summary>
     public void Tick()
     {
-        var status = _timeline is null ? default : Manager.StatusOf(_timeline.Id);
+        var status = _timeline is null ? default : Show.StatusOf(_timeline.Id);
         State = status.State;
         Position = status.Position;
         Length = status.Length;
@@ -282,7 +230,7 @@ public sealed partial class PlaybackViewModel : ObservableObject
 
     void RefreshRunning()
     {
-        var running = Manager.Running;
+        var running = Show.Running;
         if (!running.Select(r => r.Id).SequenceEqual(Running.Select(r => r.Id)))
         {
             Running.Clear();
@@ -298,16 +246,11 @@ public sealed partial class PlaybackViewModel : ObservableObject
         }
     }
 
-    /// <summary>A file's measured length, if known yet (measuring starts in the background on first ask).</summary>
-    public TimeSpan? AudioLength(string path) => _services.Audio.GetLength(path);
+    /// <summary>A sound file's length (named as the show names it), if known yet; asking starts measuring it.</summary>
+    public TimeSpan? AudioLength(string file) => Show.AudioLength(file);
 
-    /// <summary>A file's waveform for drawing; null until it has been measured (which recompiles, so the timeline redraws).</summary>
-    public Waveform? AudioWaveform(string path) => _services.Audio.GetWaveform(path);
-
-    IEnumerable<string> AudioFiles(ShowTimeline? timeline) =>
-        (timeline?.Tracks ?? []).SelectMany(t => t.Events).OfType<AudioEvent>()
-            .Where(e => !string.IsNullOrWhiteSpace(e.File))
-            .Select(e => AudioPaths.Resolve(e.File, _services.Session.ShowFolder));
+    /// <summary>A sound file's waveform for drawing; null until it has been measured (then the timeline redraws).</summary>
+    public Waveform? AudioWaveform(string file) => Show.AudioWaveform(file);
 
     public static string Format(TimeSpan time) =>
         time.TotalHours >= 1 ? time.ToString(@"h\:mm\:ss\.f") : time.ToString(@"mm\:ss\.f");

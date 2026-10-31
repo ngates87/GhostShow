@@ -1,0 +1,56 @@
+<Project Sdk="Microsoft.NET.Sdk.WebAssembly">
+  <!--
+    EXPERIMENT (see docs/plan-remote.md): GhostShow's own Avalonia screens, compiled to WebAssembly and run in a
+    browser (an iPad's), talking to the show computer over the web remote's connection. Not in GhostShow.slnx: it
+    needs the .NET WebAssembly build tools ("wasm-tools" workload), which the system SDK doesn't have. Build with
+    an SDK that has them, e.g. ~/.dotnet/dotnet publish GhostShow.Browser -c Release.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-browser</TargetFramework>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <OverrideHtmlAssetPlaceholders>true</OverrideHtmlAssetPlaceholders>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <!-- The desktop app's name, so its avares:// resource paths resolve here too. -->
+    <AssemblyName>ghostshow-app</AssemblyName>
+    <RootNamespace>GhostShow.Browser</RootNamespace>
+    <!-- No ICU: GhostShow compares names ordinally, so culture data would be 2 MB for nothing. -->
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- Core reads and writes JSON by reflection (the show, edit operations): browser builds switch that off by default. -->
+    <JsonSerializerIsReflectionEnabledByDefault>true</JsonSerializerIsReflectionEnabledByDefault>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Core reads the show model by reflection (edits, JSON): keep all of it when trimming. -->
+    <TrimmerRootAssembly Include="GhostShow.Core" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Avalonia.Browser" Version="12.1.4" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.4" />
+    <PackageReference Include="Avalonia.Controls.ColorPicker" Version="12.1.4" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="12.1.4" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\GhostShow.Core\GhostShow.Core.csproj" />
+  </ItemGroup>
+
+  <!-- The desktop app's screens, shared as source. What needs DMX, audio or the web server stays out (Remote/ stands in). -->
+  <PropertyGroup>
+    <AppDir>..\GhostShow.App\</AppDir>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="$(AppDir)ViewModels\*.cs" LinkBase="App\ViewModels"
+             Exclude="$(AppDir)ViewModels\AudioViewModel.cs;$(AppDir)ViewModels\DiagnosticsViewModel.cs;$(AppDir)ViewModels\MainViewModel.cs;$(AppDir)ViewModels\MonitorViewModel.cs;$(AppDir)ViewModels\OutputsViewModel.cs;$(AppDir)ViewModels\PerformanceMeterViewModel.cs;$(AppDir)ViewModels\RemoteViewModel.cs;$(AppDir)ViewModels\UniverseRowViewModel.cs;$(AppDir)ViewModels\SetupGuideViewModel.cs;$(AppDir)ViewModels\ProfileLibraryViewModel.cs;$(AppDir)ViewModels\FixtureSetupViewModel.cs" />
+    <Compile Include="$(AppDir)Controls\*.cs" LinkBase="App\Controls" Exclude="$(AppDir)Controls\QrCodeView.cs;$(AppDir)Controls\LoadMeter.cs" />
+    <Compile Include="$(AppDir)Views\TimelineView.axaml.cs;$(AppDir)Views\EnvelopeEditorWindow.axaml.cs" LinkBase="App\Views" />
+    <AvaloniaXaml Include="$(AppDir)Views\TimelineView.axaml;$(AppDir)Views\EnvelopeEditorWindow.axaml" LinkBase="App\Views" />
+    <!-- At the root, as in the app: avares://ghostshow-app/Icons.axaml and …/Styles.axaml. -->
+    <AvaloniaXaml Include="$(AppDir)Icons.axaml" Link="Icons.axaml" />
+    <AvaloniaXaml Include="$(AppDir)Styles.axaml" Link="Styles.axaml" />
+    <AvaloniaResource Include="$(AppDir)Assets\**" LinkBase="Assets" />
+  </ItemGroup>
+  <ItemGroup>
+    <StaticWebAssetFingerprintPattern Include="JS" Pattern="*.js" Expression="#[.{fingerprint}]!" />
+  </ItemGroup>
+</Project>

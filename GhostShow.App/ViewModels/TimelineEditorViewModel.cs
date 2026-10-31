@@ -512,9 +512,9 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
             SelectedTimeline = Tabs.Count == 0 ? null : Tabs[Math.Clamp(index, 0, Tabs.Count - 1)].Timeline;
     }
 
+    /// <summary>A timeline left the show (deleted, here or elsewhere): its tab closes. (Playback unloads it: see ShowPlayback.)</summary>
     void OnTimelineRemoved(ShowTimeline timeline)
     {
-        _playback.Unload(timeline);
         if (Tabs.FirstOrDefault(t => t.Timeline == timeline) is { } tab) CloseTab(tab);
     }
 
@@ -944,7 +944,7 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
         Revision++;
         TrackProperties?.Refresh();
         EnvelopeEditor?.Refresh();
-        _playback.Recompile();
+        // (Playback compiles the changed timeline itself: see ShowPlayback.)
     }
 
     void SelectionChanged()
@@ -995,11 +995,11 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
 
     public TimeSpan? AudioFileLength(AudioEvent audio) => string.IsNullOrWhiteSpace(audio.File)
         ? null
-        : _playback.AudioLength(AudioPaths.Resolve(audio.File, _session.ShowFolder));
+        : _playback.AudioLength(audio.File);
 
     public Waveform? WaveformOf(AudioEvent audio) => string.IsNullOrWhiteSpace(audio.File)
         ? null
-        : _playback.AudioWaveform(AudioPaths.Resolve(audio.File, _session.ShowFolder));
+        : _playback.AudioWaveform(audio.File);
 
     public string? FixtureName(Guid id) => _session.Project.Fixtures.FirstOrDefault(f => f.Id == id)?.Name;
 

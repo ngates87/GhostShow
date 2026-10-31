@@ -1,0 +1,42 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <ClientDir>$(MSBuildProjectDirectory)/client</ClientDir>
+    <ClientOut>$(MSBuildProjectDirectory)/wwwroot</ClientOut>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\GhostShow.Core\GhostShow.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="GhostShow.Tests" />
+  </ItemGroup>
+
+  <!--
+    The web app (client/: Svelte and TypeScript) is built with Node into wwwroot/, and wwwroot/ is embedded, so the
+    show computer needs neither Node nor the internet. Node is only needed to build it; without Node the build goes on
+    and the server serves a page saying the web app wasn't built. SkipClientBuild=true skips it.
+  -->
+  <ItemGroup>
+    <ClientSource Include="client/src/**/*;client/index.html;client/package.json;client/package-lock.json;client/vite.config.ts;client/tsconfig.json" />
+  </ItemGroup>
+  <Target Name="BuildClient" BeforeTargets="BeforeBuild" Inputs="@(ClientSource)" Outputs="$(ClientOut)/index.html" Condition="'$(SkipClientBuild)' != 'true'">
+    <Exec Command="node --version" IgnoreExitCode="true" StandardOutputImportance="low" StandardErrorImportance="low">
+      <Output TaskParameter="ExitCode" PropertyName="NodeExitCode" />
+    </Exec>
+    <Message Importance="high" Condition="'$(NodeExitCode)' != '0'" Text="GhostShow.Web: Node.js wasn't found, so the web remote's page isn't built (the server serves a page saying so)." />
+    <Exec Command="npm ci --no-audit --no-fund" WorkingDirectory="$(ClientDir)" Condition="'$(NodeExitCode)' == '0' And !Exists('$(ClientDir)/node_modules')" />
+    <Exec Command="npm run build" WorkingDirectory="$(ClientDir)" Condition="'$(NodeExitCode)' == '0'" />
+  </Target>
+  <!-- Added in a target, after the build above, so files it has just written are included. -->
+  <Target Name="EmbedClient" AfterTargets="BuildClient" BeforeTargets="BeforeBuild">
+    <ItemGroup>
+      <ClientFile Include="wwwroot/**/*" />
+      <EmbeddedResource Include="@(ClientFile)" LogicalName="wwwroot/%(ClientFile.RecursiveDir)%(ClientFile.Filename)%(ClientFile.Extension)" />
+    </ItemGroup>
+  </Target>
+</Project>

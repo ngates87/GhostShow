@@ -222,6 +222,41 @@ public sealed class ShowDocument
     // ---- JSON, for clients elsewhere ----
 
     /// <summary>
+    /// The whole show as JSON, for a client that's just connected: <c>{ version, show }</c>, where <c>show</c> is
+    /// shaped as the paths of edit operations address it (the project's fields, plus its timelines, each with its
+    /// folder, and the tree's folders), so applying later changes' operations to it keeps it the same as the show.
+    /// </summary>
+    public JsonObject Snapshot()
+    {
+        var show = JsonSerializer.SerializeToNode(Project, Storage.Json.Options)!.AsObject();
+        var timelines = new JsonArray();
+        foreach (var timeline in Project.Timelines)
+        {
+            var node = JsonSerializer.SerializeToNode(timeline, Storage.Json.Options)!.AsObject();
+            node["folder"] = timeline.Folder;
+            timelines.Add(node);
+        }
+        show["timelines"] = timelines;
+        show["timelineFolders"] = new JsonArray([.. Project.TimelineFolders.Select(f => JsonValue.Create(f))]);
+        return new JsonObject { ["version"] = Version, ["show"] = show };
+    }
+
+    /// <summary>A show from a snapshot's <c>show</c> (a client's copy, in tests).</summary>
+    public static Project FromSnapshot(JsonNode show)
+    {
+        var project = show.Deserialize<Project>(Storage.Json.Options) ?? throw new EditException("Can't read the show.");
+        project.Timelines = [];
+        foreach (var node in (show["timelines"]?.AsArray() ?? []).OfType<JsonNode>())
+        {
+            var timeline = node.Deserialize<ShowTimeline>(Storage.Json.Options) ?? throw new EditException("Can't read a timeline of the show.");
+            timeline.Folder = node["folder"]?.GetValue<string>() ?? "";
+            project.Timelines.Add(timeline);
+        }
+        project.TimelineFolders = new SortedSet<string>(show["timelineFolders"]?.AsArray().Select(f => f!.GetValue<string>()) ?? []);
+        return project;
+    }
+
+    /// <summary>
     /// An operation as JSON, its value written as the type it was set as (so an event keeps its "type"). Encode a
     /// change's operations when it's raised: the paths are read against the show as it is then.
     /// </summary>

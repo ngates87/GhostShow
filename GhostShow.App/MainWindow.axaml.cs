@@ -33,6 +33,22 @@ public partial class MainWindow : Window
 
     async void OnAbout(object? sender, RoutedEventArgs e) => await new AboutDialog().ShowDialog(this);
 
+    Views.RemoteWindow? _remote;
+
+    /// <summary>View → Remote Access… (or the menu bar's indicator): one window, brought to the front if it's open.</summary>
+    void OnRemote(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel viewModel) return;
+        if (_remote is { } open)
+        {
+            open.Activate();
+            return;
+        }
+        _remote = new Views.RemoteWindow { DataContext = viewModel.Remote };
+        _remote.Closed += (_, _) => _remote = null;
+        _remote.Show(this);
+    }
+
     /// <summary>
     /// Closing first offers to save unsaved changes (Cancel keeps the window open), then is held until every output
     /// has sent its blackout and released its device, so fixtures don't keep the last look (or a fog machine keep

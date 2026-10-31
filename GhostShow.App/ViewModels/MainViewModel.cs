@@ -14,14 +14,6 @@ using Microsoft.Extensions.Logging;
 
 namespace GhostShow.App.ViewModels;
 
-/// <summary>Top-level tabs while a show is open, in the order MainWindow lists them.</summary>
-public enum Section { Timeline, Lighting, Audio, Diagnostics }
-
-/// <summary>
-/// Every screen. Home is shown when no show is open. Lighting's screens (DMX setup to Monitor) are in their tab order.
-/// </summary>
-public enum Page { Home, Timeline, DmxSetup, Fixtures, Control, Channels, Monitor, Audio, Diagnostics }
-
 /// <summary>
 /// The main window: file commands, navigation, the console page, and the UI refresh tick that keeps every screen
 /// up to date. The tick runs at 30 Hz on the UI thread, independent of DMX output timing; screens only read the
@@ -67,12 +59,17 @@ public sealed partial class MainViewModel : ObservableObject
         Control = new FixtureControlViewModel(session, ReportError);
         Channels = new ChannelsViewModel(session.Engine, ReportError);
         Monitor = new MonitorViewModel(session.Engine, outputs.Find);
-        Playback = new PlaybackViewModel(services, logger);
+        ShowPlayback = new ShowPlayback(session, services.Playback, services.Audio, logger);
+        // A sound's length was measured (on a worker thread): timelines using it are compiled again, on this thread.
+        services.Audio.LengthMeasured += path => Dispatcher.UIThread.Post(() => ShowPlayback.OnAudioMeasured(path));
+        Playback = new PlaybackViewModel(ShowPlayback);
         Diagnostics = new DiagnosticsViewModel(services, Playback);
         Performance = new PerformanceMeterViewModel(() => services.PlaybackLoop.Timing, () => services.Probe.Snapshot(last: 20).P95Ms);
         AudioDevices = new AudioDeviceList(services.Audio);
         Timeline = new TimelineEditorViewModel(session, Playback, PickAudioFileAsync, MarkDirty, AudioDevices);
         Buttons = new ButtonsViewModel(session, Playback, Blackout, MarkDirty);
+        Remote = new RemoteViewModel(new AppRemoteHost(session, ShowPlayback, Playback, new AppShowControl(this), () => WarningsSnapshot, AudioDevices),
+                                     settings.Remote, SaveSettingsAsync, logger);
         Audio = new AudioViewModel(services.Audio, AudioDevices, session, settings, SaveSettingsAsync);
         _ = AudioDevices.RefreshAsync();
         Guide = new SetupGuideViewModel(session, settings, page => CurrentPage = page, () =>
@@ -96,9 +93,13 @@ public sealed partial class MainViewModel : ObservableObject
     /// <summary>Before the window closes: offers to save unsaved changes. False means the user cancelled closing.</summary>
     public Task<bool> ConfirmCloseAsync() => _unsavedChanges.ConfirmAsync("closing");
 
+    /// <summary>Playback on this computer (the show computer): what the screens and the web remote ask to play.</summary>
+    public ShowPlayback ShowPlayback { get; }
+
     public PlaybackViewModel Playback { get; }
     public TimelineEditorViewModel Timeline { get; }
     public ButtonsViewModel Buttons { get; }
+    public RemoteViewModel Remote { get; }
     public AudioViewModel Audio { get; }
     public AudioDeviceList AudioDevices { get; }
     public SetupGuideViewModel Guide { get; }
@@ -184,6 +185,11 @@ public sealed partial class MainViewModel : ObservableObject
     public partial string? StatusMessage { get; set; }
 
     public ObservableCollection<string> Warnings { get; } = new();
+
+    volatile string[] _warningsSnapshot = [];
+
+    /// <summary>The warnings, for other threads (the web remote's status).</summary>
+    internal IReadOnlyList<string> WarningsSnapshot => _warningsSnapshot;
 
     // ---- Home screen ----
 
@@ -278,6 +284,7 @@ public sealed partial class MainViewModel : ObservableObject
         await Outputs.ApplyOutputsAsync();
         _tick.Start();
         if (RecentShows.FirstOrDefault() is { Exists: true } last) await OpenPathAsync(last.Path);
+        await Remote.StartIfEnabledAsync();
         await Library.LoadAsync();
     }
 
@@ -285,6 +292,7 @@ public sealed partial class MainViewModel : ObservableObject
     public async Task ShutdownAsync()
     {
         _tick.Stop();
+        await Remote.DisposeAsync();   // devices are told it's going
         // Order matters: stop the show (audio stops, timeline releases the lights), stop the playback thread, close
         // audio, then stop DMX outputs, which send their blackout last.
         _services.Playback.StopAllNow();
@@ -502,6 +510,7 @@ public sealed partial class MainViewModel : ObservableObject
         Playback.Reset();    // the old show's timelines stop at once
         Timeline.Reload();   // focuses the new show's first timeline
         Buttons.Reload();
+        Remote.ShowReplaced();
         Guide.Reset();
         await Outputs.ApplyOutputsAsync();
         OnPropertyChanged(nameof(Title));
@@ -577,6 +586,7 @@ public sealed partial class MainViewModel : ObservableObject
             warnings.Add($"Audio output '{output}' isn't connected: its tracks play on the default output. See Audio.");
 
         if (warnings.SequenceEqual(Warnings)) return;
+        _warningsSnapshot = [.. warnings];
         Warnings.Clear();
         foreach (var warning in warnings) Warnings.Add(warning);
     }

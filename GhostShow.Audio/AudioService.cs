@@ -52,7 +52,7 @@ public sealed record RoutedOutputStatus(string Name, bool Open, int Playing);
 /// Threading: the playback thread calls the IAudioOutput methods, the UI calls device and volume methods; a lock
 /// guards the device and instances. SoundFlow mixes on its own audio thread.
 /// </summary>
-public sealed class AudioService : IAudioOutput, IDisposable
+public sealed class AudioService : IAudioOutput, IAudioFiles, IDisposable
 {
     static readonly TimeSpan RecoveryInterval = TimeSpan.FromSeconds(3);
 

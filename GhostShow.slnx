@@ -7,4 +7,5 @@
   <Project Path="GhostShow.Core/GhostShow.Core.csproj" />
   <Project Path="GhostShow.Dmx/GhostShow.Dmx.csproj" />
   <Project Path="GhostShow.Tests/GhostShow.Tests.csproj" />
+  <Project Path="GhostShow.Web/GhostShow.Web.csproj" />
 </Solution>

@@ -16,6 +16,9 @@ public sealed class Waveform
 
     public int Count => _peaks.Length;
 
+    /// <summary>A copy of its bytes (one per bucket), e.g. to send it to a laptop; <c>new Waveform(bytes)</c> makes it again.</summary>
+    public byte[] ToArray() => [.. _peaks];
+
     public TimeSpan Length => TimeSpan.FromSeconds((double)_peaks.Length / BucketsPerSecond);
 
     /// <summary>The loudest point (0-1) between two times in the file; 0 outside it.</summary>

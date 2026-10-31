@@ -25,6 +25,9 @@ public sealed class MachineSettings
     /// <summary>Audio output device and master volume for this computer.</summary>
     public AudioSettings Audio { get; set; } = new();
 
+    /// <summary>The web remote: whether devices on the network may connect, and the paired devices.</summary>
+    public RemoteSettings Remote { get; set; } = new();
+
     /// <summary>Shows opened or saved on this computer, most recent first (show folders, or older single-file shows).</summary>
     public List<string> RecentShows { get; set; } = [];
 

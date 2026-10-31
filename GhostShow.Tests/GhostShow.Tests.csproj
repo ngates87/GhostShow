@@ -20,5 +20,6 @@
     <ProjectReference Include="..\GhostShow.Audio\GhostShow.Audio.csproj" />
     <ProjectReference Include="..\GhostShow.Core\GhostShow.Core.csproj" />
     <ProjectReference Include="..\GhostShow.Dmx\GhostShow.Dmx.csproj" />
+    <ProjectReference Include="..\GhostShow.Web\GhostShow.Web.csproj" />
   </ItemGroup>
 </Project>

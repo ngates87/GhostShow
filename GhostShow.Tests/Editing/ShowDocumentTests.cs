@@ -228,6 +228,30 @@ public class ShowDocumentTests
         Assert.Equal(0.25, ((LightingClip)replica.Timelines[0].Tracks[0].Events[^1]).Effect!.Strength);
     }
 
+    [Fact]
+    public void A_copy_made_from_a_snapshot_stays_the_same_through_later_changes()
+    {
+        _main.Folder = "Rooms";
+        _project.AddFolder("Rooms/Lobby");
+        _doc.Apply(new Transaction("Move clip", new SetOp(Clip.Then("start"), S(3))));
+
+        var snapshot = JsonNode.Parse(_doc.Snapshot().ToJsonString())!;
+        Assert.Equal(1, snapshot["version"]!.GetValue<long>());
+        var copy = ShowDocument.FromSnapshot(snapshot["show"]!);
+        var remote = new ShowDocument(copy);
+        _doc.Changed += change => remote.Apply(new Transaction(change.Description,
+            change.Ops.Select(op => ShowDocument.Decode(JsonNode.Parse(_doc.Encode(op).ToJsonString())!)).ToList()));
+
+        _doc.Apply(new Transaction("Move timeline", new SetOp(ShowPath.Timeline(_main.Id).Then("folder"), "Rooms/Lobby")));
+        _doc.Apply(new Transaction("New folder", new SetOp("timelineFolders", new SortedSet<string>(["Rooms", "Rooms/Lobby", "Zone 2"]))));
+        _doc.Undo(_main.Id);
+
+        Assert.Equal(Json(_project), Json(copy));
+        Assert.Equal("Rooms/Lobby", copy.Timelines[0].Folder);
+        Assert.Equal(["Rooms", "Rooms/Lobby", "Zone 2"], copy.TimelineFolders);
+        Assert.Contains("zone 2", copy.TimelineFolders);   // the tree's rule (case doesn't matter) holds in the copy too
+    }
+
     static readonly JsonSerializerOptions Options = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
 
     static string Json(Project project) => JsonSerializer.Serialize(new { project.Buttons, project.Timelines }, Options);

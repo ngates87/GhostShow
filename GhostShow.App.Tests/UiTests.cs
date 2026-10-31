@@ -294,6 +294,99 @@ public class UiTests
     });
 
     [Fact]
+    public Task Remote_access_switches_on_lists_a_device_that_pairs_and_removes_it() => Ui.Run(() =>
+    {
+        using var rig = new WindowRig();
+        var remote = rig.ViewModel.Remote;
+        static void Await(Task task)
+        {
+            var until = DateTime.UtcNow.AddSeconds(10);
+            while (!task.IsCompleted && DateTime.UtcNow < until) WindowRig.Pump(20);
+            task.GetAwaiter().GetResult();
+        }
+        remote.Port = 20000 + Random.Shared.Next(20000);
+        Await(remote.SetEnabledAsync(true));
+        Assert.True(remote.IsOn);
+        Assert.Equal("Remote on", remote.ConnectedLabel);
+
+        using var http = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{remote.Server.Port}/") };
+        var pairing = http.PostAsync("api/pair", new StringContent($$"""{"pin":"{{remote.Pin}}","name":"Stage iPad","role":"operator"}""", System.Text.Encoding.UTF8, "application/json"));
+        Await(pairing);
+        Assert.True(pairing.Result.IsSuccessStatusCode);
+        WindowRig.Pump(200);
+
+        var row = Assert.Single(remote.Devices);
+        Assert.Equal(("Stage iPad", 1), (row.Name, row.RoleIndex));
+        row.RemoveCommand.Execute(null);
+        WindowRig.Pump(200);
+        Assert.Empty(remote.Devices);
+
+        Await(remote.SetEnabledAsync(false));
+        Assert.False(remote.IsOn);
+    });
+
+    [Fact]
+    public Task A_device_s_commands_work_the_desktop_s_own_controls() => Ui.Run(() =>
+    {
+        using var rig = new WindowRig();
+        static T Await<T>(Task<T> task)
+        {
+            var until = DateTime.UtcNow.AddSeconds(10);
+            while (!task.IsCompleted && DateTime.UtcNow < until) WindowRig.Pump(10);
+            return task.IsCompleted ? task.GetAwaiter().GetResult() : throw new TimeoutException("No answer from the web remote in 10 s.");
+        }
+        var main = rig.Editor.SelectedTimeline!;
+        var room = new ShowTimeline { Name = "Room", Length = TimeSpan.FromSeconds(30) };
+        rig.Session.Project.Timelines.Add(room);
+        rig.Editor.Tree.Rebuild();
+        rig.Session.Project.Buttons.Add(new Core.Model.ShowButton { Name = "Scare", Actions = [new Core.Model.RunTimelineAction { TimelineId = room.Id }] });
+        rig.ViewModel.Buttons.Reload();
+        var remote = rig.ViewModel.Remote;
+        remote.Port = 20000 + Random.Shared.Next(20000);
+        Await(remote.SetEnabledAsync(true).ContinueWith(_ => true));
+
+        using var http = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{remote.Server.Port}/") };
+        var paired = Await(http.PostAsync("api/pair", new StringContent($$"""{"pin":"{{remote.Pin}}","name":"iPad"}""", System.Text.Encoding.UTF8, "application/json")));
+        var token = System.Text.Json.Nodes.JsonNode.Parse(Await(paired.Content.ReadAsStringAsync()))!["token"]!.GetValue<string>();
+        using var socket = new System.Net.WebSockets.ClientWebSocket();
+        Await(socket.ConnectAsync(new Uri($"ws://127.0.0.1:{remote.Server.Port}/api/live?token={token}"), CancellationToken.None).ContinueWith(_ => true));
+        var buffer = new byte[1 << 20];
+        int id = 0;
+        string Command(string action, string? name = null, Guid? value = null)
+        {
+            var json = new System.Text.Json.Nodes.JsonObject { ["type"] = "command", ["id"] = ++id, ["action"] = action };
+            if (name is not null) json[name] = value.ToString();
+            var text = System.Text.Encoding.UTF8.GetBytes(json.ToJsonString());
+            Await(socket.SendAsync(text, System.Net.WebSockets.WebSocketMessageType.Text, true, CancellationToken.None).ContinueWith(_ => true));
+            while (true)
+            {
+                var received = Await(socket.ReceiveAsync(buffer, CancellationToken.None));
+                var message = System.Text.Json.Nodes.JsonNode.Parse(buffer.AsSpan(0, received.Count))!;
+                if (message["type"]!.GetValue<string>() == "result" && message["id"]!.GetValue<int>() == id)
+                    return message["ok"]!.GetValue<bool>() ? "ok" : message["error"]!.GetValue<string>();
+            }
+        }
+
+        Assert.Equal("ok", Command("run", "timeline", room.Id));
+        Assert.True(rig.Manager.IsRunning(room.Id));
+        Assert.Equal("ok", Command("stopTimeline", "timeline", room.Id));
+        WindowRig.Pump(200);
+        Assert.False(rig.Manager.IsRunning(room.Id));
+        Assert.Equal("ok", Command("press", "button", rig.Session.Project.Buttons[0].Id));
+        Assert.True(rig.Manager.IsRunning(room.Id));
+        Assert.Equal("ok", Command("play"));
+        Assert.True(rig.ViewModel.Playback.IsPlaying);
+        Assert.Equal("ok", Command("blackout"));
+        Assert.Empty(rig.Manager.Running);
+        Assert.Equal("ok", Command("open", "timeline", room.Id));
+        Assert.Same(room, rig.Editor.SelectedTimeline);
+        Assert.NotSame(main, rig.ViewModel.Playback.Timeline);
+        Assert.Equal("That timeline isn't in the show any more.", Command("run", "timeline", Guid.NewGuid()));
+
+        Await(remote.SetEnabledAsync(false).ContinueWith(_ => true));
+    });
+
+    [Fact]
     public Task Dragging_the_open_timeline_onto_its_own_lanes_is_refused() => Ui.Run(() =>
     {
         using var rig = new WindowRig();

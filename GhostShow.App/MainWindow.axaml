@@ -28,6 +28,11 @@
          open). The transport and time are under the timeline. -->
     <DockPanel DockPanel.Dock="Top">
       <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8" Margin="8,2" VerticalAlignment="Center">
+        <!-- Remote access is on: how many devices are connected (opens Remote Access). -->
+        <Button Padding="10,3" IsVisible="{Binding Remote.IsOn}" Click="OnRemote"
+                ToolTip.Tip="Devices on this network can connect (View → Remote Access…)">
+          <TextBlock Text="{Binding Remote.ConnectedLabel}" />
+        </Button>
         <!-- Problems worth knowing about (patch errors, failing outputs); only there when there are some. -->
         <Button Padding="10,3" Background="#5A3A00" IsVisible="{Binding !!Warnings.Count}"
                 ToolTip.Tip="Things that need attention">
@@ -96,6 +101,7 @@
         </MenuItem>
         <MenuItem Header="_Audio" InputGesture="Ctrl+3" Command="{Binding GoToCommand}" CommandParameter="{x:Static vm:Page.Audio}" />
         <MenuItem Header="D_iagnostics" InputGesture="Ctrl+4" Command="{Binding GoToCommand}" CommandParameter="{x:Static vm:Page.Diagnostics}" />
+        <MenuItem Header="_Remote Access…" Click="OnRemote" />
         <Separator />
         <MenuItem Header="Zoom _In" Command="{Binding Timeline.ZoomInCommand}" />
         <MenuItem Header="Zoom _Out" Command="{Binding Timeline.ZoomOutCommand}" />
