@@ -9,6 +9,7 @@ public partial class FixtureSetupView : UserControl
     public FixtureSetupView()
     {
         InitializeComponent();
+        UndoKeys.Listen(this, () => (DataContext as FixtureSetupViewModel)?.History);
 
         // The maps raise plain events (they're drawing controls, not lists); pass them to the view model.
         HeatMap.FixtureClicked += id => Map?.Select(id);

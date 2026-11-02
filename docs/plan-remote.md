@@ -202,8 +202,8 @@ with a device connected.
   Timeline page.
 - **An exception during layout blanks every page until a reload,** with nothing on screen to say why. That's how the
   blank pages looked: an empty dropdown's template threw a null reference.
-- **The desktop's Fixtures and DMX setup screens don't use `ShowDocument`.** They change the show directly, so they
-  have no undo and can't run in the browser as they are.
+- **The real Fixtures screen can't run in the browser yet.** It reads the fixture library from the show computer's disk
+  (next: step 2).
 - **Nothing in the repo tests the browser build.** It isn't in `GhostShow.slnx`, and the browser test scripts lived
   only in a scratch folder, which has already been wiped once.
 - **`/app/` can go stale.** `dotnet build` doesn't rebuild it, so after a protocol change the page can quietly be
@@ -232,7 +232,9 @@ Small steps; each one leaves the app working.
    - The blank Lighting and Audio pages are fixed.
 2. **The real Fixtures screen in the browser,** replacing `LightingPage` and the code around it in `ShellView.cs`. It's
    wanted under any design, and it shows how hard moving a screen really is before going further.
-   1. Fixtures and universes through `ShowDocument` on the desktop. Gains undo; the existing tests are the safety net.
+   1. Fixtures and universes through `ShowDocument` on the desktop (done). Both screens have Undo and Redo on the show's
+      history, and follow the show however it changes, keeping the selection and the wizard's step. `ShowSession`
+      re-applies the patch by itself after a fixture or universe edit.
    2. The fixture library behind an interface: local on the show computer, over the network in the browser.
    3. The real screen in the browser, and the hand-built page deleted.
 3. **Browser tests in the repo** (Playwright, with their own small host), started alongside step 2 so that moved screens

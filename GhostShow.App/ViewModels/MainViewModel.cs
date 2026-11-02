@@ -57,9 +57,9 @@ public sealed partial class MainViewModel : ObservableObject
         _storage = storage;
         _logger = logger;
 
-        Outputs = new OutputsViewModel(session, outputs, settings, SaveSettingsAsync, MarkDirty);
+        Outputs = new OutputsViewModel(session, outputs, settings, SaveSettingsAsync);
         Library = new ProfileLibraryViewModel(session, paths, settings, logger);
-        Fixtures = new FixtureSetupViewModel(session, Library, MarkDirty);
+        Fixtures = new FixtureSetupViewModel(session, Library);
         Control = new FixtureControlViewModel(session, ReportError);
         Channels = new ChannelsViewModel(session.Engine, ReportError);
         Monitor = new MonitorViewModel(session.Engine, outputs.Find);
@@ -577,12 +577,6 @@ public sealed partial class MainViewModel : ObservableObject
     void OnDocumentChanged(GhostShow.Core.Editing.ShowChange change)
     {
         MarkDirty();
-        if (!change.Ops.Any(op => op.Path == "fixtures" || op.Path.StartsWith("fixtures/", StringComparison.Ordinal)
-                               || op.Path == "universes" || op.Path.StartsWith("universes/", StringComparison.Ordinal))) return;
-        _session.Apply();
-        Fixtures.Reload();
-        Outputs.Reload();
-        _ = Outputs.ApplyOutputsAsync();
     }
 
     void MarkDirty()

@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using GhostShow.Core.Editing;
 using GhostShow.Core.Engine;
 using GhostShow.Core.Fixtures;
 using GhostShow.Core.Storage;
@@ -24,26 +25,35 @@ public enum SetupStep
 /// Creating, editing and patching fixtures. Every edit is applied straight away, so address conflicts and other
 /// problems show up immediately and a fixture is controllable as soon as it's valid.
 ///
+/// Edits go through the show's document, so they can be undone and reach other devices. This screen doesn't change
+/// its own list: it follows the show (see <see cref="Sync"/>), however the show was changed.
+///
 /// Adding is an explicit mode: Add fixtures → choose the type → click openings on the map (each click adds one) →
 /// Done, back to the overview. Changing an existing fixture's type goes through the same type picker.
 /// </summary>
 public sealed partial class FixtureSetupViewModel : ObservableObject
 {
     readonly ShowSession _session;
-    readonly Action _markDirty;
     bool _changingType;
+    /// <summary>While set, added fixtures merge into one undo step ("Add N in a row").</summary>
+    object? _addingAsOne;
     FixtureProfile? _lastAddedProfile;
     string? _lastAddedMode;
 
-    public FixtureSetupViewModel(ShowSession session, ProfileLibraryViewModel library, Action markDirty)
+    /// <param name="history">Undo and Redo: the show document's, unless they're elsewhere (in the browser build, on the show computer).</param>
+    public FixtureSetupViewModel(ShowSession session, ProfileLibraryViewModel library, IEditHistory? history = null)
     {
         _session = session;
-        _markDirty = markDirty;
         Library = library;
+        History = new ShowHistoryViewModel(history ?? session.Document);
         library.Loaded += Reload;
         _session.Applied += ShowIssues;
+        _session.Document.Changed += change =>
+        {
+            if (change.Touches("fixtures")) Sync();
+        };
         Browser = new ProfileBrowserViewModel(OnTypeChosen);
-        Placement = new FixturePlacementViewModel(AddFixture, RemoveFixture, FreeRanges);
+        Placement = new FixturePlacementViewModel((profile, mode, name, universe, start) => AddFixture(profile, mode, name, universe, start), RemoveFixture, FreeRanges);
         Map = new PatchMapViewModel(
             select: id => Selected = Fixtures.FirstOrDefault(f => f.Model.Id == id),
             move: (id, start) =>
@@ -58,6 +68,9 @@ public sealed partial class FixtureSetupViewModel : ObservableObject
     }
 
     public ObservableCollection<FixtureEditorViewModel> Fixtures { get; } = new();
+
+    public ShowHistoryViewModel History { get; }
+
     public ObservableCollection<PatchIssue> Issues { get; } = new();
 
     [ObservableProperty]
@@ -176,14 +189,14 @@ public sealed partial class FixtureSetupViewModel : ObservableObject
     string? SaveProfile(FixtureProfile profile, IReadOnlyDictionary<string, string> renamedModes)
     {
         if (Library.SaveCustom(profile) is { } error) return error;
-        bool changed = false;
-        foreach (var fixture in _session.Project.Fixtures.Where(f => string.Equals(f.ProfileId, profile.Id, StringComparison.OrdinalIgnoreCase)))
-            if (renamedModes.TryGetValue(fixture.ModeName, out var renamed))
+        var moving = _session.Project.Fixtures
+            .Where(f => string.Equals(f.ProfileId, profile.Id, StringComparison.OrdinalIgnoreCase) && renamedModes.ContainsKey(f.ModeName))
+            .ToList();
+        if (moving.Count > 0)
+            _session.Document.Record("Follow a renamed fixture mode", () =>
             {
-                fixture.ModeName = renamed;
-                changed = true;
-            }
-        if (changed) _markDirty();
+                foreach (var fixture in moving) fixture.ModeName = renamedModes[fixture.ModeName];
+            }, moving.Select(Only));
         RefreshFixtures();
         BackToBrowser(profile);
         return null;
@@ -216,8 +229,7 @@ public sealed partial class FixtureSetupViewModel : ObservableObject
     {
         var selected = Selected?.Model;
         Fixtures.Clear();
-        foreach (var fixture in _session.Project.Fixtures)
-            Fixtures.Add(new FixtureEditorViewModel(fixture, _session.Profiles.Find, OnFixtureChanged));
+        foreach (var fixture in _session.Project.Fixtures) Fixtures.Add(NewRow(fixture));
         Selected = Fixtures.FirstOrDefault(f => f.Model == selected) ?? Fixtures.FirstOrDefault();
         _session.Apply();
     }
@@ -240,8 +252,14 @@ public sealed partial class FixtureSetupViewModel : ObservableObject
         if (last is not null) Selected = last;
     }
 
+    /// <summary>One undo step takes them all back, as one click made them.</summary>
     [RelayCommand]
-    void AddInARow() => Placement.AddInARow(Map.Universe);
+    void AddInARow()
+    {
+        _addingAsOne = new object();
+        Placement.AddInARow(Map.Universe);
+        _addingAsOne = null;
+    }
 
     /// <summary>A copy of the selected fixture at the first gap it fits in.</summary>
     [RelayCommand]
@@ -251,9 +269,7 @@ public sealed partial class FixtureSetupViewModel : ObservableObject
         int universe = source.Model.Universe;
         int start = new UniverseUsage(_session.Patch.Fixtures.Where(f => f.Universe == universe)).FirstFreeStart(mode.Channels.Count)
                     ?? source.Model.StartAddress;   // no room: same address, and the overlap is flagged
-        var copy = AddFixture(profile, mode, NameStem(source.Name), universe, start);
-        copy.Group = source.Group;
-        Selected = copy;
+        Selected = AddFixture(profile, mode, NameStem(source.Name), universe, start, source.Group);
     }
 
     [RelayCommand]
@@ -274,8 +290,7 @@ public sealed partial class FixtureSetupViewModel : ObservableObject
     public void Reload()
     {
         Fixtures.Clear();
-        foreach (var fixture in _session.Project.Fixtures)
-            Fixtures.Add(new FixtureEditorViewModel(fixture, _session.Profiles.Find, OnFixtureChanged));
+        foreach (var fixture in _session.Project.Fixtures) Fixtures.Add(NewRow(fixture));
         Browser.SetLibrary(_session.Profiles);
         Step = SetupStep.Overview;
         Selected = Fixtures.FirstOrDefault();
@@ -297,7 +312,12 @@ public sealed partial class FixtureSetupViewModel : ObservableObject
         Map.SetFootprint(Placement.Footprint);
     }
 
-    FixtureEditorViewModel AddFixture(FixtureProfile profile, FixtureMode mode, string nameStem, int universe, int startAddress)
+    static object Only(object o) => ShowDocument.Shallow(o);
+
+    FixtureEditorViewModel NewRow(FixtureInstance fixture) => new(fixture, _session.Profiles.Find,
+        (description, change, mergeKey) => _session.Document.Record(description, change, [Only(fixture)], mergeKey));
+
+    FixtureEditorViewModel AddFixture(FixtureProfile profile, FixtureMode mode, string nameStem, int universe, int startAddress, string? group = null)
     {
         var fixture = new FixtureInstance
         {
@@ -306,29 +326,49 @@ public sealed partial class FixtureSetupViewModel : ObservableObject
             ModeName = mode.Name,
             Universe = universe,
             StartAddress = startAddress,
+            Group = group,
         };
-        _session.Project.Fixtures.Add(fixture);
-        var editor = new FixtureEditorViewModel(fixture, _session.Profiles.Find, OnFixtureChanged);
-        Fixtures.Add(editor);
-        OnFixtureChanged();
-        return editor;
+        _session.Document.Record("Add fixture", () => _session.Project.Fixtures.Add(fixture), [Only(_session.Project)], _addingAsOne);
+        return Fixtures.First(row => row.Model == fixture);   // Sync made it
     }
 
-    void RemoveFixture(FixtureEditorViewModel fixture)
+    void RemoveFixture(FixtureEditorViewModel fixture) =>
+        _session.Document.Record("Remove fixture", () => _session.Project.Fixtures.Remove(fixture.Model), [Only(_session.Project)]);
+
+    /// <summary>
+    /// Matches the list to the show's fixtures: rows for added ones, none for removed ones, the order, and every field.
+    /// Rows that stay are kept, and so are the selection and the wizard's step, so an undo or another device's edit
+    /// doesn't throw away what's on screen.
+    /// </summary>
+    void Sync()
     {
-        _session.Project.Fixtures.Remove(fixture.Model);
-        Fixtures.Remove(fixture);
-        OnFixtureChanged();
+        var selectedId = Selected?.Model.Id;
+        int selectedIndex = Selected is null ? -1 : Fixtures.IndexOf(Selected);
+
+        var model = _session.Project.Fixtures;
+        for (int i = 0; i < model.Count; i++)
+        {
+            if (i < Fixtures.Count && Fixtures[i].Model == model[i]) continue;
+            int existing = -1;
+            for (int j = i + 1; j < Fixtures.Count && existing < 0; j++)
+                if (Fixtures[j].Model == model[i]) existing = j;
+            if (existing >= 0) Fixtures.Move(existing, i);
+            else Fixtures.Insert(i, NewRow(model[i]));
+        }
+        while (Fixtures.Count > model.Count) Fixtures.RemoveAt(Fixtures.Count - 1);
+
+        foreach (var row in Fixtures) row.Refresh();
+        foreach (var gone in Placement.Added.Where(row => !Fixtures.Contains(row)).ToList()) Placement.Added.Remove(gone);
+
+        if (selectedId is { } id && (Selected is null || !Fixtures.Contains(Selected)))
+            Selected = Fixtures.FirstOrDefault(row => row.Model.Id == id)   // the same fixture, in a new object: it came over the network
+                       ?? (Fixtures.Count == 0 ? null : Fixtures[Math.Min(selectedIndex, Fixtures.Count - 1)]);
+        else OnSelectedChanged(Selected);   // the address map shows it where it is now
+        ShowIssues();
     }
 
     IReadOnlyList<AddressRange> FreeRanges(int universe) =>
         new UniverseUsage(_session.Patch.Fixtures.Where(f => f.Universe == universe)).FreeRanges;
-
-    void OnFixtureChanged()
-    {
-        _markDirty();
-        _session.Apply();
-    }
 
     void ShowIssues()
     {

@@ -404,6 +404,59 @@ public class UiTests
         Assert.DoesNotContain(main.Tracks, t => t.Kind == TrackKind.Event);
     });
 
+    // ---- the setup screens' undo ----
+
+    [Fact]
+    public Task Ctrl_Z_on_the_fixtures_screen_undoes_a_fixture_edit() => Ui.Run(() =>
+    {
+        using var rig = new WindowRig();
+        rig.ViewModel.CurrentPage = Page.Fixtures;
+        WindowRig.Pump(100);
+        var fixtures = rig.ViewModel.Fixtures;
+        var row = fixtures.Fixtures[0];
+        string name = row.Name;
+        fixtures.Selected = row;
+        WindowRig.Pump(50);
+
+        row.Name = "Renamed";
+        rig.Key(Key.Z, RawInputModifiers.Control);   // with nothing in particular focused
+
+        Assert.Equal(name, row.Model.Name);
+        Assert.Same(row, fixtures.Selected);
+
+        rig.Key(Key.Y, RawInputModifiers.Control);
+
+        Assert.Equal("Renamed", row.Model.Name);
+    });
+
+    [Fact]
+    public Task The_dmx_setup_screen_adds_a_universe_and_undoes_it() => Ui.Run(() =>
+    {
+        using var rig = new WindowRig();
+        rig.ViewModel.CurrentPage = Page.DmxSetup;
+        WindowRig.Pump(100);
+        var outputs = rig.ViewModel.Outputs;
+        int before = outputs.Universes.Count;
+        var kept = outputs.Universes[0];
+
+        outputs.AddUniverseCommand.Execute(null);
+        WindowRig.Pump(100);
+        Assert.Equal(before + 1, outputs.Universes.Count);
+        Assert.Equal(before + 1, rig.Session.Project.Universes.Count);
+
+        outputs.History.UndoCommand.Execute(null);
+        WindowRig.Pump(100);
+        Assert.Equal(before, outputs.Universes.Count);
+        Assert.Same(kept, outputs.Universes[0]);   // the rows that stay aren't rebuilt
+
+        kept.Name = "Stage";
+        WindowRig.Pump(50);
+        outputs.History.UndoCommand.Execute(null);
+        WindowRig.Pump(100);
+        Assert.NotEqual("Stage", kept.Name);
+        Assert.NotEqual("Stage", kept.Model.Name);
+    });
+
     // ---- the Envelope Editor window ----
 
     /// <summary>Opens the Envelope Editor by double-clicking a clip, and returns its window and plot.</summary>

@@ -30,6 +30,8 @@
                   IsEnabled="{Binding Selected, Converter={x:Static ObjectConverters.IsNotNull}}" />
           <Button Content="Remove" Command="{Binding RemoveCommand}" CommandParameter="{Binding Selected}"
                   IsEnabled="{Binding Selected, Converter={x:Static ObjectConverters.IsNotNull}}" />
+          <Button Classes="icon" Command="{Binding History.UndoCommand}" ToolTip.Tip="{Binding History.UndoLabel}"><PathIcon Data="{StaticResource Icon.Undo}" /></Button>
+          <Button Classes="icon" Command="{Binding History.RedoCommand}" ToolTip.Tip="{Binding History.RedoLabel}"><PathIcon Data="{StaticResource Icon.Redo}" /></Button>
         </StackPanel>
       </StackPanel>
       <ListBox ItemsSource="{Binding Fixtures}" SelectedItem="{Binding Selected}" IsEnabled="{Binding IsOverview}">

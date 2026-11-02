@@ -9,7 +9,8 @@ namespace GhostShow.Core.Engine;
 
 /// <summary>
 /// The open show: its file, its configuration, and applying that configuration to the <see cref="ShowEngine"/>.
-/// Setup screens edit <see cref="Project"/> and call <see cref="Apply"/>; live control goes straight to the engine.
+/// Edits to the fixtures and universes go through the <see cref="Document"/>, which re-applies them here, whoever made
+/// them. Live control goes straight to the engine.
 ///
 /// Not thread-safe: use it from one thread (the UI thread, or the CLI's main thread). The engine it drives is
 /// thread-safe, so output keeps running while a show is opened, validated or saved.
@@ -24,6 +25,11 @@ public sealed class ShowSession
         Profiles = profiles;
         _logger = logger;
         Apply();
+        // Subscribed first, so everyone else who hears of the change (playback compiling a timeline) sees the new patch.
+        Document.Changed += change =>
+        {
+            if (change.Touches("fixtures") || change.Touches("universes")) Apply();
+        };
     }
 
     public ShowEngine Engine { get; }
@@ -59,7 +65,8 @@ public sealed class ShowSession
 
     /// <summary>
     /// Validates the show and pushes its universes and patch to the engine. Fixtures with errors are left out;
-    /// everything else keeps working. Call after any setup change.
+    /// everything else keeps working. Happens by itself after a fixture or universe edit (see the constructor); call it
+    /// when something the document doesn't know about changed, such as a fixture type.
     /// </summary>
     public PatchResult Apply()
     {

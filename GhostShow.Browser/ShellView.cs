@@ -441,8 +441,6 @@ sealed class ShellView : Border
 
     void OnDocumentChanged(ShowChange change)
     {
-        bool patch = change.Ops.Any(op => op.Path.StartsWith("fixtures", StringComparison.Ordinal) || op.Path.StartsWith("universes", StringComparison.Ordinal));
-        if (patch) _session.Apply();
         RefreshButtons();
         RefreshLighting();
         RefreshAudio();

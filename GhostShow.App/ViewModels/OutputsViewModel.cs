@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using GhostShow.Core.Editing;
 using GhostShow.Core.Engine;
 using GhostShow.Core.Model;
 using GhostShow.Core.Storage;
@@ -15,7 +16,10 @@ public sealed record AdapterRow(string Description, string Status)
     public override string ToString() => $"{Description}  ·  {Status}";
 }
 
-/// <summary>The show's universes and, for this machine, which device each one is output on.</summary>
+/// <summary>
+/// The show's universes and, for this machine, which device each one is output on. Universes are edited through the
+/// show's document, so they can be undone and reach other devices; the rows follow the show (see <see cref="SyncAsync"/>).
+/// </summary>
 public sealed partial class OutputsViewModel : ObservableObject
 {
     static readonly SimulatorDeviceConfig Simulator = new();
@@ -24,22 +28,24 @@ public sealed partial class OutputsViewModel : ObservableObject
     readonly OutputManager _outputs;
     readonly MachineSettings _settings;
     readonly Func<Task> _saveSettings;
-    readonly Action _markDirty;
     IReadOnlyList<DmxAdapterInfo> _adapters = [];
     // Probe results by port: an adapter, or null for "checked, not an adapter". Busy ports are left out (see Watch).
     readonly Dictionary<string, DmxAdapterInfo?> _probed = new();
     bool _watching;
+    Task _lastSync = Task.CompletedTask;
 
-    public OutputsViewModel(ShowSession session, OutputManager outputs, MachineSettings settings,
-                            Func<Task> saveSettings, Action markDirty)
+    public OutputsViewModel(ShowSession session, OutputManager outputs, MachineSettings settings, Func<Task> saveSettings)
     {
         _session = session;
         _outputs = outputs;
         _settings = settings;
         _saveSettings = saveSettings;
-        _markDirty = markDirty;
+        History = new ShowHistoryViewModel(session.Document);
+        session.Document.Changed += OnShowChanged;
         Reload();
     }
+
+    public ShowHistoryViewModel History { get; }
 
     public ObservableCollection<UniverseRowViewModel> Universes { get; } = new();
     public ObservableCollection<AdapterRow> Adapters { get; } = new();
@@ -51,8 +57,7 @@ public sealed partial class OutputsViewModel : ObservableObject
     public void Reload()
     {
         Universes.Clear();
-        foreach (var universe in _session.Project.Universes)
-            Universes.Add(new UniverseRowViewModel(universe, OnShowUniversesChanged, OnDeviceChanged));
+        foreach (var universe in _session.Project.Universes) Universes.Add(NewRow(universe));
         RefreshChoices();
         Tick();
     }
@@ -131,19 +136,15 @@ public sealed partial class OutputsViewModel : ObservableObject
     {
         int next = _session.Project.Universes.Select(u => u.Number).DefaultIfEmpty(GhostShow.Core.Model.Project.FirstUniverse - 1).Max() + 1;
         var universe = new UniverseConfig { Number = next, Name = $"Universe {next}" };
-        _session.Project.Universes.Add(universe);
-        var row = new UniverseRowViewModel(universe, OnShowUniversesChanged, OnDeviceChanged);
-        row.RefreshChoices(_adapters, Simulator);
-        Universes.Add(row);
-        await ShowUniversesChangedAsync();
+        _session.Document.Record("Add universe", () => _session.Project.Universes.Add(universe), [ShowDocument.Shallow(_session.Project)]);
+        await _lastSync;
     }
 
     [RelayCommand]
     async Task RemoveUniverse(UniverseRowViewModel row)
     {
-        _session.Project.Universes.Remove(row.Model);
-        Universes.Remove(row);
-        await ShowUniversesChangedAsync();
+        _session.Document.Record("Remove universe", () => _session.Project.Universes.Remove(row.Model), [ShowDocument.Shallow(_session.Project)]);
+        await _lastSync;
     }
 
     public void Tick()
@@ -157,12 +158,32 @@ public sealed partial class OutputsViewModel : ObservableObject
         foreach (var row in Universes) row.RefreshChoices(_adapters, _settings.FindOutput(row.Model.Number) ?? Simulator);
     }
 
-    async void OnShowUniversesChanged() => await ShowUniversesChangedAsync();
+    UniverseRowViewModel NewRow(UniverseConfig universe) => new(universe,
+        (description, change, mergeKey) => _session.Document.Record(description, change, [ShowDocument.Shallow(universe)], mergeKey),
+        OnDeviceChanged);
 
-    async Task ShowUniversesChangedAsync()
+    async void OnShowChanged(ShowChange change)
     {
-        _markDirty();
-        _session.Apply();
+        if (!change.Touches("universes")) return;
+        await (_lastSync = SyncAsync());
+    }
+
+    /// <summary>Matches the rows to the show's universes (keeping rows that stay), then the outputs to the rows.</summary>
+    async Task SyncAsync()
+    {
+        var model = _session.Project.Universes;
+        for (int i = 0; i < model.Count; i++)
+        {
+            if (i < Universes.Count && Universes[i].Model == model[i]) continue;
+            int existing = -1;
+            for (int j = i + 1; j < Universes.Count && existing < 0; j++)
+                if (Universes[j].Model == model[i]) existing = j;
+            if (existing >= 0) Universes.Move(existing, i);
+            else Universes.Insert(i, NewRow(model[i]));
+        }
+        while (Universes.Count > model.Count) Universes.RemoveAt(Universes.Count - 1);
+        foreach (var row in Universes) row.Refresh();
+
         RefreshChoices();   // a renumbered universe picks up that number's assignment
         await ApplyOutputsAsync();
         Tick();

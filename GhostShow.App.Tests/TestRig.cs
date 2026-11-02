@@ -22,7 +22,8 @@ sealed class TestRig : IDisposable
         Session = new ShowSession(new ShowEngine(), Library, NullLogger<ShowSession>.Instance);
         Paths = new AppPaths(_configDirectory);
         var libraryViewModel = new ProfileLibraryViewModel(Session, Paths, new MachineSettings(), NullLogger.Instance);
-        Setup = new FixtureSetupViewModel(Session, libraryViewModel, () => Dirty = true);
+        Setup = new FixtureSetupViewModel(Session, libraryViewModel);
+        Session.Document.Changed += _ => Dirty = true;
     }
 
     public FixtureProfileLibrary Library { get; }

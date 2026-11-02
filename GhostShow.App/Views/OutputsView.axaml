@@ -9,7 +9,11 @@
         <TextBlock Text="Universes" Classes="heading" />
         <TextBlock TextWrapping="Wrap" Opacity="0.7"
                    Text="Universe numbers and names belong to the show. The device each one goes out on belongs to this computer, so a show opened elsewhere keeps its patch but uses that machine's hardware." />
-        <Button Content="Add universe" Command="{Binding AddUniverseCommand}" />
+        <StackPanel Orientation="Horizontal" Spacing="6">
+          <Button Content="Add universe" Command="{Binding AddUniverseCommand}" />
+          <Button Classes="icon" Command="{Binding History.UndoCommand}" ToolTip.Tip="{Binding History.UndoLabel}"><PathIcon Data="{StaticResource Icon.Undo}" /></Button>
+          <Button Classes="icon" Command="{Binding History.RedoCommand}" ToolTip.Tip="{Binding History.RedoLabel}"><PathIcon Data="{StaticResource Icon.Redo}" /></Button>
+        </StackPanel>
       </StackPanel>
       <ScrollViewer>
         <ItemsControl ItemsSource="{Binding Universes}">

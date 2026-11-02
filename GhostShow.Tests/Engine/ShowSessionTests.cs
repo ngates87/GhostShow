@@ -1,3 +1,4 @@
+using GhostShow.Core.Editing;
 using GhostShow.Core.Engine;
 using GhostShow.Core.Fixtures;
 using GhostShow.Core.Model;
@@ -24,6 +25,31 @@ public class ShowSessionTests : IDisposable
         Assert.Equal(good.Id, Assert.Single(result.Fixtures).Id);
         Assert.Single(result.Issues);
         Assert.True(_session.Engine.SetFixtureControl(good.Id, ChannelFunction.Red, 10).Succeeded);
+    }
+
+    [Fact]
+    public void An_edit_of_the_fixtures_or_universes_applies_by_itself_and_undo_applies_it_back()
+    {
+        var fixture = Fixture("Good", 1);
+        _session.Document.Record("Add fixture", () => _session.Project.Fixtures.Add(fixture), ShowDocument.Shallow(_session.Project));
+        Assert.Equal(fixture.Id, Assert.Single(_session.Patch.Fixtures).Id);
+
+        _session.Document.UndoLatest(null);
+        Assert.Empty(_session.Patch.Fixtures);
+
+        _session.Document.Record("Add universe", () => _session.Project.Universes.Add(new UniverseConfig { Number = 1, Name = "Again" }), ShowDocument.Shallow(_session.Project));
+        Assert.Contains(_session.Patch.Issues, i => i.Message.Contains("defined 2 times"));
+    }
+
+    [Fact]
+    public void Other_edits_don_t_touch_the_patch()
+    {
+        int applied = 0;
+        _session.Applied += () => applied++;
+
+        _session.Document.Record("Rename the show", () => _session.Project.Name = "Other", ShowDocument.Shallow(_session.Project));
+
+        Assert.Equal(0, applied);
     }
 
     [Fact]

@@ -19,14 +19,17 @@ public sealed record DeviceChoice(string Label, OutputDeviceConfig Config)
 /// </summary>
 public sealed partial class UniverseRowViewModel : ObservableObject
 {
-    readonly Action _showChanged;
+    /// <summary>Makes an edit of the show: its description, the change, and a key that merges quick edits of one field into one undo step.</summary>
+    public delegate void EditUniverse(string description, Action change, object mergeKey);
+
+    readonly EditUniverse _edit;
     readonly Action<UniverseRowViewModel> _deviceChanged;
     bool _refreshingChoices;
 
-    public UniverseRowViewModel(UniverseConfig model, Action showChanged, Action<UniverseRowViewModel> deviceChanged)
+    public UniverseRowViewModel(UniverseConfig model, EditUniverse edit, Action<UniverseRowViewModel> deviceChanged)
     {
         Model = model;
-        _showChanged = showChanged;
+        _edit = edit;
         _deviceChanged = deviceChanged;
     }
 
@@ -40,9 +43,7 @@ public sealed partial class UniverseRowViewModel : ObservableObject
         set
         {
             if ((int)value == Model.Number) return;
-            Model.Number = (int)value;
-            OnPropertyChanged();
-            _showChanged();
+            _edit("Renumber universe", () => Model.Number = (int)value, (Model, nameof(Number)));
         }
     }
 
@@ -52,10 +53,15 @@ public sealed partial class UniverseRowViewModel : ObservableObject
         set
         {
             if (value == Model.Name) return;
-            Model.Name = value;
-            OnPropertyChanged();
-            _showChanged();
+            _edit("Rename universe", () => Model.Name = value, (Model, nameof(Name)));
         }
+    }
+
+    /// <summary>The show changed (an edit here, an undo, another device): its number and name follow it.</summary>
+    public void Refresh()
+    {
+        OnPropertyChanged(nameof(Number));
+        OnPropertyChanged(nameof(Name));
     }
 
     [ObservableProperty]

@@ -19,7 +19,11 @@ public enum ChangeKind { Do, Undo, Redo }
 /// <param name="MergeKey">The key it was made with (see <see cref="ShowDocument.Apply"/>), if any: a browser sends its
 /// edits on to the show computer, which merges them the same way.</param>
 public sealed record ShowChange(long Version, ChangeKind Kind, string Description, IReadOnlyList<EditOp> Ops, string? Origin,
-                                IReadOnlySet<Guid> Timelines, object? MergeKey = null);
+                                IReadOnlySet<Guid> Timelines, object? MergeKey = null)
+{
+    /// <summary>Whether it changed this list of the show, or anything inside it (e.g. "fixtures").</summary>
+    public bool Touches(string list) => Ops.Any(op => op.Path == list || op.Path.StartsWith(list + "/", StringComparison.Ordinal));
+}
 
 /// <summary>
 /// The open show, and the one way to change it: <see cref="Apply"/> a <see cref="Transaction"/> of edit operations.

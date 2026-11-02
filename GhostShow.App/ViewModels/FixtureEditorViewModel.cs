@@ -1,19 +1,26 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using GhostShow.Core.Editing;
 using GhostShow.Core.Fixtures;
 
 namespace GhostShow.App.ViewModels;
 
-/// <summary>Edits one FixtureInstance in place. Every change writes through to the show and triggers re-validation.</summary>
+/// <summary>
+/// One fixture on the Fixtures screen. Every change is an edit of the show (see <see cref="ShowDocument"/>); what's on
+/// screen follows the show through <see cref="Refresh"/>, so undo and other devices' edits show up the same way.
+/// </summary>
 public sealed partial class FixtureEditorViewModel : ObservableObject
 {
-    readonly Action _changed;
+    /// <summary>Makes an edit: its description, the change, and a key that merges quick edits of one field into one undo step.</summary>
+    public delegate void EditFixture(string description, Action change, object mergeKey);
+
+    readonly EditFixture _edit;
     readonly Func<string, FixtureProfile?> _findProfile;
 
-    public FixtureEditorViewModel(FixtureInstance model, Func<string, FixtureProfile?> findProfile, Action changed)
+    public FixtureEditorViewModel(FixtureInstance model, Func<string, FixtureProfile?> findProfile, EditFixture edit)
     {
         Model = model;
         _findProfile = findProfile;
-        _changed = changed;
+        _edit = edit;
         ModeChoice = CreateModeChoice();
     }
 
@@ -51,54 +58,55 @@ public sealed partial class FixtureEditorViewModel : ObservableObject
     public string Name
     {
         get => Model.Name;
-        set => Set(Model.Name, value, v => Model.Name = v);
+        set => Set("Rename fixture", Model.Name, value, v => Model.Name = v);
     }
 
     public string? Group
     {
         get => Model.Group;
-        set => Set(Model.Group, string.IsNullOrWhiteSpace(value) ? null : value, v => Model.Group = v);
+        set => Set("Change fixture group", Model.Group, string.IsNullOrWhiteSpace(value) ? null : value, v => Model.Group = v);
     }
 
     public bool Enabled
     {
         get => Model.Enabled;
-        set => Set(Model.Enabled, value, v => Model.Enabled = v);
+        set => Set(value ? "Enable fixture" : "Disable fixture", Model.Enabled, value, v => Model.Enabled = v);
     }
 
     public decimal Universe
     {
         get => Model.Universe;
-        set => Set(Model.Universe, (int)value, v => Model.Universe = v);
+        set => Set("Move fixture to another universe", Model.Universe, (int)value, v => Model.Universe = v);
     }
 
     public decimal StartAddress
     {
         get => Model.StartAddress;
-        set => Set(Model.StartAddress, (int)value, v => Model.StartAddress = v);
+        set => Set("Readdress fixture", Model.StartAddress, (int)value, v => Model.StartAddress = v);
     }
 
-    public void SetProfile(FixtureProfile profile, FixtureMode mode)
+    public void SetProfile(FixtureProfile profile, FixtureMode mode) =>
+        _edit("Change fixture type", () =>
+        {
+            Model.ProfileId = profile.Id;
+            Model.ModeName = mode.Name;
+        }, (Model.Id, nameof(SetProfile)));
+
+    /// <summary>The show changed (an edit here, an undo, another device): everything on screen follows it.</summary>
+    public void Refresh()
     {
-        Model.ProfileId = profile.Id;
-        Model.ModeName = mode.Name;
-        ModeChoice = CreateModeChoice();
-        OnPropertyChanged(nameof(Profile));
-        OnPropertyChanged(nameof(ProfileLabel));
-        OnPropertyChanged(nameof(Summary));
-        _changed();
+        if (ModeChoice?.Profile != Profile || !string.Equals(ModeChoice?.Selected.Name, Model.ModeName, StringComparison.OrdinalIgnoreCase))
+            ModeChoice = CreateModeChoice();
+        OnPropertyChanged(string.Empty);
     }
 
     ModeChoiceViewModel? CreateModeChoice() => Profile is { } profile
-        ? new ModeChoiceViewModel(profile, Model.ModeName, mode => Set(Model.ModeName, mode.Name, v => Model.ModeName = v, nameof(Model.ModeName)))
+        ? new ModeChoiceViewModel(profile, Model.ModeName, mode => Set("Change fixture mode", Model.ModeName, mode.Name, v => Model.ModeName = v))
         : null;
 
-    void Set<T>(T current, T value, Action<T> assign, [System.Runtime.CompilerServices.CallerMemberName] string? property = null)
+    void Set<T>(string description, T current, T value, Action<T> assign, [System.Runtime.CompilerServices.CallerMemberName] string? property = null)
     {
         if (EqualityComparer<T>.Default.Equals(current, value)) return;
-        assign(value);
-        OnPropertyChanged(property);
-        OnPropertyChanged(nameof(Summary));
-        _changed();
+        _edit(description, () => assign(value), (Model.Id, property));
     }
 }
