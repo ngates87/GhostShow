@@ -1,5 +1,5 @@
 // The connection to the show computer: pairing (once, with the PIN it shows), then a WebSocket that keeps this
-// device's copy of the show live (see GhostShow.Web/RemoteServer.cs for the messages).
+// device's copy of the show live (see libs/GhostShow.Web/RemoteServer.cs for the messages).
 
 import { applyAll, EditError, type EditOp, type Show } from './show.ts';
 

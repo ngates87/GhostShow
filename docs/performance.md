@@ -31,7 +31,7 @@ results conservative.
 
 ## Frame path benchmarks
 
-BenchmarkDotNet 0.15.8, `dotnet run -c Release --project GhostShow.Benchmarks -- --filter '*'`. Re-measured
+BenchmarkDotNet 0.15.8, `dotnet run -c Release --project tests/GhostShow.Benchmarks -- --filter '*'`. Re-measured
 2026-10-27, after fixing a setup error: the benchmarks patched fixtures into universe 0 after universes became
 1-based, so the fixture command measured its error path. Setup now throws if the patch has problems.
 
@@ -140,7 +140,7 @@ that is still within the 10 ms interval, and the next update is on time because 
 
 ## UI responsiveness
 
-`GHOSTSHOW_UI_LOAD_TEST=1 dotnet run -c Release --project GhostShow.App`. The real app window opens on the DMX
+`GHOSTSHOW_UI_LOAD_TEST=1 dotnet run -c Release --project apps/GhostShow.App`. The real app window opens on the DMX
 monitor while a worker changes all 512 channels about 1,000 times a second (every monitor cell changes every
 frame: the worst case for redraws). A probe posts an input-priority no-op to the UI thread every 100 ms and logs how
 long it waited, every 30 s. 3.5 minutes on the simulator.
@@ -218,12 +218,12 @@ edit, a scroll or a zoom, not as the playhead moves. Not measured with the real 
 ## Re-running
 
     dotnet test                                                        # includes rapid-update, concurrency, shutdown tests
-    dotnet run -c Release --project GhostShow.Benchmarks -- --filter '*'
-    dotnet run -c Release --project GhostShow.Cli -- soak --minutes 30                         # simulator
-    dotnet run -c Release --project GhostShow.Cli -- soak --minutes 30 --opendmx /dev/ttyUSB0 --dark
-    dotnet run -c Release --project GhostShow.Cli -- soak-playback --minutes 30
-    GHOSTSHOW_UI_LOAD_TEST=1 dotnet run -c Release --project GhostShow.App                     # watch the log
-    GHOSTSHOW_UI_LOAD_TEST=timeline dotnet run -c Release --project GhostShow.App              # replaces the open show
+    dotnet run -c Release --project tests/GhostShow.Benchmarks -- --filter '*'
+    dotnet run -c Release --project apps/GhostShow.Cli -- soak --minutes 30                         # simulator
+    dotnet run -c Release --project apps/GhostShow.Cli -- soak --minutes 30 --opendmx /dev/ttyUSB0 --dark
+    dotnet run -c Release --project apps/GhostShow.Cli -- soak-playback --minutes 30
+    GHOSTSHOW_UI_LOAD_TEST=1 dotnet run -c Release --project apps/GhostShow.App                     # watch the log
+    GHOSTSHOW_UI_LOAD_TEST=timeline dotnet run -c Release --project apps/GhostShow.App              # replaces the open show
 
 The UI load tests use this computer's output assignments. To keep real fixtures out of it, point the app at an
 empty settings folder first (Linux: `XDG_CONFIG_HOME=/tmp/gs-test`), which leaves every universe on the simulator.

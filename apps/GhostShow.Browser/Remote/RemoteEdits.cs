@@ -4,7 +4,7 @@ using GhostShow.Core.Editing;
 namespace GhostShow.Browser.Remote;
 
 /// <summary>
-/// Editing from the browser. The show computer has the final say (see GhostShow.Web/RemoteServer.Edits.cs):
+/// Editing from the browser. The show computer has the final say (see libs/GhostShow.Web/RemoteServer.Edits.cs):
 /// - An edit made here changes this copy of the show straight away, so it feels instant, and its operations are sent
 ///   to the show computer, which applies them to the real show.
 /// - If it refuses one, or another device's change arrives while one of ours is on its way (the two could have been

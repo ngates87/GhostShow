@@ -52,7 +52,7 @@ how many devices are connected.
 Open `http://<address>:7700/app/`, or "Open the full app" on the simple remote. `/app/?open=Folder/Timeline` opens a
 timeline at start, so it can be bookmarked. The top row switches between Timeline, Lighting and Audio; Blackout and
 warnings stay visible across pages. The show's buttons are available along the bottom. The Windows installer includes the
-full app. From source, it's only there if it has been built: `GhostShow.Browser/publish.sh` (it needs the WebAssembly
+full app. From source, it's only there if it has been built: `apps/GhostShow.Browser/publish.sh` (it needs the WebAssembly
 tools).
 
 Lighting is the desktop's own section, screen for screen:
@@ -94,7 +94,7 @@ Audio shows the show computer's devices and the files used by the show; its sett
 ## How it works
 
 - **The server:** `GhostShow.Web` is a small ASP.NET Core server inside the desktop app. It serves the web app (built
-  from `GhostShow.Web/client/` with Svelte and Vite, embedded in the app, so the show computer needs neither Node nor
+  from `libs/GhostShow.Web/client/` with Svelte and Vite, embedded in the app, so the show computer needs neither Node nor
   the internet), pairs devices (`POST /api/pair`), and keeps a WebSocket per device (`/api/live`) that sends:
   - `hello`: the device, and the whole show (`ShowDocument.Snapshot`), the fixture profiles its fixtures use
     (beyond the built-in ones) and the show computer's audio devices. Sent when it connects, and again when another
@@ -139,8 +139,8 @@ Audio shows the show computer's devices and the files used by the show; its sett
   - **Sound files:** `audio` (`file`, as the show names it) asks for a sound file's length and waveform.
   - **Test tone:** `testSound` (`device`, or none for the default output) plays a test tone on the show computer.
   - **Edits:** `edit` (`description`, `ops`, and a `merge` number: edits with one number in quick succession are one
-    undo step) changes the show. See `GhostShow.Web/RemoteServer.Edits.cs` for how it works and
-    `GhostShow.Browser/Remote/RemoteEdits.cs` for the browser's side.
+    undo step) changes the show. See `libs/GhostShow.Web/RemoteServer.Edits.cs` for how it works and
+    `apps/GhostShow.Browser/Remote/RemoteEdits.cs` for the browser's side.
   - **Undo, redo, save:** `undo` and `redo` act for the timeline the device watches, or with `show: true`, on the show's
     own edits only (a setup screen, where a timeline's edits can't be seen); `save` saves on the show computer.
   - **Fixture library:** `saveProfile` (`profile`, as JSON) and `deleteProfile` (`profile`, its ID) change custom fixture
@@ -161,7 +161,7 @@ Audio shows the show computer's devices and the files used by the show; its sett
     editor-only; an operator may run the show but not change it.
 - **The fixture library:** `GET /api/library?token=…` gives the whole library, one profile per line of JSON, compressed
   with gzip: about 2,000 profiles, half a megabyte. A device fetches it the first time Lighting is opened. See
-  `GhostShow.Web/RemoteServer.Library.cs` and `GhostShow.Browser/Remote/RemoteFixtureLibrary.cs`.
+  `libs/GhostShow.Web/RemoteServer.Library.cs` and `apps/GhostShow.Browser/Remote/RemoteFixtureLibrary.cs`.
 - **Close codes:** a device that isn't paired, or was removed, is closed with code 4401, and the page goes back to
   pairing.
 - **Building the page:** `dotnet build` builds it when Node.js is installed (`npm ci`, then `npm run build`, only

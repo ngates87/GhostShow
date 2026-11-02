@@ -35,8 +35,8 @@ VIAddVersionKey "FileVersion" "${VERSION}"
 VIAddVersionKey "FileDescription" "GhostShow installer"
 VIAddVersionKey "LegalCopyright" "The GhostShow authors"
 
-!define MUI_ICON "../GhostShow.App/Assets/ghostshow.ico"
-!define MUI_UNICON "../GhostShow.App/Assets/ghostshow.ico"
+!define MUI_ICON "../apps/GhostShow.App/Assets/ghostshow.ico"
+!define MUI_UNICON "../apps/GhostShow.App/Assets/ghostshow.ico"
 !define MUI_ABORTWARNING
 
 !insertmacro MUI_PAGE_COMPONENTS

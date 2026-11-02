@@ -10,7 +10,7 @@
     <PackageReference Include="BenchmarkDotNet" Version="0.15.8" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\GhostShow.Core\GhostShow.Core.csproj" />
-    <ProjectReference Include="..\GhostShow.Dmx\GhostShow.Dmx.csproj" />
+    <ProjectReference Include="..\..\libs\GhostShow.Core\GhostShow.Core.csproj" />
+    <ProjectReference Include="..\..\libs\GhostShow.Dmx\GhostShow.Dmx.csproj" />
   </ItemGroup>
 </Project>

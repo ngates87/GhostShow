@@ -7,7 +7,7 @@ using GhostShow.Core.Storage;
 namespace GhostShow.Browser.Remote;
 
 /// <summary>
-/// The fixture library in the browser: it's on the show computer (see GhostShow.Web/RemoteServer.Library.cs).
+/// The fixture library in the browser: it's on the show computer (see libs/GhostShow.Web/RemoteServer.Library.cs).
 /// Until the full library is needed, this copy of the show has the built-in profiles and the ones its fixtures use, which
 /// the show computer sends with the show. <see cref="LoadAsync"/> fetches the rest, so the type picker works as on the
 /// desktop. Custom fixture types are saved there and put in this copy once that worked.

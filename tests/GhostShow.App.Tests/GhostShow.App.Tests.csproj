@@ -14,7 +14,7 @@
     <Using Include="Xunit" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\GhostShow.App\GhostShow.App.csproj" />
-    <ProjectReference Include="..\GhostShow.Core\GhostShow.Core.csproj" />
+    <ProjectReference Include="..\..\apps\GhostShow.App\GhostShow.App.csproj" />
+    <ProjectReference Include="..\..\libs\GhostShow.Core\GhostShow.Core.csproj" />
   </ItemGroup>
 </Project>

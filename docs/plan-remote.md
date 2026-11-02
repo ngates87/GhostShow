@@ -224,7 +224,7 @@ Small steps; each one leaves the app working.
 1. **Fix what blocks real use (done).**
    - The Envelope Editor opens inside the page where there are no windows (`EnvelopeEditorView`, shown by
      `TimelineView`). Checked in Chromium, with edits reaching the show computer's saved file.
-   - `GhostShow.Browser/publish.sh` clears the old builds and always uses AOT.
+   - `apps/GhostShow.Browser/publish.sh` clears the old builds and always uses AOT.
    - The browser's Save button became a save status.
    - The blank Lighting and Audio pages are fixed.
 2. **The real Fixtures screen in the browser,** replacing `LightingPage` and the code around it in `ShellView.cs`. It's
@@ -271,10 +271,10 @@ moving-light effects, VS-style docking.
 
 ### Trying it today
 
-1. Build it: `GhostShow.Browser/publish.sh` (about 5 minutes). It needs the WebAssembly tools ("wasm-tools"), which are
+1. Build it: `apps/GhostShow.Browser/publish.sh` (about 5 minutes). It needs the WebAssembly tools ("wasm-tools"), which are
    in the private SDK in `~/.dotnet`; the system SDK is Ubuntu's build, owned by root. That's also why it isn't in
    `GhostShow.slnx`.
-2. Start the app with `GHOSTSHOW_BROWSER_APP=<repo>/GhostShow.Browser/bin/Release/net10.0-browser/publish/wwwroot`.
+2. Start the app with `GHOSTSHOW_BROWSER_APP=<repo>/apps/GhostShow.Browser/bin/Release/net10.0-browser/publish/wwwroot`.
 3. Switch Remote Access on.
 4. On the laptop, pair at `http://<address>:7700/`, then open `http://<address>:7700/app/`.
 

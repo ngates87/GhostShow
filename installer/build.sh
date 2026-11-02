@@ -5,7 +5,7 @@
 # Runs on Linux and needs:
 #   - NSIS, which makes the installer: sudo apt install nsis
 #   - Node.js, for the web remote's page. dotnet would carry on without it and ship a page saying it wasn't built.
-#   - the private SDK in ~/.dotnet with "wasm-tools" (see GhostShow.Browser/publish.sh)
+#   - the private SDK in ~/.dotnet with "wasm-tools" (see apps/GhostShow.Browser/publish.sh)
 #   - the internet, the first time, for Microsoft's Visual C++ runtime (see ghostshow.nsi for why it's included)
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -32,16 +32,16 @@ rm -rf "$app_dir"
 mkdir -p "$work_dir"
 
 echo "== The browser app (what the show computer serves at /app/)"
-GhostShow.Browser/publish.sh
+apps/GhostShow.Browser/publish.sh
 
 echo "== The desktop app for 64-bit Windows"
 # Self-contained, so the show computer doesn't need .NET. ReadyToRun makes it start faster.
-DOTNET_ROOT="$HOME/.dotnet" "$HOME/.dotnet/dotnet" publish GhostShow.App -c Release -r win-x64 --self-contained \
+DOTNET_ROOT="$HOME/.dotnet" "$HOME/.dotnet/dotnet" publish apps/GhostShow.App -c Release -r win-x64 --self-contained \
     -p:PublishReadyToRun=true -p:Version="$version" -o "$app_dir"
 # Debug symbols for Skia and HarfBuzz: 100 MB, and only useful for debugging those libraries.
 rm -f "$app_dir"/lib*.pdb
 # RemoteViewModel.FindBrowserApp looks for this folder next to the program.
-cp -r GhostShow.Browser/bin/Release/net10.0-browser/publish/wwwroot "$app_dir/browser-app"
+cp -r apps/GhostShow.Browser/bin/Release/net10.0-browser/publish/wwwroot "$app_dir/browser-app"
 
 if [[ ! -f "$vc_redist" ]]; then
     echo "== Downloading the Visual C++ runtime from Microsoft"

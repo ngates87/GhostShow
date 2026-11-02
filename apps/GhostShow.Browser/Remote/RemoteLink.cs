@@ -8,7 +8,7 @@ using GhostShow.Core.Editing;
 namespace GhostShow.Browser.Remote;
 
 /// <summary>
-/// The connection to the show computer (the web remote's <c>/api/live</c>, see GhostShow.Web/RemoteServer.cs), with
+/// The connection to the show computer (the web remote's <c>/api/live</c>, see libs/GhostShow.Web/RemoteServer.cs), with
 /// the token the web remote's page saved when this browser paired (same address, so same storage). Reconnects by
 /// itself.
 /// </summary>

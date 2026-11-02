@@ -3,6 +3,16 @@
 Open-source, cross-platform show control for haunted houses: DMX lighting (fixtures, patching, manual control) and
 audio, played together from timelines. Built with C# / .NET 10 (LTS), Avalonia and SoundFlow.
 
+## Folders
+
+| Folder | What's in it |
+|---|---|
+| `apps/` | The programs: `GhostShow.App` (desktop), `GhostShow.Browser` (the same app for browsers), `GhostShow.Cli` (command line) |
+| `libs/` | The parts they're built from: `GhostShow.Core`, `GhostShow.Dmx`, `GhostShow.Audio`, `GhostShow.Web` |
+| `tests/` | `GhostShow.Tests`, `GhostShow.App.Tests`, `GhostShow.Benchmarks` |
+| `installer/` | The Windows installer |
+| `docs/` | Documentation |
+
 ## Build, test, run
 
 Requires the .NET 10 SDK. Node.js 20.19 or newer builds the web remote's page (without it the build still works,
@@ -10,17 +20,17 @@ and the page says it wasn't built).
 
     dotnet build
     dotnet test
-    dotnet run --project GhostShow.App                   # the desktop app
+    dotnet run --project apps/GhostShow.App                   # the desktop app
 
 Command line:
 
-    dotnet run --project GhostShow.Cli -- detect         # find USB DMX adapters and their serial numbers
-    dotnet run --project GhostShow.Cli -- soak --minutes 30 [--opendmx /dev/ttyUSB0 --dark]
-    dotnet run --project GhostShow.Cli -- soak-playback --minutes 30
-    dotnet run --project GhostShow.Cli -- demo Demo      # sample show folder (put a thunder.wav in Demo/audio/)
-    dotnet run --project GhostShow.Cli -- run Demo "Rooms/Lightning Room" --dry --silent
+    dotnet run --project apps/GhostShow.Cli -- detect         # find USB DMX adapters and their serial numbers
+    dotnet run --project apps/GhostShow.Cli -- soak --minutes 30 [--opendmx /dev/ttyUSB0 --dark]
+    dotnet run --project apps/GhostShow.Cli -- soak-playback --minutes 30
+    dotnet run --project apps/GhostShow.Cli -- demo Demo      # sample show folder (put a thunder.wav in Demo/audio/)
+    dotnet run --project apps/GhostShow.Cli -- run Demo "Rooms/Lightning Room" --dry --silent
 
-Benchmarks: `dotnet run -c Release --project GhostShow.Benchmarks -- --filter '*'`
+Benchmarks: `dotnet run -c Release --project tests/GhostShow.Benchmarks -- --filter '*'`
 
 Windows installer: `installer/build.sh 1.2.0` writes `artifacts/GhostShow-Setup-1.2.0.exe`. See
 [docs/windows-installer.md](docs/windows-installer.md).

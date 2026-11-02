@@ -17,9 +17,9 @@
     <None Include="Assets\**" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\GhostShow.Audio\GhostShow.Audio.csproj" />
-    <ProjectReference Include="..\GhostShow.Core\GhostShow.Core.csproj" />
-    <ProjectReference Include="..\GhostShow.Dmx\GhostShow.Dmx.csproj" />
-    <ProjectReference Include="..\GhostShow.Web\GhostShow.Web.csproj" />
+    <ProjectReference Include="..\..\libs\GhostShow.Audio\GhostShow.Audio.csproj" />
+    <ProjectReference Include="..\..\libs\GhostShow.Core\GhostShow.Core.csproj" />
+    <ProjectReference Include="..\..\libs\GhostShow.Dmx\GhostShow.Dmx.csproj" />
+    <ProjectReference Include="..\..\libs\GhostShow.Web\GhostShow.Web.csproj" />
   </ItemGroup>
 </Project>

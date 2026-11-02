@@ -32,7 +32,7 @@
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\GhostShow.Core\GhostShow.Core.csproj" />
+    <ProjectReference Include="..\..\libs\GhostShow.Core\GhostShow.Core.csproj" />
   </ItemGroup>
 
   <!-- The desktop app's screens, shared as source. What needs DMX, audio or the web server stays out (Remote/ stands in). -->
