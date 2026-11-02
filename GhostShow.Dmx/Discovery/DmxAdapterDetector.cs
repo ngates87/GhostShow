@@ -156,3 +156,19 @@ public static class DmxAdapterDetector
         return null;
     }
 }
+
+/// <summary>Looks for adapters: the real serial ports, or a stand-in where tests must not touch real hardware.</summary>
+public interface IDmxAdapterFinder
+{
+    /// <summary>The ports an adapter could be on, without opening any of them.</summary>
+    IReadOnlyList<string> CandidatePorts();
+
+    /// <summary>Briefly opens a port. The adapter on it, or null; <paramref name="busy"/> if it couldn't be opened.</summary>
+    DmxAdapterInfo? Probe(string port, int timeoutMs, out bool busy);
+}
+
+public sealed class SerialPortAdapterFinder : IDmxAdapterFinder
+{
+    public IReadOnlyList<string> CandidatePorts() => DmxAdapterDetector.CandidatePorts();
+    public DmxAdapterInfo? Probe(string port, int timeoutMs, out bool busy) => DmxAdapterDetector.Probe(port, timeoutMs, out busy);
+}

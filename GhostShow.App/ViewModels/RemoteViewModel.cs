@@ -3,6 +3,7 @@ using System.Net.Sockets;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using GhostShow.Core.Dmx;
 using GhostShow.Core.Editing;
 using GhostShow.Core.Engine;
 using GhostShow.Core.Fixtures;
@@ -17,7 +18,7 @@ namespace GhostShow.App.ViewModels;
 /// <summary>The web remote's host: the desktop app, with the show edited on the UI thread.</summary>
 sealed class AppRemoteHost(ShowSession session, ShowPlayback playback, PlaybackViewModel focus, IShowControl control,
                             Func<IReadOnlyList<string>> warnings, AudioDeviceList audioDevices, Func<bool> hasUnsavedChanges,
-                            Func<bool> needsFirstSave, IFixtureLibrary library) : IRemoteHost
+                            Func<bool> needsFirstSave, IFixtureLibrary library, IOutputSetup outputs, ILiveLevels levels) : IRemoteHost
 {
     public Task<T> InvokeAsync<T>(Func<T> function) => Dispatcher.UIThread.InvokeAsync(function).GetTask();
     public ShowSession Session => session;
@@ -28,6 +29,8 @@ sealed class AppRemoteHost(ShowSession session, ShowPlayback playback, PlaybackV
     public bool HasUnsavedChanges => hasUnsavedChanges();
     public bool NeedsFirstSave => needsFirstSave();
     public IFixtureLibrary Library => library;
+    public IOutputSetup Outputs => outputs;
+    public ILiveLevels Levels => levels;
     public IReadOnlyList<string> AudioDevices => audioDevices.Names;
 
     public event Action? AudioDevicesChanged
@@ -158,13 +161,16 @@ public sealed partial class RemoteViewModel : ObservableObject, IAsyncDisposable
 
     /// <summary>
     /// The browser build of the app (GhostShow.Browser, published), served at /app/: the folder in
-    /// GHOSTSHOW_BROWSER_APP if that's set, or else the one published in this source tree
+    /// GHOSTSHOW_BROWSER_APP if that's set, the browser-app folder next to the program in an installed copy (see
+    /// installer/build.sh), or else the one published in this source tree
     /// (GhostShow.Browser/bin/Release/net10.0-browser/publish/wwwroot), found by looking up from where the app runs.
     /// Null if there's none: then only the simple remote page is served.
     /// </summary>
     static string? FindBrowserApp()
     {
         if (Environment.GetEnvironmentVariable("GHOSTSHOW_BROWSER_APP") is { Length: > 0 } set) return set;
+        var installed = Path.Combine(AppContext.BaseDirectory, "browser-app");
+        if (File.Exists(Path.Combine(installed, "index.html"))) return installed;
         for (var folder = new DirectoryInfo(AppContext.BaseDirectory); folder is not null; folder = folder.Parent)
         {
             var published = Path.Combine(folder.FullName, "GhostShow.Browser", "bin", "Release", "net10.0-browser", "publish", "wwwroot");

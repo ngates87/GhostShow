@@ -57,6 +57,12 @@ sealed partial class RemoteLink
     /// <summary>"library": what the fixture library says about itself, and its version.</summary>
     public event Action<JsonObject>? Library;
 
+    /// <summary>"outputs": what the show computer's DMX hardware looks like now.</summary>
+    public event Action<JsonObject>? Outputs;
+
+    /// <summary>"levels": the levels of the universe this device asked for.</summary>
+    public event Action<JsonObject>? Levels;
+
     /// <summary>The connection dropped (it's being tried again).</summary>
     public event Action? Disconnected;
 
@@ -162,6 +168,12 @@ sealed partial class RemoteLink
                     break;
                 case "library":
                     Library?.Invoke(json);
+                    break;
+                case "outputs":
+                    Outputs?.Invoke(json);
+                    break;
+                case "levels":
+                    Levels?.Invoke(json);
                     break;
             }
         }

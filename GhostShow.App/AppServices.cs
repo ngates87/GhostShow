@@ -4,6 +4,7 @@ using GhostShow.Core.Engine;
 using GhostShow.Core.Playback;
 using GhostShow.Core.Storage;
 using GhostShow.Dmx;
+using GhostShow.Dmx.Discovery;
 
 namespace GhostShow.App;
 
@@ -20,4 +21,5 @@ public sealed record AppServices(
     MachineSettings Settings,
     AppPaths Paths,
     RecentEventsLog Log,
-    UiResponsivenessProbe Probe);
+    UiResponsivenessProbe Probe,
+    IDmxAdapterFinder? AdapterFinder = null);

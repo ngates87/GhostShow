@@ -40,6 +40,7 @@ public sealed partial class MainViewModel : ObservableObject
     readonly AppPaths _paths;
     readonly IStorageProvider _storage;
     readonly ILogger _logger;
+    readonly LocalOutputSetup _outputSetup;
     readonly DispatcherTimer _tick;
     readonly DispatcherTimer _autoSave;
     readonly SemaphoreSlim _saveGate = new(1, 1);
@@ -57,13 +58,16 @@ public sealed partial class MainViewModel : ObservableObject
         _storage = storage;
         _logger = logger;
 
-        Outputs = new OutputsViewModel(session, outputs, settings, SaveSettingsAsync);
+        _outputSetup = new LocalOutputSetup(session, outputs, settings, SaveSettingsAsync, services.AdapterFinder);
+        var levels = new LocalLiveLevels(session.Engine, outputs.Find);
         var library = new LocalFixtureLibrary(session, paths, settings, logger);
         Library = new ProfileLibraryViewModel(library);
-        Fixtures = new FixtureSetupViewModel(session, Library);
-        Control = new FixtureControlViewModel(session, ReportError);
-        Channels = new ChannelsViewModel(session.Engine, ReportError);
-        Monitor = new MonitorViewModel(session.Engine, outputs.Find);
+        Lighting = new LightingViewModel(session, levels, new OutputsViewModel(session, _outputSetup, ReportError), new FixtureSetupViewModel(session, Library), ReportError);
+        Lighting.PageChanged += () =>
+        {
+            OnPropertyChanged(nameof(CurrentPage));
+            OnPageShown();
+        };
         ShowPlayback = new ShowPlayback(session, services.Playback, services.Audio, logger);
         // A sound's length was measured (on a worker thread): timelines using it are compiled again, on this thread.
         services.Audio.LengthMeasured += path => Dispatcher.UIThread.Post(() => ShowPlayback.OnAudioMeasured(path));
@@ -73,7 +77,7 @@ public sealed partial class MainViewModel : ObservableObject
         AudioDevices = new AudioDeviceList(services.Audio);
         Timeline = new TimelineEditorViewModel(session, Playback, PickAudioFileAsync, MarkDirty, AudioDevices);
         Buttons = new ButtonsViewModel(session, Playback, Blackout, MarkDirty);
-        Remote = new RemoteViewModel(new AppRemoteHost(session, ShowPlayback, Playback, new AppShowControl(this), () => WarningsSnapshot, AudioDevices, () => IsDirty, () => _session.FilePath is null || _session.IsSingleFileShow, library),
+        Remote = new RemoteViewModel(new AppRemoteHost(session, ShowPlayback, Playback, new AppShowControl(this), () => WarningsSnapshot, AudioDevices, () => IsDirty, () => _session.FilePath is null || _session.IsSingleFileShow, library, _outputSetup, levels),
                                      settings.Remote, SaveSettingsAsync, logger);
         Audio = new AudioViewModel(services.Audio, AudioDevices, session, settings, SaveSettingsAsync);
         _ = AudioDevices.RefreshAsync();
@@ -112,11 +116,9 @@ public sealed partial class MainViewModel : ObservableObject
     public AudioDeviceList AudioDevices { get; }
     public SetupGuideViewModel Guide { get; }
     public ProfileLibraryViewModel Library { get; }
-    public OutputsViewModel Outputs { get; }
-    public FixtureSetupViewModel Fixtures { get; }
-    public FixtureControlViewModel Control { get; }
-    public ChannelsViewModel Channels { get; }
-    public MonitorViewModel Monitor { get; }
+    public LightingViewModel Lighting { get; }
+    public OutputsViewModel Outputs => Lighting.Outputs;
+    public FixtureSetupViewModel Fixtures => Lighting.Fixtures;
     public DiagnosticsViewModel Diagnostics { get; }
     public PerformanceMeterViewModel Performance { get; }
 
@@ -143,18 +145,13 @@ public sealed partial class MainViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(CurrentPage))]
     public partial int SelectedSection { get; set; }
 
-    /// <summary>Index of the selected tab within Lighting.</summary>
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(CurrentPage))]
-    public partial int SelectedLightingPage { get; set; }
-
     /// <summary>The screen on display; drives which screens refresh.</summary>
     public Page CurrentPage
     {
         get => !IsShowOpen ? Page.Home : (Section)SelectedSection switch
         {
             Section.Timeline => Page.Timeline,
-            Section.Lighting => Page.DmxSetup + SelectedLightingPage,
+            Section.Lighting => Lighting.CurrentPage,
             Section.Audio => Page.Audio,
             _ => Page.Diagnostics,
         };
@@ -168,7 +165,7 @@ public sealed partial class MainViewModel : ObservableObject
                     SelectedSection = (int)Section.Timeline;
                     break;
                 case <= Page.Monitor:
-                    SelectedLightingPage = value - Page.DmxSetup;
+                    Lighting.CurrentPage = value;
                     SelectedSection = (int)Section.Lighting;
                     break;
                 case Page.Audio:
@@ -180,13 +177,6 @@ public sealed partial class MainViewModel : ObservableObject
             }
         }
     }
-
-    /// <summary>The universe the monitor and channel faders show.</summary>
-    [ObservableProperty]
-    public partial int ActiveUniverse { get; set; } = GhostShow.Core.Model.Project.FirstUniverse;
-
-    public ObservableCollection<int> UniverseNumbers { get; } = new();
-
 
     /// <summary>The latest command error or file problem, shown in the status bar.</summary>
     [ObservableProperty]
@@ -246,26 +236,12 @@ public sealed partial class MainViewModel : ObservableObject
         await SaveSettingsAsync();
     }
 
-    /// <summary>For universe pickers, which briefly select nothing while their list is rebuilt (see PatchMapViewModel.UniverseChoice).</summary>
-    public int? ActiveUniverseChoice
-    {
-        get => ActiveUniverse;
-        set { if (value is { } universe) ActiveUniverse = universe; }
-    }
-
-    partial void OnActiveUniverseChanged(int value)
-    {
-        OnPropertyChanged(nameof(ActiveUniverseChoice));
-        Channels.SetUniverse(value);
-    }
-
     partial void OnSelectedSectionChanged(int value) => OnPageShown();
-    partial void OnSelectedLightingPageChanged(int value) => OnPageShown();
 
     /// <summary>Refresh a page as soon as it's shown rather than waiting for its next tick.</summary>
     void OnPageShown()
     {
-        if (CurrentPage == Page.DmxSetup) _ = Outputs.WatchAdaptersAsync();   // scan as soon as the screen opens
+        Lighting.IsOnScreen = CurrentPage is >= Page.DmxSetup and <= Page.Monitor;
         if (CurrentPage == Page.Home) RefreshRecentShows();   // a recent show may have been moved or reconnected since
         Guide.OnTimeline = CurrentPage == Page.Timeline;
         Guide.Refresh();
@@ -274,7 +250,7 @@ public sealed partial class MainViewModel : ObservableObject
             _ = Audio.RefreshDevicesCommand.ExecuteAsync(null);
             Audio.Tick();
         }
-        Outputs.Tick();
+        _outputSetup.Refresh();
         if (CurrentPage == Page.Diagnostics) Diagnostics.Tick();
         Tick();
     }
@@ -286,10 +262,8 @@ public sealed partial class MainViewModel : ObservableObject
     public async Task StartAsync(string? settingsError)
     {
         if (settingsError is not null) ReportError(settingsError);
-        _session.Applied += OnApplied;
-        OnApplied();
         RefreshRecentShows();
-        await Outputs.ApplyOutputsAsync();
+        await _outputSetup.ApplyAsync();
         _tick.Start();
         if (RecentShows.FirstOrDefault() is { Exists: true } last) await OpenPathAsync(last.Path);
         await Remote.StartIfEnabledAsync();
@@ -547,31 +521,16 @@ public sealed partial class MainViewModel : ObservableObject
     {
         _autoSave.Stop();
         IsDirty = false;
-        Fixtures.Reload();
-        Outputs.Reload();
+        Lighting.Reload();
         Playback.Reset();    // the old show's timelines stop at once
         Timeline.Reload();   // focuses the new show's first timeline
         Buttons.Reload();
         Remote.ShowReplaced();
         Guide.Reset();
-        await Outputs.ApplyOutputsAsync();
+        await _outputSetup.ApplyAsync();
         OnPropertyChanged(nameof(Title));
         OnPropertyChanged(nameof(ShowFile));
 
-    }
-
-    void OnApplied()
-    {
-        var universes = _session.Engine.Universes;
-        if (!universes.SequenceEqual(UniverseNumbers))
-        {
-            int active = ActiveUniverse;
-            UniverseNumbers.Clear();
-            foreach (var universe in universes) UniverseNumbers.Add(universe);
-            ActiveUniverse = universes.Contains(active) ? active : universes.FirstOrDefault();
-            // Pickers bound to ActiveUniverse lost their selection when the list was cleared; re-announce it even if unchanged.
-            OnPropertyChanged(nameof(ActiveUniverseChoice));
-        }
     }
 
     /// <summary>A remote edit changed the patch: validate it again, refresh setup screens and apply universe outputs.</summary>
@@ -619,19 +578,12 @@ public sealed partial class MainViewModel : ObservableObject
     {
         Playback.Tick();   // the toolbar transport shows on every screen
         Buttons.Tick();    // buttons light while what they run plays
-        switch (CurrentPage)
-        {
-            case Page.Monitor: Monitor.Tick(ActiveUniverse); break;
-            case Page.Channels: Channels.Tick(); break;
-            case Page.Control: Control.Tick(); break;
-        }
+        Lighting.Tick();
 
         _tickCount++;
         if (_tickCount % 15 == 0) Performance.Update();   // twice a second, so the meter moves like one
         if (_tickCount % 30 != 0) return;
-        Outputs.Tick();
-        // Every 2 s on the DMX setup screen: notice adapters plugged in or out (cheap; see WatchAdaptersAsync).
-        if (CurrentPage == Page.DmxSetup && _tickCount % 60 == 0) _ = Outputs.WatchAdaptersAsync();
+        _outputSetup.Tick();
         if (CurrentPage == Page.Diagnostics) Diagnostics.Tick();
         if (CurrentPage == Page.Audio) Audio.Tick();
         // Open the devices audio tracks are routed to before they're needed (cheap when nothing changed).

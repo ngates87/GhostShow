@@ -163,7 +163,7 @@ object and everything in it, or only an object's own properties and lists, becau
 takes tens of milliseconds and a clip or envelope well under one. The timeline tree and the show buttons go through it
 too, on the show's own history. Undo takes back the latest of that and the open timeline's. The Fixtures and DMX setup screens edit through it too, each with Undo and Redo on the show's history
 (`ShowHistoryViewModel`), so Undo there never takes back a timeline edit you can't see. They follow the show however it
-changes (`FixtureSetupViewModel.Sync`, `OutputsViewModel.SyncAsync`), and `ShowSession` re-applies the patch by itself
+changes (`FixtureSetupViewModel.Sync`, `OutputsViewModel.Sync`), and `ShowSession` re-applies the patch by itself
 after a fixture or universe edit. Custom fixture types aren't part of the show: they're files on the show computer.
 
 ## Playback on the show computer

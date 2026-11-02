@@ -174,6 +174,9 @@ Show computer: GhostShow server (no window)
 - **A native window stays, at least for now.** It's the same screens over the same connection. The UI tests can only run
   natively, and a native build is far quicker to try than the 5-minute browser build. Whether it ever ships can wait.
 - **A crashed screen can't stop the show,** and autostart and show mode get simpler.
+- **Desktop and browser are one for one.** Also decided 2026-11-02: every screen works the same on both. The only thing
+  that doesn't move is the hardware: detecting adapters, and running sound and DMX, stay on the show computer, and a device
+  sees what it found and picks from what it offers.
 
 Reassessed 2026-11-01 and 2026-11-02.
 
@@ -195,15 +198,15 @@ Reassessed 2026-11-01 and 2026-11-02.
 with a device connected.
 
 **Problems found:**
-- **The Audio and Universes pages are still hand-built, not the desktop's screens,** in `ShellView.cs`, until step 6.
+- **The Audio page is still hand-built, not the desktop's screen,** in `ShellView.cs`, until step 6.
 - **An exception during layout blanks every page until a reload,** with nothing on screen to say why. That's how the
   blank pages looked: an empty dropdown's template threw a null reference.
 - **Nothing in the repo tests the browser build.** It isn't in `GhostShow.slnx`, and the browser test scripts lived
   only in a scratch folder, which has already been wiped once.
 - **`/app/` can go stale.** `dotnet build` doesn't rebuild it, so after a protocol change the page can quietly be
   older than the server.
-- **Only a developer can get the full app today.** `FindBrowserApp` finds a publish in the source tree, or the
-  `GHOSTSHOW_BROWSER_APP` folder. An installed copy has no way to find it.
+- **On Linux and macOS, only a developer can get the full app.** `FindBrowserApp` finds a publish in the source tree, or
+  the `GHOSTSHOW_BROWSER_APP` folder. The Windows installer includes it in `browser-app` next to the program.
 
 ### Decisions made
 
@@ -231,10 +234,13 @@ Small steps; each one leaves the app working.
       re-applies the patch by itself after a fixture or universe edit.
    2. The fixture library behind an interface (done): `IFixtureLibrary`, with `LocalFixtureLibrary` on the show computer
       and `RemoteFixtureLibrary` in the browser, which fetches the whole library, about half a megabyte compressed.
-   3. The real screen in the browser, and the hand-built patch page deleted (done). The Universes tab is still hand-built,
-      until the DMX setup screen comes across in step 6.
+   3. The real screen in the browser, and the hand-built patch page deleted (done).
+   4. The rest of Lighting (done, brought forward from step 6): `LightingView` and `LightingViewModel` are the whole section,
+      the same on both. Two more interfaces follow the pattern: `IOutputSetup` (the hardware: `LocalOutputSetup`,
+      `RemoteOutputSetup`) and `ILiveLevels` (the faders and monitor: `LocalLiveLevels`, `RemoteLiveLevels`). Checked in
+      Chromium against fake adapters and simulated outputs; never on a real adapter from a browser.
 
-   Moving this screen took a change to one screen's view models and a small interface: the pattern holds.
+   Moving a screen takes a change to its view models and a small interface: the pattern holds.
 3. **Browser tests in the repo** (Playwright, with their own small host), started alongside step 2 so that moved screens
    have a safety net. With them, a check that the page and the server are the same version, so a stale `/app/` says so.
 4. **Split out the server:** a project with the engine, DMX, audio, saving and the remote server, and no Avalonia. The
@@ -243,12 +249,11 @@ Small steps; each one leaves the app working.
    will show whether the idea holds. If it goes badly, stop here: the current design still works.
 6. **Move the other screens, one at a time:**
    - Audio, with its settings as commands to the show computer;
-   - DMX outputs: which adapter drives which universe;
-   - faders and the monitor;
-   - buttons;
+   - buttons, and the Diagnostics section;
    - the file menu, with a browser for the show computer's folders (choosing a sound, opening a show, uploading sounds
      from the laptop).
-7. **Run the server on its own:** autostart and packaging, so an installed copy serves `/app/` with no setup. Then delete
+7. **Run the server on its own:** autostart and packaging (the Windows installer already serves `/app/` with no setup,
+   from the desktop app). Then delete
    the old direct path and what's left of `ShellView.cs`.
 8. **Browser polish:**
    - A symbol font (▾ and ⚙ show as boxes).

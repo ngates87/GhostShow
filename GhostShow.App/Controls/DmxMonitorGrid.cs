@@ -28,8 +28,8 @@ public sealed class DmxMonitorGrid : Control
     static readonly Typeface BoldFont = new("Inter", FontStyle.Normal, FontWeight.SemiBold);
 
     // Text layouts never change, so they're built once: 512 address labels and 256 value labels.
-    static readonly FormattedText[] AddressTexts = Enumerable.Range(1, Addresses).Select(a => Text(a.ToString(), Font, 9, AddressBrush)).ToArray();
-    static readonly FormattedText[] ValueTexts = Enumerable.Range(0, 256).Select(v => Text(v.ToString(), BoldFont, 12, Brushes.White)).ToArray();
+    readonly FormattedText[] _addressTexts = Enumerable.Range(1, Addresses).Select(a => Text(a.ToString(), Font, 9, AddressBrush)).ToArray();
+    readonly FormattedText[] _valueTexts = Enumerable.Range(0, 256).Select(v => Text(v.ToString(), BoldFont, 12, Brushes.White)).ToArray();
 
     public static readonly StyledProperty<byte[]?> ValuesProperty =
         AvaloniaProperty.Register<DmxMonitorGrid, byte[]?>(nameof(Values));
@@ -85,9 +85,9 @@ public sealed class DmxMonitorGrid : Control
                     context.DrawRectangle(fill, null, new Rect(cell.X, cell.Bottom - height, cell.Width, height), 3, 3);
             }
 
-            var address = AddressTexts[i];
+            var address = _addressTexts[i];
             context.DrawText(address, new Point(cell.X + (cell.Width - address.Width) / 2, cell.Y + 2));
-            var text = ValueTexts[value];
+            var text = _valueTexts[value];
             context.DrawText(text, new Point(cell.X + (cell.Width - text.Width) / 2, cell.Bottom - text.Height - 3));
         }
     }

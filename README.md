@@ -22,6 +22,9 @@ Command line:
 
 Benchmarks: `dotnet run -c Release --project GhostShow.Benchmarks -- --filter '*'`
 
+Windows installer: `installer/build.sh 1.2.0` writes `artifacts/GhostShow-Setup-1.2.0.exe`. See
+[docs/windows-installer.md](docs/windows-installer.md).
+
 ## The app
 
 The app opens straight into the show you used last (File → Close Show, or no recent show, gives the **Home** page:
@@ -63,5 +66,6 @@ or with `ghostshow library download`), the QLC+ library (~1,400) if QLC+ happens
 - [Timelines and playback](docs/timeline.md): model, playback rules, transport, editing while playing, audio, the Timeline screen
 - [Remote access](docs/remote.md): running the show from an iPad, laptop or phone on the show's network
 - [Hardware](docs/hardware.md): Open DMX setup, testing procedure, troubleshooting
+- [Windows installer](docs/windows-installer.md): building it, what it does on the show computer, what to expect
 - [Fixture profiles](docs/fixture-profiles.md): profile format, QLC+ import, patch validation
 - [Performance](docs/performance.md): targets, method, measured results, known limitations

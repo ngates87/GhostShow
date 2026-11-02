@@ -1,3 +1,4 @@
+using GhostShow.Core.Dmx;
 using GhostShow.Core.Fixtures;
 using GhostShow.Core.Engine;
 using GhostShow.Core.Playback;
@@ -46,6 +47,12 @@ public interface IRemoteHost
 
     /// <summary>The fixture library on the show computer: for a device's type picker, and custom fixture types.</summary>
     IFixtureLibrary Library { get; }
+
+    /// <summary>The DMX hardware on the show computer: adapters found, and which device each universe uses. On the show's thread.</summary>
+    IOutputSetup Outputs { get; }
+
+    /// <summary>The levels the lights are at, and setting them by hand: for a device's faders and monitor. On the show's thread.</summary>
+    ILiveLevels Levels { get; }
 
     /// <summary>The show computer's audio output devices, by name (for audio tracks' outputs). On the show's thread.</summary>
     IReadOnlyList<string> AudioDevices { get; }

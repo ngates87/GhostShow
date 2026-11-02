@@ -3,11 +3,11 @@
 Run and edit the show from a laptop, an iPad or a phone while you stand in the room: you hear the room's speakers
 and see the real lights, and nobody needs to sit at the show computer. Sound and lights stay on the show computer;
 the device is a remote. There are two pages:
-- **The full app** (`/app/`): the Timeline editor, the desktop's Fixtures screen and an Audio page. See "Editing from the
-  full app" below.
+- **The full app** (`/app/`): the desktop's own Timeline screen and whole Lighting section, and an Audio page. See
+  "Editing from the full app" below.
 - **The simple remote** (the plain address): run the show, on anything down to a phone.
 
-See [plan-remote.md](plan-remote.md) for what's coming (the other screens: audio and DMX setup).
+See [plan-remote.md](plan-remote.md) for what's coming (the remaining screens: audio, buttons, the file menu).
 
 ## Using it
 
@@ -51,13 +51,21 @@ how many devices are connected.
 
 Open `http://<address>:7700/app/`, or "Open the full app" on the simple remote. `/app/?open=Folder/Timeline` opens a
 timeline at start, so it can be bookmarked. The top row switches between Timeline, Lighting and Audio; Blackout and
-warnings stay visible across pages. The show's buttons are available along the bottom. Lighting has the desktop's own
-Fixtures screen: the type picker with the show computer's whole fixture library, placing fixtures on the address map, new
-and edited custom fixture types (saved on the show computer), and Undo. A small Universes page beside it adds, removes,
-renames and renumbers universes. Which DMX adapter drives each universe, live faders, and audio settings are still
-managed on the show computer.
-Audio shows the show computer's devices and the files used by the show. The full app is only there if it has been built:
-`GhostShow.Browser/publish.sh` (it needs the WebAssembly tools).
+warnings stay visible across pages. The show's buttons are available along the bottom. The Windows installer includes the
+full app. From source, it's only there if it has been built: `GhostShow.Browser/publish.sh` (it needs the WebAssembly
+tools).
+
+Lighting is the desktop's own section, screen for screen:
+- **DMX setup:** the show's universes, and which device each goes out on. **The hardware stays on the show computer:**
+  it's the show computer that looks for adapters (while a DMX setup screen is open somewhere), and a device only sees what
+  it found. Picking a device there restarts that universe's output on the show computer and saves in its settings.
+- **Fixtures:** the type picker with the show computer's whole fixture library, placing fixtures on the address map, new
+  and edited custom fixture types (saved on the show computer), and Undo.
+- **Control, Channels:** live faders. They set the real levels, and move by themselves when the levels change elsewhere. A
+  channel the playing timeline controls says TIMELINE, as on the desktop.
+- **Monitor:** all 512 channels, as last sent to the universe's output.
+
+Audio shows the show computer's devices and the files used by the show; its settings are still on the show computer.
 
 - **Edits are real.** Moving a clip, dragging a handle or adding a timeline changes the show on the show computer.
   It plays straight away, and the desktop and other devices see it live.
@@ -109,6 +117,11 @@ Audio shows the show computer's devices and the files used by the show. The full
   - `device`: the device again, when its role changes.
   - `library`: the fixture library's text for its screen, and its `version`, which goes up when its profiles change. Also
     in `hello`, as `library`.
+  - `outputs`: what the DMX hardware looks like (`state`: adapters found, and each universe's status, choices and
+    device), to a device that asked with `watchOutputs`, whenever it changes.
+  - `levels`: the levels of the universe a device asked for with `watchLevels`, up to 20 times a second while they
+    change: `levels`, `controlled` (by the timeline, 1 or 0) and `sent` (as last sent to the output), 512 bytes each as
+    base64, and `source` (where `sent` came from, for the monitor). A slow device gets only the newest.
   - `result`: the answer to a command.
   - `history`: what Undo and Redo would do next on this device (for its Undo button's label), after every change: for its
     timeline (`undo`, `redo`) and for the show's own edits (`showUndo`, `showRedo`).
@@ -133,10 +146,19 @@ Audio shows the show computer's devices and the files used by the show. The full
   - **Fixture library:** `saveProfile` (`profile`, as JSON) and `deleteProfile` (`profile`, its ID) change custom fixture
     types on the show computer; `downloadLibrary` starts downloading the online library. It isn't waited for, since a
     device's commands run one at a time and Blackout mustn't wait behind it.
+  - **DMX setup:** `watchOutputs` (`on`) says a DMX setup screen opened or closed: adapters are only looked for while one
+    is open, since checking a new port briefly opens it. `scanOutputs` checks every port again. `assignOutput` (`universe`,
+    `choice`) sends a universe out on a device, named by the label the show computer offered, so a device can never name
+    a port of its own. Neither waits for the hardware.
+  - **Live levels:** `watchLevels` (`universe`, or none to stop) says which universe's levels the device shows.
+    `setChannel` (`universe`, `address`, `value`), `clearUniverse` (`universe`), `setFixtureChannel` (`fixture`, `channel`,
+    `value`) and `setFixtureControl` (`fixture`, `function`, `value`) set them. The page sends a moving fader at most
+    about 30 times a second.
   - **Where they run:** on the show computer's UI thread, through the same view models as the desktop's controls
     (`IShowControl`).
   - **Roles:** the show computer checks the device's role for each command. `open`, `edit`, `undo`, `redo`, `save`,
-    `saveProfile`, `deleteProfile` and `downloadLibrary` are editor-only; an operator may run the show but not change it.
+    `saveProfile`, `deleteProfile`, `downloadLibrary`, `scanOutputs`, `assignOutput` and the commands that set levels are
+    editor-only; an operator may run the show but not change it.
 - **The fixture library:** `GET /api/library?token=…` gives the whole library, one profile per line of JSON, compressed
   with gzip: about 2,000 profiles, half a megabyte. A device fetches it the first time Lighting is opened. See
   `GhostShow.Web/RemoteServer.Library.cs` and `GhostShow.Browser/Remote/RemoteFixtureLibrary.cs`.

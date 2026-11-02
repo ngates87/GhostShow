@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Immutable;
@@ -38,16 +39,16 @@ sealed class ShellView : Border
     readonly TextBlock _saveState = new() { Foreground = Brushes.Gray, FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new(8, 4) };
     readonly Button _blackout = new() { Content = "Blackout", Padding = new(16, 3), Margin = new(8, 3), Background = Brushes.DarkRed, Foreground = Brushes.White, FontWeight = FontWeight.SemiBold };
     readonly TextBlock _warning = new() { Foreground = Brushes.Goldenrod, FontSize = 12, Margin = new(8, 3), TextWrapping = TextWrapping.Wrap };
-    readonly StackPanel _navigation = new() { Orientation = Orientation.Horizontal, Spacing = 4, Margin = new(8, 4) };
+    readonly TabStrip _sections = new() { Classes = { "sections" }, ItemsSource = new[] { "Timeline", "Lighting", "Audio" }, SelectedIndex = 0, Margin = new(8, 0) };
     readonly ContentControl _page = new();
     readonly TextBlock _showName = new() { FontSize = 16, FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center, Margin = new(8, 4) };
     readonly StackPanel _buttons = new() { Orientation = Orientation.Horizontal, Spacing = 6 };
     readonly RemoteFixtureLibrary _library;
-    readonly ContentControl _lightingContent = new() { HorizontalContentAlignment = HorizontalAlignment.Stretch, VerticalContentAlignment = VerticalAlignment.Stretch };
-    Control? _lightingPage;
-    FixtureSetupViewModel? _fixtures;
-    FixtureSetupView? _fixturesView;
-    bool _showingUniverses;
+    readonly RemoteOutputSetup _outputSetup;
+    readonly RemoteLiveLevels _levels;
+    readonly DispatcherTimer _lightingTick = new() { Interval = TimeSpan.FromMilliseconds(33) };   // as often as the desktop's screens refresh
+    LightingViewModel? _lighting;
+    LightingView? _lightingView;
     TimelineEditorViewModel? _editor;
     bool _unsaved;
     long _noticeNumber;
@@ -65,6 +66,9 @@ sealed class ShellView : Border
         _edits = new RemoteEdits(_session.Document, _link);
         _edits.Notice += ShowNotice;
         _library = new RemoteFixtureLibrary(_session, _link, BuiltInProfiles);
+        _outputSetup = new RemoteOutputSetup(_link);
+        _levels = new RemoteLiveLevels(_session, _link);
+        _lightingTick.Tick += (_, _) => _lighting?.Tick();
         _session.Document.Changed += change => Dispatcher.UIThread.Post(() => OnDocumentChanged(change));
         _blackout.Click += (_, _) => _link.Send("blackout");
         AddHandler(KeyDownEvent, OnKeyDown, Avalonia.Interactivity.RoutingStrategies.Tunnel);
@@ -81,6 +85,8 @@ sealed class ShellView : Border
         _link.Result += m => Dispatcher.UIThread.Post(() => _edits.OnResult(m));
         _link.History += m => Dispatcher.UIThread.Post(() => _edits.OnHistory(m));
         _link.Library += m => Dispatcher.UIThread.Post(() => _library.OnStatus(m));
+        _link.Outputs += m => Dispatcher.UIThread.Post(() => _outputSetup.OnOutputs(m));
+        _link.Levels += m => Dispatcher.UIThread.Post(() => _levels.OnLevels(m));
         _link.Disconnected += () => Dispatcher.UIThread.Post(() =>
         {
             if (_editor is not null) ShowNotice("Lost the connection to the show computer. Trying again… Edits made now won't be kept.");
@@ -111,13 +117,16 @@ sealed class ShellView : Border
         _library.UseProfilesOfTheShow(message["profiles"] as JsonArray);
         if (message["library"] is JsonObject library) _library.OnHello(library);
         _session.Use(ShowDocument.FromSnapshot(message["show"]!));
+        _outputSetup.OnHello();
+        _levels.OnHello();
         _showName.Text = _session.Project.Name;
         _audioDevices.Update(_sentAudioDevices);
         if (_editor is null)
         {
             _editor = new TimelineEditorViewModel(_session, _playback, () => Task.FromResult<string?>(null), () => { }, _audioDevices, _edits);
-            _fixtures = new FixtureSetupViewModel(_session, new ProfileLibraryViewModel(_library), _edits);
-            _lightingPage = BuildLightingPage();
+            var fixtures = new FixtureSetupViewModel(_session, new ProfileLibraryViewModel(_library), _edits);
+            _lighting = new LightingViewModel(_session, _levels, new OutputsViewModel(_session, _outputSetup, ShowNotice, _edits), fixtures, ShowNotice);
+            _lightingView = new LightingView { DataContext = _lighting, Margin = new(8, 0) };
             BuildShell();
             OpenFromAddress();
         }
@@ -126,15 +135,15 @@ sealed class ShellView : Border
             if (_notice.Text?.StartsWith("Lost the connection", StringComparison.Ordinal) == true) _notice.Text = "";
             _editor.Reload();
             ReopenTabs(openTabs, showing);
-            _fixtures?.Sync();   // the same screen and selection, on the fresh copy
+            _lighting?.Fixtures.Sync();   // the same screen and selection, on the fresh copy
+            _lighting?.Outputs.Reload();
         }
         RefreshButtons();
-        RefreshLighting();
         RefreshAudio();
         RefreshPage();
     }
 
-    /// <summary>The browser shell: the shared Timeline screen, plus remote-safe Lighting and Audio summaries.</summary>
+    /// <summary>The browser shell: the desktop's own Timeline and Lighting screens, and an Audio summary until that screen comes across.</summary>
     void BuildShell()
     {
         var root = new DockPanel();
@@ -143,7 +152,7 @@ sealed class ShellView : Border
         DockPanel.SetDock(_blackout, Dock.Right);
         header.Children.Add(_showName);
         header.Children.Add(_blackout);
-        header.Children.Add(_navigation);
+        header.Children.Add(_sections);
         root.Children.Add(header);
 
         var bottom = new DockPanel { [DockPanel.DockProperty] = Dock.Bottom };
@@ -161,17 +170,12 @@ sealed class ShellView : Border
         center.Children.Add(_page);
         root.Children.Add(center);
 
-        foreach (var label in new[] { "Timeline", "Lighting", "Audio" })
+        _sections.SelectionChanged += (_, _) =>
         {
-            var nav = new Button { Content = label, Padding = new(14, 5), Margin = new(2), BorderThickness = new(1) };
-            nav.Click += (_, _) =>
-            {
-                _selectedPage = label;
-                if (label == "Lighting") _ = _library.LoadAsync();   // the type picker needs the whole library: only fetched once it's wanted
-                RefreshPage();
-            };
-            _navigation.Children.Add(nav);
-        }
+            _selectedPage = _sections.SelectedItem as string ?? "Timeline";
+            if (_selectedPage == "Lighting") _ = _library.LoadAsync();   // the type picker needs the whole library: only fetched once it's wanted
+            RefreshPage();
+        };
         Child = root;
         RefreshPage();
     }
@@ -181,102 +185,18 @@ sealed class ShellView : Border
         if (_editor is null) return;
         _page.Content = _selectedPage switch
         {
-            "Lighting" => _lightingPage,
+            "Lighting" => _lightingView,
             "Audio" => AudioPage(),
             _ => new TimelineView { DataContext = _editor, Margin = new(6) },
         };
-        foreach (var child in _navigation.Children.OfType<Button>())
-        {
-            bool selected = Equals(child.Content?.ToString(), _selectedPage);
-            child.Classes.Set("selected", selected);
-            child.Background = selected ? new ImmutableSolidColorBrush(Color.Parse("#285B67")) : Brushes.Transparent;
-            child.BorderBrush = selected ? new ImmutableSolidColorBrush(Color.Parse("#6FC6B8")) : Brushes.Transparent;
-            child.BorderThickness = selected ? new(2) : new(1);
-            child.FontWeight = selected ? FontWeight.SemiBold : FontWeight.Normal;
-        }
-    }
-
-    /// <summary>
-    /// The Lighting page: the desktop's real Fixtures screen, on this copy of the show. The universes are still a small
-    /// page built here, until the desktop's DMX setup screen comes across (see docs/plan-remote.md).
-    /// </summary>
-    Control BuildLightingPage()
-    {
-        var fixtures = new Button { Content = "Fixtures", Padding = new(12, 3) };
-        var universes = new Button { Content = "Universes", Padding = new(12, 3) };
-        fixtures.Click += (_, _) => { _showingUniverses = false; RefreshLighting(); };
-        universes.Click += (_, _) => { _showingUniverses = true; RefreshLighting(); };
-        var tabs = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Margin = new(8, 2) };
-        tabs.Children.Add(fixtures);
-        tabs.Children.Add(universes);
-        DockPanel.SetDock(tabs, Dock.Top);
-        var page = new DockPanel { Margin = new(6, 0) };
-        page.Children.Add(tabs);
-        page.Children.Add(_lightingContent);
-        return page;
-    }
-
-    Control UniversesPage()
-    {
-        var stack = new StackPanel { Spacing = 8, Margin = new(6) };
-        stack.Children.Add(UniverseEditor());
-        foreach (var issue in _session.Patch.Issues.Where(i => i.FixtureId is null))
-            stack.Children.Add(new TextBlock { Text = issue.Message, Foreground = issue.Severity == PatchIssueSeverity.Error ? Brushes.OrangeRed : Brushes.Goldenrod, TextWrapping = TextWrapping.Wrap });
-        stack.Children.Add(new TextBlock { Text = "Which DMX adapter drives each universe is still configured on the show computer. Undo is on the Fixtures page.", Opacity = 0.65, TextWrapping = TextWrapping.Wrap });
-        return new ScrollViewer { Content = stack };
-    }
-
-    Control UniverseEditor()
-    {
-        var section = new StackPanel { Spacing = 4 };
-        section.Children.Add(new TextBlock { Text = $"Show universes · {_session.Project.Universes.Count}", FontWeight = FontWeight.SemiBold });
-        foreach (var universe in _session.Project.Universes)
-        {
-            var name = new TextBox { Text = universe.Name, PlaceholderText = "Universe name", MinWidth = 180 };
-            name.LostFocus += (_, _) => EditModel("Rename universe", universe, "name", () => universe.Name = name.Text ?? "");
-            var number = new NumericUpDown { Minimum = Project.FirstUniverse, Maximum = Project.LastUniverse, Increment = 1, Value = universe.Number, Width = 110 };
-            number.LostFocus += (_, _) => EditModel("Renumber universe", universe, "number", () => universe.Number = (int)(number.Value ?? universe.Number));
-            var remove = new Button { Content = "Remove", Padding = new(8, 3) };
-            remove.Click += (_, _) => _session.Document.Record("Remove universe", () => _session.Project.Universes.Remove(universe), ShowDocument.Shallow(_session.Project));
-            var usage = new UniverseUsage(_session.Patch.Fixtures.Where(f => f.Universe == universe.Number));
-            var used = new TextBlock
-            {
-                Text = $"{usage.UsedChannels}/512 channels used" + (usage.OverlapRanges.Count == 0 ? "" : $" · overlap at {string.Join(", ", usage.OverlapRanges)}"),
-                Foreground = usage.OverlapRanges.Count == 0 ? Brushes.Gray : Brushes.OrangeRed,
-                VerticalAlignment = VerticalAlignment.Center,
-                TextWrapping = TextWrapping.Wrap,
-            };
-            section.Children.Add(new WrapPanel { Orientation = Orientation.Horizontal, Children = { name, number, remove, used } });
-        }
-        var nextNumber = NextUniverseNumber();
-        var add = new Button { Content = "+ Universe", HorizontalAlignment = HorizontalAlignment.Left, Padding = new(10, 3), IsEnabled = nextNumber is not null };
-        add.Click += (_, _) =>
-        {
-            if (NextUniverseNumber() is not { } next) return;
-            var universe = new UniverseConfig { Number = next, Name = $"Universe {next}" };
-            _session.Document.Record("Add universe", () => _session.Project.Universes.Add(universe), ShowDocument.Shallow(_session.Project));
-        };
-        section.Children.Add(add);
-        return new Border { Classes = { "card" }, Padding = new(10), Child = section };
-    }
-
-    int? NextUniverseNumber()
-    {
-        var used = _session.Project.Universes.Select(u => u.Number).ToHashSet();
-        for (int number = Project.FirstUniverse; number <= Project.LastUniverse; number++)
-            if (!used.Contains(number)) return number;
-        return null;
-    }
-
-    void EditModel(string description, object model, string field, Action apply)
-    {
-        _session.Document.Record(description, apply, [model], mergeKey: (model.GetHashCode(), field));
+        bool onLighting = _selectedPage == "Lighting";
+        _lighting!.IsOnScreen = onLighting;
+        _lightingTick.IsEnabled = onLighting;
     }
 
     void OnDocumentChanged(ShowChange change)
     {
         RefreshButtons();
-        RefreshLighting();
         RefreshAudio();
     }
 
@@ -321,13 +241,6 @@ sealed class ShellView : Border
     void RefreshAudio()
     {
         if (_selectedPage == "Audio") RefreshPage();
-    }
-
-    void RefreshLighting()
-    {
-        // Only the universes page is rebuilt: the Fixtures screen follows the show by itself.
-        if (_showingUniverses) _lightingContent.Content = UniversesPage();
-        else if (_fixtures is not null) _lightingContent.Content = _fixturesView ??= new FixtureSetupView { DataContext = _fixtures };
     }
 
     void RefreshButtons()

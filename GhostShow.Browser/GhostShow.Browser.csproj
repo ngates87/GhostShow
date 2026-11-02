@@ -41,10 +41,10 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="$(AppDir)ViewModels\*.cs" LinkBase="App\ViewModels"
-             Exclude="$(AppDir)ViewModels\AudioViewModel.cs;$(AppDir)ViewModels\DiagnosticsViewModel.cs;$(AppDir)ViewModels\MainViewModel.cs;$(AppDir)ViewModels\MonitorViewModel.cs;$(AppDir)ViewModels\OutputsViewModel.cs;$(AppDir)ViewModels\PerformanceMeterViewModel.cs;$(AppDir)ViewModels\RemoteViewModel.cs;$(AppDir)ViewModels\UniverseRowViewModel.cs;$(AppDir)ViewModels\SetupGuideViewModel.cs" />
+             Exclude="$(AppDir)ViewModels\AudioViewModel.cs;$(AppDir)ViewModels\DiagnosticsViewModel.cs;$(AppDir)ViewModels\MainViewModel.cs;$(AppDir)ViewModels\PerformanceMeterViewModel.cs;$(AppDir)ViewModels\RemoteViewModel.cs;$(AppDir)ViewModels\SetupGuideViewModel.cs" />
     <Compile Include="$(AppDir)Controls\*.cs" LinkBase="App\Controls" Exclude="$(AppDir)Controls\QrCodeView.cs;$(AppDir)Controls\LoadMeter.cs" />
-    <Compile Include="$(AppDir)Views\TimelineView.axaml.cs;$(AppDir)Views\EnvelopeEditorView.axaml.cs;$(AppDir)Views\EnvelopeEditorWindow.axaml.cs;$(AppDir)Views\FixtureSetupView.axaml.cs;$(AppDir)Views\UndoKeys.cs" LinkBase="App\Views" />
-    <AvaloniaXaml Include="$(AppDir)Views\TimelineView.axaml;$(AppDir)Views\EnvelopeEditorView.axaml;$(AppDir)Views\EnvelopeEditorWindow.axaml;$(AppDir)Views\FixtureSetupView.axaml" LinkBase="App\Views" />
+    <Compile Include="$(AppDir)Views\TimelineView.axaml.cs;$(AppDir)Views\EnvelopeEditorView.axaml.cs;$(AppDir)Views\EnvelopeEditorWindow.axaml.cs;$(AppDir)Views\FixtureSetupView.axaml.cs;$(AppDir)Views\ChannelsView.axaml.cs;$(AppDir)Views\FaderView.axaml.cs;$(AppDir)Views\FixtureControlView.axaml.cs;$(AppDir)Views\LightingView.axaml.cs;$(AppDir)Views\MonitorView.axaml.cs;$(AppDir)Views\OutputsView.axaml.cs;$(AppDir)Views\UndoKeys.cs" LinkBase="App\Views" />
+    <AvaloniaXaml Include="$(AppDir)Views\TimelineView.axaml;$(AppDir)Views\EnvelopeEditorView.axaml;$(AppDir)Views\EnvelopeEditorWindow.axaml;$(AppDir)Views\FixtureSetupView.axaml;$(AppDir)Views\ChannelsView.axaml;$(AppDir)Views\FaderView.axaml;$(AppDir)Views\FixtureControlView.axaml;$(AppDir)Views\LightingView.axaml;$(AppDir)Views\MonitorView.axaml;$(AppDir)Views\OutputsView.axaml" LinkBase="App\Views" />
     <!-- At the root, as in the app: avares://ghostshow-app/Icons.axaml and …/Styles.axaml. -->
     <AvaloniaXaml Include="$(AppDir)Icons.axaml" Link="Icons.axaml" />
     <AvaloniaXaml Include="$(AppDir)Styles.axaml" Link="Styles.axaml" />

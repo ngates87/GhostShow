@@ -15,9 +15,13 @@ sealed class RemoteConnection(PairedDevice device, WebSocket socket, string addr
     /// <summary>The longest message a device may send (an edit can hold many clips); a longer one closes the connection.</summary>
     const int MaxMessage = 16 * 1024 * 1024;
 
+    /// <summary>In the queue, stands for "send the newest levels" (see <see cref="SetLevels"/>).</summary>
+    const string SendLevels = "levels";
+
     readonly Channel<string> _messages = Channel.CreateUnbounded<string>(new UnboundedChannelOptions { SingleReader = true });
     readonly CancellationTokenSource _closing = new();
     string? _status;
+    string? _levels;
     (WebSocketCloseStatus Status, string Reason)? _close;
 
     public PairedDevice Device { get; } = device;
@@ -33,6 +37,15 @@ sealed class RemoteConnection(PairedDevice device, WebSocket socket, string addr
     /// <summary>Sound files the device asked about that the show computer hadn't measured yet (show's thread only).</summary>
     public HashSet<string> WaitingForAudio { get; } = [];
 
+    /// <summary>A DMX setup screen is open on the device: it gets the hardware's state (show's thread only).</summary>
+    public bool WatchingOutputs { get; set; }
+
+    /// <summary>The universe whose levels a screen on the device shows; 0 for none (see <see cref="RemoteServer"/>'s levels loop).</summary>
+    public int WatchingLevels { get; set; }
+
+    /// <summary>The levels last sent: only changes are sent again.</summary>
+    public string? LevelsSent { get; set; }
+
     /// <summary>Queues a message; sent in order after those before it.</summary>
     public void Send(string json) => _messages.Writer.TryWrite(json);
 
@@ -41,6 +54,13 @@ sealed class RemoteConnection(PairedDevice device, WebSocket socket, string addr
     {
         Interlocked.Exchange(ref _status, json);
         _messages.Writer.TryWrite("");   // wakes the sender; an empty message means "send the status"
+    }
+
+    /// <summary>The newest levels: replace those not sent yet, like the status.</summary>
+    public void SetLevels(string json)
+    {
+        Interlocked.Exchange(ref _levels, json);
+        _messages.Writer.TryWrite(SendLevels);
     }
 
     /// <summary>Closes it (the device was removed, or the server stops), with a code the web app understands.</summary>
@@ -90,7 +110,9 @@ sealed class RemoteConnection(PairedDevice device, WebSocket socket, string addr
             await foreach (var message in _messages.Reader.ReadAllAsync())
             {
                 if (_closing.IsCancellationRequested) return;
-                var json = message.Length > 0 ? message : Interlocked.Exchange(ref _status, null);
+                var json = message.Length == 0 ? Interlocked.Exchange(ref _status, null)
+                         : message == SendLevels ? Interlocked.Exchange(ref _levels, null)
+                         : message;
                 if (json is null) continue;
                 await socket.SendAsync(Encoding.UTF8.GetBytes(json), WebSocketMessageType.Text, true, CancellationToken.None);
             }

@@ -3,7 +3,7 @@
              xmlns:vm="using:GhostShow.App.ViewModels"
              xmlns:views="using:GhostShow.App.Views"
              x:Class="GhostShow.App.Views.ChannelsView"
-             x:DataType="vm:MainViewModel">
+             x:DataType="vm:LightingViewModel">
   <DockPanel Margin="0,12">
     <StackPanel DockPanel.Dock="Top" Spacing="8" Margin="0,0,0,8">
       <TextBlock Text="Raw channels" Classes="heading" />

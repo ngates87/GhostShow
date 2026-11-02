@@ -12,15 +12,15 @@ namespace GhostShow.App.ViewModels;
 /// </summary>
 public sealed partial class ChannelsViewModel : ObservableObject
 {
-    readonly ShowEngine _engine;
+    readonly ILiveLevels _levels;
     readonly bool[] _timelineControlled = new bool[512];
     readonly Action<string> _reportError;
     readonly byte[] _frame = new byte[512];
     int _universe = GhostShow.Core.Model.Project.FirstUniverse;
 
-    public ChannelsViewModel(ShowEngine engine, Action<string> reportError)
+    public ChannelsViewModel(ILiveLevels levels, Action<string> reportError)
     {
-        _engine = engine;
+        _levels = levels;
         _reportError = reportError;
         RebuildFaders();
     }
@@ -78,14 +78,14 @@ public sealed partial class ChannelsViewModel : ObservableObject
     [RelayCommand]
     void ClearUniverse()
     {
-        var result = _engine.ClearUniverse(_universe);
+        var result = _levels.ClearUniverse(_universe);
         if (!result.Succeeded) _reportError(result.Error!);
     }
 
     public void Tick()
     {
-        if (!_engine.TryCopyUniverse(_universe, _frame, out _)) return;
-        _engine.CopyTimelineControlled(_universe, _timelineControlled);
+        if (!_levels.TryCopyLevels(_universe, _frame)) return;
+        _levels.CopyTimelineControlled(_universe, _timelineControlled);
         foreach (var fader in Faders) fader.ShowValue(_frame[fader.Address - 1], _timelineControlled[fader.Address - 1]);
     }
 
@@ -97,7 +97,7 @@ public sealed partial class ChannelsViewModel : ObservableObject
         for (int address = start; address < start + PageSize; address++)
         {
             int a = address;
-            Faders.Add(new FaderViewModel(a, a.ToString(), null, v => _engine.SetChannel(universe, a, v), _reportError));
+            Faders.Add(new FaderViewModel(a, a.ToString(), null, v => _levels.SetChannel(universe, a, v), _reportError));
         }
         Tick();
     }

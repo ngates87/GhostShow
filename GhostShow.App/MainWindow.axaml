@@ -138,23 +138,14 @@
       </DockPanel>
     </Border>
 
-    <!-- With a show open: Timeline, Lighting (its own row of screens), Audio, Diagnostics. The tab strips only choose
-         the page; every screen below stays built and is just shown or hidden, so switching is instant (rebuilding a
-         screen such as the 512-channel monitor on every visit took hundreds of milliseconds). -->
+    <!-- With a show open: Timeline, Lighting (its own row of screens, see LightingView), Audio, Diagnostics. The tab
+         strip only chooses the page; every screen below stays built and is just shown or hidden, so switching is instant. -->
     <StackPanel DockPanel.Dock="Top" Margin="8,0,8,0" IsVisible="{Binding IsShowOpen}">
       <TabStrip Classes="sections" SelectedIndex="{Binding SelectedSection}">
         <TabStripItem Content="Timeline" />
         <TabStripItem Content="Lighting" />
         <TabStripItem Content="Audio" />
         <TabStripItem Content="Diagnostics" />
-      </TabStrip>
-      <TabStrip Classes="pages" SelectedIndex="{Binding SelectedLightingPage}"
-                IsVisible="{Binding SelectedSection, Converter={x:Static vm:Converters.SectionIs}, ConverterParameter={x:Static vm:Section.Lighting}}">
-        <TabStripItem Content="DMX setup" />
-        <TabStripItem Content="Fixtures" />
-        <TabStripItem Content="Control" />
-        <TabStripItem Content="Channels" />
-        <TabStripItem Content="Monitor" />
       </TabStrip>
     </StackPanel>
 
@@ -197,14 +188,8 @@
       </DockPanel>
       <views:DiagnosticsView DataContext="{Binding Diagnostics}"
                              IsVisible="{Binding $parent[Window].((vm:MainViewModel)DataContext).CurrentPage, Converter={x:Static vm:Converters.PageIs}, ConverterParameter={x:Static vm:Page.Diagnostics}}" />
-      <views:OutputsView DataContext="{Binding Outputs}"
-                         IsVisible="{Binding $parent[Window].((vm:MainViewModel)DataContext).CurrentPage, Converter={x:Static vm:Converters.PageIs}, ConverterParameter={x:Static vm:Page.DmxSetup}}" />
-      <views:FixtureSetupView DataContext="{Binding Fixtures}"
-                              IsVisible="{Binding $parent[Window].((vm:MainViewModel)DataContext).CurrentPage, Converter={x:Static vm:Converters.PageIs}, ConverterParameter={x:Static vm:Page.Fixtures}}" />
-      <views:FixtureControlView DataContext="{Binding Control}"
-                                IsVisible="{Binding $parent[Window].((vm:MainViewModel)DataContext).CurrentPage, Converter={x:Static vm:Converters.PageIs}, ConverterParameter={x:Static vm:Page.Control}}" />
-      <views:ChannelsView IsVisible="{Binding CurrentPage, Converter={x:Static vm:Converters.PageIs}, ConverterParameter={x:Static vm:Page.Channels}}" />
-      <views:MonitorView IsVisible="{Binding CurrentPage, Converter={x:Static vm:Converters.PageIs}, ConverterParameter={x:Static vm:Page.Monitor}}" />
+      <views:LightingView DataContext="{Binding Lighting}"
+                          IsVisible="{Binding $parent[Window].((vm:MainViewModel)DataContext).SelectedSection, Converter={x:Static vm:Converters.SectionIs}, ConverterParameter={x:Static vm:Section.Lighting}}" />
       <views:AudioView DataContext="{Binding Audio}"
                      IsVisible="{Binding $parent[Window].((vm:MainViewModel)DataContext).CurrentPage, Converter={x:Static vm:Converters.PageIs}, ConverterParameter={x:Static vm:Page.Audio}}" />
     </Panel>

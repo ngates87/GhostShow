@@ -49,6 +49,7 @@ public sealed partial class RemoteServer : IAsyncDisposable
     WebApplication? _app;
     CancellationTokenSource? _stopping;
     Task? _statusLoop;
+    Task? _levelsLoop;
     string _status = "";
     long _ticks;
     long _observedDocumentVersion;
@@ -123,6 +124,7 @@ public sealed partial class RemoteServer : IAsyncDisposable
             .Select(a => new Uri(a.Replace("+", "localhost").Replace("[::]", "localhost")).Port).First();
         _stopping = new CancellationTokenSource();
         _statusLoop = Task.Run(() => StatusLoopAsync(_stopping.Token));
+        _levelsLoop = Task.Run(() => LevelsLoopAsync(_stopping.Token));
         _logger.LogInformation("Web remote listening on port {Port}{Built}.", Port, WebAssets.IsBuilt ? "" : " (its page isn't built: Node.js wasn't found when GhostShow was built)");
     }
 
@@ -138,6 +140,13 @@ public sealed partial class RemoteServer : IAsyncDisposable
         try
         {
             await _statusLoop!;
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        try
+        {
+            await _levelsLoop!;
         }
         catch (OperationCanceledException)
         {
@@ -231,6 +240,7 @@ public sealed partial class RemoteServer : IAsyncDisposable
         finally
         {
             lock (_lock) _connections.Remove(connection);
+            ForgetLightingWatch(connection);
             ConnectionsChanged?.Invoke();
         }
     }
@@ -300,7 +310,8 @@ public sealed partial class RemoteServer : IAsyncDisposable
     // ---- commands ----
 
     /// <summary>What only an editor may do; an operator may run the show (play, stop, buttons, Blackout) but not change it.</summary>
-    static readonly HashSet<string> EditorOnly = ["open", "edit", "undo", "redo", "save", "saveProfile", "deleteProfile", "downloadLibrary"];
+    static readonly HashSet<string> EditorOnly = ["open", "edit", "undo", "redo", "save", "saveProfile", "deleteProfile", "downloadLibrary",
+                                                  "scanOutputs", "assignOutput", "setChannel", "clearUniverse", "setFixtureChannel", "setFixtureControl"];
 
     /// <summary>A message from a device: a command, run on the show's thread, answered with a result.</summary>
     async Task ReceivedAsync(RemoteConnection connection, string json)
@@ -328,6 +339,7 @@ public sealed partial class RemoteServer : IAsyncDisposable
                 {
                     "save" => await await _host.InvokeAsync(_host.Control.SaveAsync),   // saving takes a moment: the show's thread isn't held up
                     "saveProfile" or "deleteProfile" or "downloadLibrary" => await await _host.InvokeAsync(() => LibraryCommandAsync(message, action)),
+                    _ when LightingActions.Contains(action) => await _host.InvokeAsync(() => LightingCommand(connection, action, message)),
                     _ => await _host.InvokeAsync(() => Execute(connection, action, message)),
                 };
             }
@@ -340,7 +352,7 @@ public sealed partial class RemoteServer : IAsyncDisposable
                 error = "The show computer didn't understand that.";
             }
         }
-        if (error is null) _logger.LogInformation("{Device}: {Action}.", device.Name, action);
+        if (error is null && !QuietActions.Contains(action)) _logger.LogInformation("{Device}: {Action}.", device.Name, action);
         connection.Send(new JsonObject
         {
             ["type"] = "result",

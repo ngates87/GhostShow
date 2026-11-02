@@ -20,13 +20,15 @@ public sealed partial class FixtureControlViewModel : ObservableObject
     ];
 
     readonly ShowSession _session;
+    readonly ILiveLevels _levels;
     readonly Action<string> _reportError;
     readonly byte[] _frame = new byte[512];
     readonly bool[] _timelineControlled = new bool[512];
 
-    public FixtureControlViewModel(ShowSession session, Action<string> reportError)
+    public FixtureControlViewModel(ShowSession session, ILiveLevels levels, Action<string> reportError)
     {
         _session = session;
+        _levels = levels;
         _reportError = reportError;
         _session.Applied += RefreshFixtures;
         RefreshFixtures();
@@ -56,14 +58,14 @@ public sealed partial class FixtureControlViewModel : ObservableObject
             if (!value.TryGetAddress(function, out int address)) continue;
             var f = function;
             Controls.Add(new FaderViewModel(address, function.ToString(), $"ch {address - value.StartAddress + 1}",
-                v => _session.Engine.SetFixtureControl(id, f, v), _reportError));
+                v => _levels.SetFixtureControl(id, f, v), _reportError));
         }
         for (int i = 0; i < value.ChannelCount; i++)
         {
             int channelNumber = i + 1;
             var channel = value.Mode.Channels[i];
             Channels.Add(new FaderViewModel(value.StartAddress + i, channel.Name, $"ch {channelNumber} · {value.StartAddress + i}",
-                v => _session.Engine.SetFixtureChannel(id, channelNumber, v), _reportError));
+                v => _levels.SetFixtureChannel(id, channelNumber, v), _reportError));
         }
         Tick();
     }
@@ -82,8 +84,8 @@ public sealed partial class FixtureControlViewModel : ObservableObject
 
     public void Tick()
     {
-        if (SelectedFixture is not { } fixture || !_session.Engine.TryCopyUniverse(fixture.Universe, _frame, out _)) return;
-        _session.Engine.CopyTimelineControlled(fixture.Universe, _timelineControlled);
+        if (SelectedFixture is not { } fixture || !_levels.TryCopyLevels(fixture.Universe, _frame)) return;
+        _levels.CopyTimelineControlled(fixture.Universe, _timelineControlled);
         foreach (var fader in Controls) fader.ShowValue(_frame[fader.Address - 1], _timelineControlled[fader.Address - 1]);
         foreach (var fader in Channels) fader.ShowValue(_frame[fader.Address - 1], _timelineControlled[fader.Address - 1]);
     }

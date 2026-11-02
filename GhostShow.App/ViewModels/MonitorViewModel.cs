@@ -2,7 +2,6 @@ using System.Diagnostics;
 using CommunityToolkit.Mvvm.ComponentModel;
 using GhostShow.App.Controls;
 using GhostShow.Core.Engine;
-using GhostShow.Dmx;
 
 namespace GhostShow.App.ViewModels;
 
@@ -13,15 +12,10 @@ namespace GhostShow.App.ViewModels;
 /// </summary>
 public sealed partial class MonitorViewModel : ObservableObject
 {
-    readonly ShowEngine _engine;
-    readonly Func<int, DmxOutputService?> _findOutput;
+    readonly ILiveLevels _levels;
     readonly byte[] _frame = new byte[512];
 
-    public MonitorViewModel(ShowEngine engine, Func<int, DmxOutputService?> findOutput)
-    {
-        _engine = engine;
-        _findOutput = findOutput;
-    }
+    public MonitorViewModel(ILiveLevels levels) => _levels = levels;
 
     /// <summary>Channel values, index = address - 1.</summary>
     public byte[] Values { get; } = new byte[512];
@@ -37,21 +31,7 @@ public sealed partial class MonitorViewModel : ObservableObject
 
     public void Tick(int universe)
     {
-        var output = _findOutput(universe);
-        if (output is not null)
-        {
-            output.CopyLastSentFrame(_frame);
-            Source = $"Universe {universe} as sent to {output.Device} ({output.Status})";
-        }
-        else if (_engine.TryCopyUniverse(universe, _frame, out _))
-        {
-            Source = $"Universe {universe} as held by the engine (no output running)";
-        }
-        else
-        {
-            Array.Clear(_frame);
-            Source = $"The show has no universe {universe}.";
-        }
+        Source = _levels.CopyAsSent(universe, _frame);
 
         long now = Stopwatch.GetTimestamp();
         bool changed = false;

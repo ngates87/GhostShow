@@ -22,7 +22,7 @@ public partial class ChannelsView : UserControl
     /// <summary>Sizes the page to as many whole faders as fit the area: columns across, then as many rows as fit.</summary>
     void FitPage()
     {
-        if (DataContext is not MainViewModel viewModel) return;
+        if (DataContext is not LightingViewModel viewModel) return;
         var area = FaderArea.Bounds.Size;
         _faderSize ??= MeasuredFaderSize();
         if (_faderSize is not { } fader || area.Width <= 0 || area.Height <= 0) return;

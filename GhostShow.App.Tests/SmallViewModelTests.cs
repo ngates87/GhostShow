@@ -31,7 +31,7 @@ public class ChannelsPagingTests
     readonly ShowEngine _engine = new();
     readonly ChannelsViewModel _channels;
 
-    public ChannelsPagingTests() => _channels = new ChannelsViewModel(_engine, _ => { });
+    public ChannelsPagingTests() => _channels = new ChannelsViewModel(new GhostShow.Dmx.LocalLiveLevels(_engine, _ => null), _ => { });
 
     [Fact]
     public void Page_size_follows_the_space_available()

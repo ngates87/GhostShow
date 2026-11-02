@@ -8,7 +8,7 @@
       <StackPanel DockPanel.Dock="Top" Spacing="6" Margin="0,0,0,8">
         <TextBlock Text="Universes" Classes="heading" />
         <TextBlock TextWrapping="Wrap" Opacity="0.7"
-                   Text="Universe numbers and names belong to the show. The device each one goes out on belongs to this computer, so a show opened elsewhere keeps its patch but uses that machine's hardware." />
+                   Text="Universe numbers and names belong to the show. The device each one goes out on belongs to the show computer, so a show opened elsewhere keeps its patch but uses that machine's hardware." />
         <StackPanel Orientation="Horizontal" Spacing="6">
           <Button Content="Add universe" Command="{Binding AddUniverseCommand}" />
           <Button Classes="icon" Command="{Binding History.UndoCommand}" ToolTip.Tip="{Binding History.UndoLabel}"><PathIcon Data="{StaticResource Icon.Undo}" /></Button>
@@ -31,7 +31,7 @@
                             Command="{Binding $parent[ItemsControl].((vm:OutputsViewModel)DataContext).RemoveUniverseCommand}"
                             CommandParameter="{Binding}" />
                   </Grid>
-                  <TextBlock Text="Output device (this computer)" Opacity="0.7" />
+                  <TextBlock Text="Output device (on the show computer)" Opacity="0.7" />
                   <ComboBox ItemsSource="{Binding Choices}" SelectedItem="{Binding SelectedDevice}" HorizontalAlignment="Stretch" />
                   <TextBlock Text="{Binding Status}" Classes.fault="{Binding IsFaulted}" TextWrapping="Wrap" />
                 </StackPanel>
@@ -44,7 +44,7 @@
 
     <DockPanel Grid.Column="2">
       <StackPanel DockPanel.Dock="Top" Spacing="6" Margin="0,0,0,8">
-        <TextBlock Text="USB DMX adapters" Classes="heading" />
+        <TextBlock Text="USB DMX adapters on the show computer" Classes="heading" />
         <TextBlock TextWrapping="Wrap" Opacity="0.7"
                    Text="Enttec DMX USB Pro and compatibles, and Open DMX adapters (Enttec Open DMX USB, most cheap FTDI-based cables). While this screen is open, adapters are found automatically when plugged in. A newly connected port is briefly checked; ports in use by an output are never touched." />
         <StackPanel Orientation="Horizontal" Spacing="8">

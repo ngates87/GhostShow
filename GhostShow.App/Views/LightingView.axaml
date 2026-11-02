@@ -1,0 +1,31 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:GhostShow.App.ViewModels"
+             xmlns:views="using:GhostShow.App.Views"
+             x:Class="GhostShow.App.Views.LightingView"
+             x:DataType="vm:LightingViewModel">
+  <!-- Every screen stays built and is just shown or hidden, so switching is instant (rebuilding a screen such as the
+       512-channel monitor on every visit took hundreds of milliseconds). -->
+  <DockPanel>
+    <TabStrip DockPanel.Dock="Top" Classes="pages" SelectedIndex="{Binding SelectedPage}">
+      <TabStripItem Content="DMX setup" />
+      <TabStripItem Content="Fixtures" />
+      <TabStripItem Content="Control" />
+      <TabStripItem Content="Channels" />
+      <TabStripItem Content="Monitor" />
+    </TabStrip>
+    <Panel>
+      <Panel IsVisible="{Binding CurrentPage, Converter={x:Static vm:Converters.PageIs}, ConverterParameter={x:Static vm:Page.DmxSetup}}">
+        <views:OutputsView DataContext="{Binding Outputs}" />
+      </Panel>
+      <Panel IsVisible="{Binding CurrentPage, Converter={x:Static vm:Converters.PageIs}, ConverterParameter={x:Static vm:Page.Fixtures}}">
+        <views:FixtureSetupView DataContext="{Binding Fixtures}" />
+      </Panel>
+      <Panel IsVisible="{Binding CurrentPage, Converter={x:Static vm:Converters.PageIs}, ConverterParameter={x:Static vm:Page.Control}}">
+        <views:FixtureControlView DataContext="{Binding Control}" />
+      </Panel>
+      <views:ChannelsView IsVisible="{Binding CurrentPage, Converter={x:Static vm:Converters.PageIs}, ConverterParameter={x:Static vm:Page.Channels}}" />
+      <views:MonitorView IsVisible="{Binding CurrentPage, Converter={x:Static vm:Converters.PageIs}, ConverterParameter={x:Static vm:Page.Monitor}}" />
+    </Panel>
+  </DockPanel>
+</UserControl>

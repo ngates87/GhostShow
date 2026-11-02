@@ -1,3 +1,7 @@
+using GhostShow.Tests.Dmx;
+using GhostShow.Dmx.Discovery;
+using GhostShow.Dmx;
+using GhostShow.Core.Dmx;
 using System.IO.Compression;
 using System.Net;
 using System.Net.Http.Json;
@@ -52,9 +56,11 @@ public sealed class RemoteServerTests : IAsyncLifetime
         public Waveform? GetWaveform(string path) => Measured.ContainsKey(path) ? new Waveform([10, 200, 30]) : null;
     }
 
-    sealed class Host(ShowSession session, ShowPlayback playback, IFixtureLibrary library) : IRemoteHost
+    sealed class Host(ShowSession session, ShowPlayback playback, IFixtureLibrary library, IOutputSetup outputs, ILiveLevels levels) : IRemoteHost
     {
         public IFixtureLibrary Library => library;
+        public IOutputSetup Outputs => outputs;
+        public ILiveLevels Levels => levels;
         public readonly Lock Gate = new();
 
         public Task<T> InvokeAsync<T>(Func<T> function)
@@ -90,6 +96,10 @@ public sealed class RemoteServerTests : IAsyncLifetime
     readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(10) };
     readonly AppPaths _paths = new(Path.Combine(Path.GetTempPath(), "ghostshow-remote-tests", Guid.NewGuid().ToString("N")));
     readonly LocalFixtureLibrary _library;
+    readonly MachineSettings _machine = new();
+    readonly FakeAdapterFinder _finder = new();
+    readonly OutputManager _outputManager;
+    readonly LocalOutputSetup _outputSetup;
 
     public RemoteServerTests()
     {
@@ -97,7 +107,9 @@ public sealed class RemoteServerTests : IAsyncLifetime
         _session.Use(new Project { Name = "Haunt 2026", Timelines = [_main] });
         _document = _session.Document;
         _library = new LocalFixtureLibrary(_session, _paths, new MachineSettings(), NullLogger.Instance);
-        _host = new Host(_session, new ShowPlayback(_session, _manager, _audioFiles), _library);
+        _outputManager = new OutputManager(_session.Engine, new ListLogger(), new DmxOutputOptions { BlackoutOnStop = TimeSpan.Zero }, _ => new FakeDevice());
+        _outputSetup = new LocalOutputSetup(_session, _outputManager, _machine, () => Task.CompletedTask, _finder);
+        _host = new Host(_session, new ShowPlayback(_session, _manager, _audioFiles), _library, _outputSetup, new LocalLiveLevels(_session.Engine, _outputManager.Find));
         _server = new RemoteServer(_host, _settings, NullLogger.Instance);
     }
 
@@ -110,6 +122,7 @@ public sealed class RemoteServerTests : IAsyncLifetime
     public async ValueTask DisposeAsync()
     {
         await _server.DisposeAsync();
+        await _outputManager.DisposeAsync();
         _http.Dispose();
         if (Directory.Exists(_paths.ConfigDirectory)) Directory.Delete(_paths.ConfigDirectory, recursive: true);
     }
@@ -706,6 +719,120 @@ public sealed class RemoteServerTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.OK, page.StatusCode);
         Assert.Contains("GhostShow", await page.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         Assert.Equal(HttpStatusCode.NotFound, (await _http.GetAsync("api/nothing", TestContext.Current.CancellationToken)).StatusCode);
+    }
+
+    // ---- the Lighting screens ----
+
+    static async Task<OutputSetupState> NextOutputsAsync(ClientWebSocket socket, Func<OutputSetupState, bool> until)
+    {
+        while (true)
+        {
+            var state = ShowJson.FromNode<OutputSetupState>((await NextAsync(socket, "outputs"))["state"]!)!;
+            if (until(state)) return state;
+        }
+    }
+
+    [Fact]
+    public async Task A_DMX_setup_screen_on_a_device_sees_the_show_computer_s_adapters_and_picks_one()
+    {
+        _finder.Plug("/dev/ttyFAKE0", new DmxAdapterInfo("/dev/ttyFAKE0", DmxAdapterKind.OpenDmx, "SN1"));
+        await _outputSetup.ApplyAsync();
+        using var laptop = await ConnectAsync(await PairAsync("Laptop"));
+        await NextAsync(laptop, "hello");
+
+        Assert.True((await CommandAsync(laptop, new { action = "watchOutputs", on = true }))["ok"]!.GetValue<bool>());
+        var state = await NextOutputsAsync(laptop, s => s.Adapters.Count > 0);
+        var universe = Assert.Single(state.Universes);
+        string adapter = universe.Choices.Single(c => c.Contains("/dev/ttyFAKE0"));
+        Assert.Equal("Simulator (no hardware)", universe.Selected);
+
+        Assert.True((await CommandAsync(laptop, new { action = "assignOutput", universe = universe.Universe, choice = adapter }))["ok"]!.GetValue<bool>());
+
+        state = await NextOutputsAsync(laptop, s => s.Universes[0].Selected == adapter);
+        Assert.Equal(new OpenDmxDeviceConfig("/dev/ttyFAKE0", "SN1"), _machine.FindOutput(universe.Universe));
+    }
+
+    [Fact]
+    public async Task A_device_can_only_pick_a_device_the_show_computer_offered()
+    {
+        using var laptop = await ConnectAsync(await PairAsync("Laptop"));
+        await NextAsync(laptop, "hello");
+
+        var refused = await CommandAsync(laptop, new { action = "assignOutput", universe = 1, choice = "/etc/passwd" });
+
+        Assert.False(refused["ok"]!.GetValue<bool>());
+        Assert.Contains("isn't available", refused["error"]!.GetValue<string>());
+        Assert.Null(_machine.FindOutput(1));
+    }
+
+    [Fact]
+    public async Task Adapters_are_only_looked_for_while_a_device_has_the_setup_screen_open()
+    {
+        using var laptop = await ConnectAsync(await PairAsync("Laptop"));
+        await NextAsync(laptop, "hello");
+        Assert.Equal(0, _finder.Listings);
+
+        await CommandAsync(laptop, new { action = "watchOutputs", on = true });
+        await Eventually.True(() => _finder.Listings == 1, "the show computer has looked");
+
+        laptop.Abort();   // the laptop goes without closing its screen
+        await Eventually.True(() => _server.Connected.Count == 0, "the connection has gone");
+        _finder.Plug("/dev/ttyFAKE1", new DmxAdapterInfo("/dev/ttyFAKE1", DmxAdapterKind.OpenDmx, "SN2"));
+        _outputSetup.Tick();
+        _outputSetup.Tick();
+        Assert.Equal(1, _finder.Listings);
+    }
+
+    [Fact]
+    public async Task Faders_on_a_device_set_levels_on_the_show_computer_and_it_sends_them_back()
+    {
+        using var laptop = await ConnectAsync(await PairAsync("Laptop"));
+        await NextAsync(laptop, "hello");
+        await CommandAsync(laptop, new { action = "watchLevels", universe = 1 });
+        var first = await NextAsync(laptop, "levels");
+        Assert.Contains("universe 1", first["source"]!.GetValue<string>(), StringComparison.OrdinalIgnoreCase);
+
+        Assert.True((await CommandAsync(laptop, new { action = "setChannel", universe = 1, address = 5, value = 200 }))["ok"]!.GetValue<bool>());
+
+        var frame = new byte[512];
+        Assert.True(_session.Engine.TryCopyUniverse(1, frame, out _));
+        Assert.Equal(200, frame[4]);
+        while (Convert.FromBase64String((await NextAsync(laptop, "levels"))["levels"]!.GetValue<string>())[4] != 200) { }
+
+        Assert.True((await CommandAsync(laptop, new { action = "clearUniverse", universe = 1 }))["ok"]!.GetValue<bool>());
+        _session.Engine.TryCopyUniverse(1, frame, out _);
+        Assert.Equal(0, frame[4]);
+    }
+
+    [Fact]
+    public async Task A_fader_out_of_range_says_why()
+    {
+        using var laptop = await ConnectAsync(await PairAsync("Laptop"));
+        await NextAsync(laptop, "hello");
+
+        var refused = await CommandAsync(laptop, new { action = "setChannel", universe = 1, address = 600, value = 1 });
+
+        Assert.Contains("out of range", refused["error"]!.GetValue<string>());
+    }
+
+    [Theory]
+    [InlineData("scanOutputs")]
+    [InlineData("assignOutput")]
+    [InlineData("setChannel")]
+    [InlineData("clearUniverse")]
+    [InlineData("setFixtureChannel")]
+    [InlineData("setFixtureControl")]
+    public async Task An_operator_can_t_change_outputs_or_levels(string action)
+    {
+        using var phone = await ConnectAsync(await PairAsync("Phone", "operator"));
+        await NextAsync(phone, "hello");
+
+        var refused = await CommandAsync(phone, new { action, universe = 1, address = 5, value = 200, choice = "x" });
+
+        Assert.Contains("operator", refused["error"]!.GetValue<string>());
+        var frame = new byte[512];
+        _session.Engine.TryCopyUniverse(1, frame, out _);
+        Assert.Equal(0, frame[4]);
     }
 }
 

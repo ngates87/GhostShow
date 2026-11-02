@@ -430,6 +430,31 @@ public class UiTests
     });
 
     [Fact]
+    public Task Each_Lighting_tab_shows_its_own_screen() => Ui.Run(() =>
+    {
+        using var rig = new WindowRig();
+        (Page Page, Func<Control> Screen)[] screens =
+        [
+            (Page.DmxSetup, () => rig.Find<Views.OutputsView>()),
+            (Page.Fixtures, () => rig.Find<Views.FixtureSetupView>()),
+            (Page.Control, () => rig.Find<Views.FixtureControlView>()),
+            (Page.Channels, () => rig.Find<Views.ChannelsView>()),
+            (Page.Monitor, () => rig.Find<Views.MonitorView>()),
+        ];
+        foreach (var (page, _) in screens)
+        {
+            rig.ViewModel.CurrentPage = page;
+            WindowRig.Pump(50);
+            Assert.Equal(page, rig.ViewModel.CurrentPage);
+            Assert.Equal([page], screens.Where(s => s.Screen().IsEffectivelyVisible).Select(s => s.Page));
+        }
+
+        rig.ViewModel.CurrentPage = Page.Timeline;
+        WindowRig.Pump(50);
+        Assert.False(rig.Find<Views.LightingView>().IsEffectivelyVisible);
+    });
+
+    [Fact]
     public Task The_dmx_setup_screen_adds_a_universe_and_undoes_it() => Ui.Run(() =>
     {
         using var rig = new WindowRig();

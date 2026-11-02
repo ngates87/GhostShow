@@ -57,7 +57,7 @@ sealed class WindowRig : IDisposable
         Manager = new PlaybackManager(Session.Engine, Audio, new StopwatchClock());
         var services = new AppServices(Session, new OutputManager(Session.Engine, NullLoggerFactory.Instance), Manager,
                                        new PlaybackLoop(Manager, NullLogger.Instance), Audio, new MachineSettings(),
-                                       new AppPaths(_config), new RecentEventsLog(), _probe);
+                                       new AppPaths(_config), new RecentEventsLog(), _probe, new NoAdapters());
         Window = new MainWindow { Width = 1400, Height = 820 };
         ViewModel = new MainViewModel(services, Window.StorageProvider, new Dialogs.SaveChangesDialogPrompt(Window), NullLogger<MainViewModel>.Instance);
         Window.DataContext = ViewModel;
