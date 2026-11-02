@@ -15,7 +15,8 @@ namespace GhostShow.App.ViewModels;
 
 /// <summary>The web remote's host: the desktop app, with the show edited on the UI thread.</summary>
 sealed class AppRemoteHost(ShowSession session, ShowPlayback playback, PlaybackViewModel focus, IShowControl control,
-                            Func<IReadOnlyList<string>> warnings, AudioDeviceList audioDevices) : IRemoteHost
+                            Func<IReadOnlyList<string>> warnings, AudioDeviceList audioDevices, Func<bool> hasUnsavedChanges,
+                            Func<bool> needsFirstSave) : IRemoteHost
 {
     public Task<T> InvokeAsync<T>(Func<T> function) => Dispatcher.UIThread.InvokeAsync(function).GetTask();
     public ShowSession Session => session;
@@ -23,6 +24,8 @@ sealed class AppRemoteHost(ShowSession session, ShowPlayback playback, PlaybackV
     public Guid? FocusedTimeline => focus.FocusedId;
     public IShowControl Control => control;
     public IReadOnlyList<string> Warnings => warnings();
+    public bool HasUnsavedChanges => hasUnsavedChanges();
+    public bool NeedsFirstSave => needsFirstSave();
     public IReadOnlyList<string> AudioDevices => audioDevices.Names;
 
     public event Action? AudioDevicesChanged
@@ -112,6 +115,8 @@ sealed class AppShowControl(MainViewModel app) : IShowControl
         app.Timeline.Tree.Reveal(timeline);
         return null;
     }
+
+    public Task<string?> SaveAsync() => app.SaveForDeviceAsync();
 
     public string? TestSound(string? device) =>
         app.AudioDevices.PlayTestSound(device) ? null : $"Couldn't play on {device ?? "the default output"}: it isn't connected (or is still opening).";

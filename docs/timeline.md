@@ -24,7 +24,7 @@ To export or back up a show, copy or zip the whole folder.
 - **Every timeline has a permanent ID** inside its file. Anything that refers to a timeline uses the ID, so renaming
   or moving it never breaks a reference. A timeline file copied by hand outside the app gets a new ID when the show
   is opened (and keeps it once saved).
-- **Changes in the tree apply to the files on Save,** like every other change: new, renamed, moved and deleted
+- **Changes in the tree auto-save** after a short pause, like every other show edit: new, renamed, moved and deleted
   timelines and folders. Saving writes only the timelines that changed, each file atomically (a failed save never
   leaves a half-written file). It only deletes or moves files it loaded or wrote itself; anything else in the folder
   (notes, backups, a timeline file it couldn't read) is left alone, and a deleted folder that still holds such files

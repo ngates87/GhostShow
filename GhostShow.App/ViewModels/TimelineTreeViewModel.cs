@@ -165,13 +165,14 @@ public sealed partial class TimelineTreeViewModel : ObservableObject
         foreach (var node in AllNodes()) node.Refresh();
     }
 
+    /// <summary>Every node, in the order the tree shows them (top to bottom).</summary>
     public IEnumerable<TimelineTreeNode> AllNodes()
     {
-        var stack = new Stack<TimelineTreeNode>(Roots);
+        var stack = new Stack<TimelineTreeNode>(Roots.Reverse());
         while (stack.TryPop(out var node))
         {
             yield return node;
-            foreach (var child in node.Children) stack.Push(child);
+            foreach (var child in node.Children.Reverse()) stack.Push(child);
         }
     }
 

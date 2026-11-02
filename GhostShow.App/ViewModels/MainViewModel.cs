@@ -31,6 +31,7 @@ public sealed partial class MainViewModel : ObservableObject
     static readonly FilePickerFileType OldShowFiles = new("GhostShow single-file show (older versions)") { Patterns = ["*.json"] };
     static readonly FilePickerFileType AudioFiles = new("Audio (WAV, MP3)") { Patterns = ["*.wav", "*.mp3", "*.WAV", "*.MP3"] };
     static readonly TimeSpan TickInterval = TimeSpan.FromMilliseconds(33);
+    static readonly TimeSpan AutoSaveDelay = TimeSpan.FromMilliseconds(500);
 
     readonly AppServices _services;
     readonly ShowSession _session;
@@ -40,7 +41,10 @@ public sealed partial class MainViewModel : ObservableObject
     readonly IStorageProvider _storage;
     readonly ILogger _logger;
     readonly DispatcherTimer _tick;
+    readonly DispatcherTimer _autoSave;
+    readonly SemaphoreSlim _saveGate = new(1, 1);
     int _tickCount;
+    long _dirtyGeneration;
 
     public MainViewModel(AppServices services, IStorageProvider storage, ISaveChangesPrompt savePrompt, ILogger<MainViewModel> logger)
     {
@@ -68,7 +72,7 @@ public sealed partial class MainViewModel : ObservableObject
         AudioDevices = new AudioDeviceList(services.Audio);
         Timeline = new TimelineEditorViewModel(session, Playback, PickAudioFileAsync, MarkDirty, AudioDevices);
         Buttons = new ButtonsViewModel(session, Playback, Blackout, MarkDirty);
-        Remote = new RemoteViewModel(new AppRemoteHost(session, ShowPlayback, Playback, new AppShowControl(this), () => WarningsSnapshot, AudioDevices),
+        Remote = new RemoteViewModel(new AppRemoteHost(session, ShowPlayback, Playback, new AppShowControl(this), () => WarningsSnapshot, AudioDevices, () => IsDirty, () => _session.FilePath is null || _session.IsSingleFileShow),
                                      settings.Remote, SaveSettingsAsync, logger);
         Audio = new AudioViewModel(services.Audio, AudioDevices, session, settings, SaveSettingsAsync);
         _ = AudioDevices.RefreshAsync();
@@ -79,9 +83,12 @@ public sealed partial class MainViewModel : ObservableObject
         });
         Timeline.ShowFixtures = () => CurrentPage = Page.Fixtures;
         Timeline.Notice += message => StatusMessage = message;
+        _session.Document.Changed += OnDocumentChanged;
 
         _unsavedChanges = new UnsavedChangesGuard(() => IsDirty, () => ShowName, Save, savePrompt);
         _tick = new DispatcherTimer(TickInterval, DispatcherPriority.Background, (_, _) => Tick());
+        _autoSave = new DispatcherTimer(AutoSaveDelay, DispatcherPriority.Background, OnAutoSaveTimer);
+        _autoSave.Stop();
     }
 
     readonly UnsavedChangesGuard _unsavedChanges;
@@ -463,6 +470,17 @@ public sealed partial class MainViewModel : ObservableObject
         await WriteShowAsync(ShowFolderFor(path));
     }
 
+    /// <summary>
+    /// Save, asked for by a device. Only where the show is saved already: the folder picker is on this computer, so a
+    /// device can't choose a place. Null when saved, otherwise why not.
+    /// </summary>
+    internal async Task<string?> SaveForDeviceAsync()
+    {
+        if (_session.FilePath is null || _session.IsSingleFileShow)
+            return "This show hasn't been saved as a folder yet. Choose where on the show computer (File → Save).";
+        return await WriteShowAsync(folder: null) ? null : "Couldn't save the show: see the show computer.";
+    }
+
     string ShowFolderFor(string picked)
     {
         bool usable = !Directory.EnumerateFileSystemEntries(picked).Any()
@@ -472,15 +490,28 @@ public sealed partial class MainViewModel : ObservableObject
         return Path.Combine(picked, TimelineNames.Unique(name, Directory.EnumerateFileSystemEntries(picked).Select(Path.GetFileName).OfType<string>()));
     }
 
-    async Task WriteShowAsync(string? folder)
+    async Task<bool> WriteShowAsync(string? folder, bool automatic = false)
     {
+        await _saveGate.WaitAsync();
+        long generation = _dirtyGeneration;
+        bool saved = false;
         try
         {
+            if (automatic && !IsDirty) return true;
             var warnings = await _session.SaveAsync(folder);
-            IsDirty = false;
+            saved = true;
+            if (_dirtyGeneration == generation) IsDirty = false;
+            else
+            {
+                // The disk snapshot was taken before a newer edit. ShowFolderStore may also have cleared timeline
+                // dirty flags while finishing its writes, so make the next pass write the complete current state.
+                foreach (var timeline in _session.Project.Timelines) timeline.HasUnsavedChanges = true;
+                IsDirty = true;
+            }
             Timeline.RefreshTitles();
-            await RememberShowAsync();
-            StatusMessage = warnings.Count == 0 ? $"Saved {_session.ShowFolder}." : $"Saved {_session.ShowFolder}. {string.Join(" ", warnings)}";
+            if (!automatic) await RememberShowAsync();
+            if (!automatic)
+                StatusMessage = warnings.Count == 0 ? $"Saved {_session.ShowFolder}." : $"Saved {_session.ShowFolder}. {string.Join(" ", warnings)}";
             OnPropertyChanged(nameof(Title));
             OnPropertyChanged(nameof(ShowFile));
         }
@@ -488,6 +519,15 @@ public sealed partial class MainViewModel : ObservableObject
         {
             ReportError($"Couldn't save the show: {ex.Message}. Files already saved are complete; nothing was deleted.");
         }
+        finally
+        {
+            _saveGate.Release();
+        }
+
+        if (saved && _dirtyGeneration != generation) ScheduleAutoSave(AutoSaveDelay);
+        else if (!saved && IsDirty && _session.FilePath is not null && !_session.IsSingleFileShow)
+            ScheduleAutoSave(TimeSpan.FromSeconds(2));
+        return saved;
     }
 
     async Task SaveSettingsAsync()
@@ -504,6 +544,7 @@ public sealed partial class MainViewModel : ObservableObject
 
     async Task AfterShowReplacedAsync()
     {
+        _autoSave.Stop();
         IsDirty = false;
         Fixtures.Reload();
         Outputs.Reload();
@@ -532,7 +573,39 @@ public sealed partial class MainViewModel : ObservableObject
         }
     }
 
-    void MarkDirty() => IsDirty = true;
+    /// <summary>A remote edit changed the patch: validate it again, refresh setup screens and apply universe outputs.</summary>
+    void OnDocumentChanged(GhostShow.Core.Editing.ShowChange change)
+    {
+        MarkDirty();
+        if (!change.Ops.Any(op => op.Path == "fixtures" || op.Path.StartsWith("fixtures/", StringComparison.Ordinal)
+                               || op.Path == "universes" || op.Path.StartsWith("universes/", StringComparison.Ordinal))) return;
+        _session.Apply();
+        Fixtures.Reload();
+        Outputs.Reload();
+        _ = Outputs.ApplyOutputsAsync();
+    }
+
+    void MarkDirty()
+    {
+        IsDirty = true;
+        _dirtyGeneration++;
+        if (_session.FilePath is not null && !_session.IsSingleFileShow) ScheduleAutoSave(AutoSaveDelay);
+    }
+
+    void ScheduleAutoSave(TimeSpan delay)
+    {
+        if (_session.FilePath is null || _session.IsSingleFileShow || !IsDirty) return;
+        _autoSave.Stop();
+        _autoSave.Interval = delay;
+        _autoSave.Start();
+    }
+
+    async void OnAutoSaveTimer(object? sender, EventArgs e)
+    {
+        _autoSave.Stop();
+        if (IsDirty && _session.FilePath is not null && !_session.IsSingleFileShow)
+            await WriteShowAsync(folder: null, automatic: true);
+    }
 
     async Task<string?> PickAudioFileAsync()
     {

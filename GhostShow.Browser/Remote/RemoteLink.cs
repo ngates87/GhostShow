@@ -2,6 +2,7 @@ using System.Net.WebSockets;
 using System.Runtime.InteropServices.JavaScript;
 using System.Text;
 using System.Text.Json.Nodes;
+using System.Threading.Channels;
 using GhostShow.Core.Editing;
 
 namespace GhostShow.Browser.Remote;
@@ -14,7 +15,9 @@ namespace GhostShow.Browser.Remote;
 sealed partial class RemoteLink
 {
     ClientWebSocket? _socket;
+    Channel<string>? _outgoing;   // what's waiting to be sent; there's one per connection
     int _nextId = 1;
+    bool _resyncing;   // the connection is being dropped on purpose (see Resync): not worth telling the user
 
     // One event per kind of message from the show computer (see docs/remote.md for what each holds). They're raised on
     // the connection's thread: handlers post to the UI thread.
@@ -42,6 +45,18 @@ sealed partial class RemoteLink
     /// <summary>"audioDevices": the show computer's audio devices changed.</summary>
     public event Action<JsonObject>? AudioDevices;
 
+    /// <summary>"result": the answer to a command.</summary>
+    public event Action<JsonObject>? Result;
+
+    /// <summary>"history": what Undo and Redo would do next.</summary>
+    public event Action<JsonObject>? History;
+
+    /// <summary>Fixture profiles matching a search on the show computer.</summary>
+    public event Action<JsonObject>? Profiles;
+
+    /// <summary>The connection dropped (it's being tried again).</summary>
+    public event Action? Disconnected;
+
     /// <summary>Why it isn't connected (shown until the show arrives).</summary>
     public event Action<string>? Problem;
 
@@ -68,12 +83,18 @@ sealed partial class RemoteLink
             {
                 await socket.ConnectAsync(new Uri($"{(Secure ? "wss" : "ws")}://{Host}/api/live?token={Uri.EscapeDataString(token)}"), CancellationToken.None);
                 retry = 0;
+                var outgoing = _outgoing = Channel.CreateUnbounded<string>();
+                _ = SendAsync(socket, outgoing);
                 await ReceiveAsync(socket);
             }
-            catch (Exception e) when (e is WebSocketException or OperationCanceledException)
+            catch (Exception e) when (e is WebSocketException or OperationCanceledException or ObjectDisposedException)
             {
                 Problem?.Invoke($"Can't reach the show computer ({e.Message}). Trying again…");
             }
+            _outgoing?.Writer.TryComplete();
+            _outgoing = null;
+            if (!_resyncing) Disconnected?.Invoke();
+            _resyncing = false;
             if (socket.CloseStatus is { } status && (int)status == 4401)
             {
                 Problem?.Invoke("This browser isn't paired any more. Open the address without /app/ and pair again.");
@@ -120,22 +141,51 @@ sealed partial class RemoteLink
                 case "audioDevices":
                     AudioDevices?.Invoke(json);
                     break;
+                case "result":
+                    Result?.Invoke(json);
+                    break;
+                case "history":
+                    History?.Invoke(json);
+                    break;
+                case "profiles":
+                    Profiles?.Invoke(json);
+                    break;
             }
         }
     }
 
     /// <summary>
-    /// Sends a command (see docs/remote.md: play, seek, watch, run, …), e.g. <c>Send("seek", ("timeline", id), ("position", 12.5))</c>.
-    /// Not waited for: what it did shows in the next status.
+    /// Sends a command (see docs/remote.md: play, seek, watch, run, edit, …), e.g.
+    /// <c>Send("seek", ("timeline", id), ("position", 12.5))</c>. Returns its number, which its "result" will carry;
+    /// null if there's no connection right now (then it isn't sent).
     /// </summary>
-    public void Send(string action, params (string Name, JsonNode? Value)[] fields)
+    public int? Send(string action, params (string Name, JsonNode? Value)[] fields)
     {
-        if (_socket is not { State: WebSocketState.Open } socket) return;
-        var json = new JsonObject { ["type"] = "command", ["id"] = _nextId++, ["action"] = action };
+        if (_outgoing is not { } outgoing) return null;
+        int id = _nextId++;
+        var json = new JsonObject { ["type"] = "command", ["id"] = id, ["action"] = action };
         foreach (var (name, value) in fields) json[name] = value;
-        _ = socket.SendAsync(Encoding.UTF8.GetBytes(json.ToJsonString()), WebSocketMessageType.Text, true, CancellationToken.None);
+        return outgoing.Writer.TryWrite(json.ToJsonString()) ? id : null;
     }
 
-    /// <summary>Out of step: drops the connection, which reconnects and gets the whole show again.</summary>
-    public void Resync() => _socket?.Abort();
+    /// <summary>Sends what's queued, one message at a time (a WebSocket can't send two at once).</summary>
+    static async Task SendAsync(ClientWebSocket socket, Channel<string> outgoing)
+    {
+        try
+        {
+            await foreach (var message in outgoing.Reader.ReadAllAsync())
+                await socket.SendAsync(Encoding.UTF8.GetBytes(message), WebSocketMessageType.Text, true, CancellationToken.None);
+        }
+        catch (Exception e) when (e is WebSocketException or OperationCanceledException or ObjectDisposedException)
+        {
+            // The connection dropped: the receiving side sees that too, and connects again.
+        }
+    }
+
+    /// <summary>Out of step: drops the connection on purpose; it reconnects at once and gets the whole show again.</summary>
+    public void Resync()
+    {
+        _resyncing = true;
+        _socket?.Abort();
+    }
 }

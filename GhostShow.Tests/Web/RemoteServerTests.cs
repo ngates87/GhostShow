@@ -40,6 +40,7 @@ public sealed class RemoteServerTests : IAsyncLifetime
         public string? PressButton(Guid buttonId) => Did($"press {buttonId}");
         public string? Open(Guid timelineId) => Did($"open {timelineId}");
         public string? TestSound(string? device) => Did($"testSound {device}");
+        public Task<string?> SaveAsync() => Task.FromResult(Did("save"));
     }
 
     /// <summary>Sound files, measured when the test says so.</summary>
@@ -65,6 +66,8 @@ public sealed class RemoteServerTests : IAsyncLifetime
         public Control Commands { get; } = new();
         public IShowControl Control => Commands;
         public IReadOnlyList<string> Warnings { get; set; } = [];
+        public bool HasUnsavedChanges { get; set; }
+        public bool NeedsFirstSave { get; set; }
         public IReadOnlyList<string> AudioDevices { get; set; } = ["Speakers", "USB Interface"];
         public event Action? AudioDevicesChanged;
         public void ChangeAudioDevices(params string[] names)
@@ -255,6 +258,15 @@ public sealed class RemoteServerTests : IAsyncLifetime
 
     static int _commands;
 
+    /// <summary>Sends a command without waiting for its answer (for reading what comes before the answer).</summary>
+    static async Task SendAsync(ClientWebSocket socket, object command)
+    {
+        var json = System.Text.Json.JsonSerializer.SerializeToNode(command)!.AsObject();
+        json["type"] = "command";
+        json["id"] = Interlocked.Increment(ref _commands);
+        await socket.SendAsync(Encoding.UTF8.GetBytes(json.ToJsonString()), WebSocketMessageType.Text, true, TestContext.Current.CancellationToken);
+    }
+
     static async Task<JsonObject> CommandAsync(ClientWebSocket socket, object command)
     {
         var json = System.Text.Json.JsonSerializer.SerializeToNode(command)!.AsObject();
@@ -428,6 +440,126 @@ public sealed class RemoteServerTests : IAsyncLifetime
 
         await CommandAsync(socket, new { action = "testSound", device = "USB Interface" });
         Assert.Equal(["testSound USB Interface"], _host.Commands.Calls);
+    }
+
+    // ---- editing from a device ----
+
+    /// <summary>An "edit" command, as the full app sends one, for a track's name.</summary>
+    object RenameTrack(string name, int? merge = null)
+    {
+        var path = ShowPath.Timeline(_main.Id).Track(_main.Tracks[0].Id).Then("name").Value;
+        return new { action = "edit", description = "Rename track", merge, ops = new[] { new { op = "set", path, value = name } } };
+    }
+
+    [Fact]
+    public async Task An_edit_from_a_device_changes_the_show_and_reaches_the_others_but_not_itself()
+    {
+        using var editor = await ConnectAsync(await PairAsync("Laptop"));
+        await NextAsync(editor, "hello");
+        using var phone = await ConnectAsync(await PairAsync("Phone", "operator"));
+        await NextAsync(phone, "hello");
+        var changes = new List<ShowChange>();
+        _document.Changed += changes.Add;
+
+        var answer = await CommandAsync(editor, RenameTrack("Spots"));
+
+        Assert.True(answer["ok"]!.GetValue<bool>(), answer.ToJsonString());
+        Assert.Equal("Spots", _main.Tracks[0].Name);
+        Assert.Equal(("Rename track", "Laptop"), (changes.Single().Description, changes.Single().Origin));
+        Assert.Equal("Rename track", _document.NextUndo(_main.Id));   // in the one history, for the desktop's Undo too
+
+        var change = await NextAsync(phone, "change");
+        Assert.Equal("Spots", change["ops"]![0]!["value"]!.GetValue<string>());
+        // The editor heard nothing of its own edit: the next change it gets is the next one made.
+        lock (_host.Gate) _document.Apply(new Transaction("Loop", new SetOp(ShowPath.Timeline(_main.Id).Then("loop"), true)));
+        Assert.Equal("Loop", (await NextAsync(editor, "change"))["description"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task An_operator_can_t_edit_undo_or_save()
+    {
+        using var phone = await ConnectAsync(await PairAsync("Phone", "operator"));
+        await NextAsync(phone, "hello");
+
+        foreach (var command in new[] { RenameTrack("Hacked"), new { action = "undo" }, new { action = "save" } })
+            Assert.Contains("operator", (await CommandAsync(phone, command))["error"]!.GetValue<string>());
+
+        Assert.Equal("Lights", _main.Tracks[0].Name);
+        Assert.Empty(_host.Commands.Calls);
+    }
+
+    [Fact]
+    public async Task An_edit_that_doesn_t_fit_changes_nothing_and_says_why()
+    {
+        using var socket = await ConnectAsync(await PairAsync());
+        await NextAsync(socket, "hello");
+        var gone = ShowPath.Timeline(_main.Id).Track(Guid.NewGuid()).Then("name").Value;
+        var fits = ShowPath.Timeline(_main.Id).Then("loop").Value;
+
+        var answer = await CommandAsync(socket, new
+        {
+            action = "edit", description = "Two things",
+            ops = new object[] { new { op = "set", path = fits, value = true }, new { op = "set", path = gone, value = "x" } },
+        });
+
+        Assert.False(answer["ok"]!.GetValue<bool>());
+        Assert.StartsWith("Can't edit", answer["error"]!.GetValue<string>());
+        Assert.False(_main.Loop);   // all or nothing
+    }
+
+    [Fact]
+    public async Task Undo_and_redo_are_done_on_the_show_computer_and_come_back_as_changes_with_the_history()
+    {
+        using var socket = await ConnectAsync(await PairAsync());
+        await NextAsync(socket, "hello");
+        await SendAsync(socket, new { action = "watch", timeline = _main.Id.ToString() });
+        await NextAsync(socket, "history");   // on watching
+
+        await SendAsync(socket, RenameTrack("Spots"));
+        Assert.Equal("Rename track", (await NextAsync(socket, "history"))["undo"]!.GetValue<string>());
+
+        await SendAsync(socket, new { action = "undo" });
+        var undone = await NextAsync(socket, "change");   // to the device that asked too: it hasn't changed its copy
+        Assert.Equal(("undo", "Lights"), (undone["kind"]!.GetValue<string>(), undone["ops"]![0]!["value"]!.GetValue<string>()));
+        var history = await NextAsync(socket, "history");
+        Assert.Equal(("Rename track", true), (history["redo"]!.GetValue<string>(), history["undo"] is null));
+        Assert.Equal("Lights", _main.Tracks[0].Name);
+
+        await SendAsync(socket, new { action = "redo" });
+        await NextAsync(socket, "change");
+        Assert.Equal("Spots", _main.Tracks[0].Name);
+    }
+
+    [Fact]
+    public async Task Edits_with_one_merge_number_are_one_undo_step()
+    {
+        using var socket = await ConnectAsync(await PairAsync());
+        await NextAsync(socket, "hello");
+
+        await CommandAsync(socket, RenameTrack("A", merge: 1));
+        await CommandAsync(socket, RenameTrack("AB", merge: 1));
+        await CommandAsync(socket, RenameTrack("ABC", merge: 2));
+
+        await CommandAsync(socket, new { action = "watch", timeline = _main.Id.ToString() });
+        await CommandAsync(socket, new { action = "undo" });
+        Assert.Equal("AB", _main.Tracks[0].Name);
+        await CommandAsync(socket, new { action = "undo" });
+        Assert.Equal("Lights", _main.Tracks[0].Name);
+    }
+
+    [Fact]
+    public async Task A_device_can_save_and_status_says_whether_the_show_is_unsaved()
+    {
+        _host.HasUnsavedChanges = true;
+        _host.NeedsFirstSave = true;
+        using var socket = await ConnectAsync(await PairAsync());
+        var status = await NextAsync(socket, "status");
+        Assert.True(status["unsaved"]!.GetValue<bool>());
+        Assert.True(status["needsFirstSave"]!.GetValue<bool>());
+
+        Assert.True((await CommandAsync(socket, new { action = "save" }))["ok"]!.GetValue<bool>());
+
+        Assert.Equal(["save"], _host.Commands.Calls);
     }
 
     [Fact]

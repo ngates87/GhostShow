@@ -32,6 +32,9 @@ public interface IShowControl
     /// <summary>Opens a timeline in the editor: it becomes the one the transport works.</summary>
     string? Open(Guid timelineId);
 
+    /// <summary>Saves the show where it's saved already (choosing a place is done on the show computer).</summary>
+    Task<string?> SaveAsync();
+
     /// <summary>Plays a short test tone on an audio output (null: the default), to check which speakers it is.</summary>
     string? TestSound(string? device);
 }

@@ -109,10 +109,19 @@ public partial class TimelineView : UserControl
         }
     }
 
-    /// <summary>The Envelope Editor's window: opened (owned by the main window, so it stays in front of it) or brought forward.</summary>
+    /// <summary>
+    /// Opens the Envelope Editor, or brings it forward. On the desktop it's a window owned by the main window, so it
+    /// stays in front of it. A browser page can't open windows, so there it covers this screen.
+    /// </summary>
     void ShowEnvelopeEditor()
     {
         if (_editor?.EnvelopeEditor is not { } envelopes) return;
+        if (TopLevel.GetTopLevel(this) is not Window owner)
+        {
+            EnvelopeEditorInPage.DataContext = envelopes;
+            EnvelopeEditorInPage.IsVisible = true;
+            return;
+        }
         if (_envelopeWindow is { } open)
         {
             open.Activate();
@@ -124,9 +133,10 @@ public partial class TimelineView : UserControl
             _envelopeWindow = null;
             _editor?.CloseEnvelopeEditor();
         };
-        if (TopLevel.GetTopLevel(this) is Window owner) window.Show(owner);
-        else window.Show();
+        window.Show(owner);
     }
+
+    void OnCloseEnvelopeEditorInPage(object? sender, RoutedEventArgs e) => _editor?.CloseEnvelopeEditor();
 
     /// <summary>The window, while open (for tests).</summary>
     public EnvelopeEditorWindow? EnvelopeWindow => _envelopeWindow;
@@ -134,7 +144,16 @@ public partial class TimelineView : UserControl
     /// <summary>A timeline just opened (or switched to): show all of it.</summary>
     void OnEditorChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(TimelineEditorViewModel.EnvelopeEditor) && _editor?.EnvelopeEditor is null) _envelopeWindow?.Close();
+        if (e.PropertyName == nameof(TimelineEditorViewModel.EnvelopeEditor) && _editor?.EnvelopeEditor is null)
+        {
+            _envelopeWindow?.Close();
+            if (EnvelopeEditorInPage.IsVisible)
+            {
+                EnvelopeEditorInPage.IsVisible = false;
+                EnvelopeEditorInPage.DataContext = null;
+                Canvas.Focus();   // focus was on what just went away; without it the timeline's keys do nothing until a click
+            }
+        }
         if (e.PropertyName != nameof(TimelineEditorViewModel.SelectedTimeline)) return;
         Avalonia.Threading.Dispatcher.UIThread.Post(() =>
         {
@@ -235,6 +254,7 @@ public partial class TimelineView : UserControl
     void OnShortcut(object? sender, KeyEventArgs e)
     {
         if (_editor is not { } editor || !IsEffectivelyVisible) return;
+        if (EnvelopeEditorInPage.IsVisible) return;   // it's on top, and has its own keys
         // Typing in a field: leave its keys alone (Delete, Ctrl+C and Space mean what they do in text). The tree has
         // its own keys (Delete, F2, Enter).
         var focused = TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement();

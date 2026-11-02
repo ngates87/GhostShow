@@ -33,7 +33,7 @@ public sealed record ConnectedDevice(Guid Id, string Name, RemoteRole Role, stri
 /// - <c>result</c>: the answer to a command the device sent (<c>{ type: "command", id, action, … }</c>): done, or why
 ///   not. Commands run on the show's thread (<see cref="IShowControl"/>), and a device's role is checked for each.
 /// What else devices get from the show computer (the patch, sound files, levels set by hand, audio devices) is in
-/// RemoteServer.ShowData.cs. See docs/remote.md. Nothing listens until <see cref="StartAsync"/>.
+/// RemoteServer.ShowData.cs, and editing from a device is in RemoteServer.Edits.cs. See docs/remote.md. Nothing listens until <see cref="StartAsync"/>.
 /// </summary>
 public sealed partial class RemoteServer : IAsyncDisposable
 {
@@ -51,11 +51,14 @@ public sealed partial class RemoteServer : IAsyncDisposable
     Task? _statusLoop;
     string _status = "";
     long _ticks;
+    long _observedDocumentVersion;
+    bool _patchBroadcastPending;
 
     public RemoteServer(IRemoteHost host, RemoteSettings settings, ILogger logger, TimeProvider? clock = null)
     {
         _host = host;
         _logger = logger;
+        _observedDocumentVersion = host.Session.Document.Version;
         Pairing = new DevicePairing(settings, clock);
         host.Session.Document.Changed += OnChanged;
         host.Playback.Compiled += OnCompiled;
@@ -291,7 +294,7 @@ public sealed partial class RemoteServer : IAsyncDisposable
     // ---- commands ----
 
     /// <summary>What only an editor may do; an operator may run the show (play, stop, buttons, Blackout) but not change it.</summary>
-    static readonly HashSet<string> EditorOnly = ["open"];
+    static readonly HashSet<string> EditorOnly = ["open", "edit", "undo", "redo", "save", "profiles"];
 
     /// <summary>A message from a device: a command, run on the show's thread, answered with a result.</summary>
     async Task ReceivedAsync(RemoteConnection connection, string json)
@@ -315,7 +318,13 @@ public sealed partial class RemoteServer : IAsyncDisposable
         {
             try
             {
-                error = await _host.InvokeAsync(() => Execute(connection, action, message));
+                error = action == "save"
+                    ? await await _host.InvokeAsync(_host.Control.SaveAsync)   // saving takes a moment: the show's thread isn't held up
+                    : await _host.InvokeAsync(() => Execute(connection, action, message));
+            }
+            catch (EditException e)
+            {
+                error = e.Message;
             }
             catch (Exception e) when (e is FormatException or InvalidOperationException or ArgumentException or System.Text.Json.JsonException)
             {
@@ -363,6 +372,10 @@ public sealed partial class RemoteServer : IAsyncDisposable
             "restart" => control.Transport(TransportAction.Restart, null),
             "seek" => control.Transport(TransportAction.Seek, position),
             "watch" => Watch(connection, Id("timeline")),
+            "edit" => ApplyEdit(connection, message),
+            "undo" => UndoOrRedo(connection, undo: true),
+            "redo" => UndoOrRedo(connection, undo: false),
+            "profiles" => SearchProfiles(connection, message["query"]?.GetValue<string>() ?? ""),
             "run" => Run(Id("timeline"), playOnceOnly: message["playOnceOnly"]?.GetValue<bool>() == true),
             "stopTimeline" => control.StopTimeline(Id("timeline")),
             "stopRunning" => control.StopRunning(Id("running")),
@@ -393,6 +406,7 @@ public sealed partial class RemoteServer : IAsyncDisposable
     {
         connection.Watching = timeline;
         _host.Playback.Load(timeline);   // raises Compiled, which sends the device its problems
+        SendHistory(connection);
         return null;
     }
 
@@ -421,10 +435,15 @@ public sealed partial class RemoteServer : IAsyncDisposable
     /// <summary>On the show's thread: a change, to every device, as the operations that made it.</summary>
     void OnChanged(ShowChange change)
     {
+        _observedDocumentVersion = change.Version;
         List<RemoteConnection> connections;
         lock (_lock)
         {
-            if (_connections.Count == 0) return;
+            if (_connections.Count == 0)
+            {
+                _patchBroadcastPending = false;   // a reconnecting device gets a fresh snapshot
+                return;
+            }
             connections = [.. _connections];
         }
         var message = new JsonObject
@@ -436,7 +455,18 @@ public sealed partial class RemoteServer : IAsyncDisposable
             ["origin"] = change.Origin,
             ["ops"] = new JsonArray([.. change.Ops.Select(_host.Session.Document.Encode)]),
         }.ToJsonString();
-        foreach (var connection in connections) connection.Send(message);
+        foreach (var connection in connections)
+        {
+            if (connection != _applyingEditFrom) connection.Send(message);   // (the device that made it already has it)
+            SendHistory(connection);
+        }
+        // A patch edit can synchronously re-apply the session before this handler runs. Preserve stream order:
+        // clients first apply the edit operations, then receive the recalculated patch.
+        if (_patchBroadcastPending)
+        {
+            _patchBroadcastPending = false;
+            BroadcastPatch();
+        }
     }
 
     /// <summary>On the show's thread: who the device is, and the whole show.</summary>
@@ -531,6 +561,8 @@ public sealed partial class RemoteServer : IAsyncDisposable
             ["focused"] = focused,
             ["running"] = running,
             ["timelines"] = timelines,
+            ["unsaved"] = _host.HasUnsavedChanges,
+            ["needsFirstSave"] = _host.NeedsFirstSave,
             ["warnings"] = new JsonArray([.. _host.Warnings.Select(w => JsonValue.Create(w))]),
         };
     }

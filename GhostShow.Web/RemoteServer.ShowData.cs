@@ -49,6 +49,16 @@ public sealed partial class RemoteServer
     /// <summary>On the show's thread: the patch was applied (fixtures or universes changed): devices get the new one.</summary>
     void OnPatchApplied()
     {
+        if (_host.Session.Document.Version > _observedDocumentVersion)
+        {
+            _patchBroadcastPending = true;
+            return;
+        }
+        BroadcastPatch();
+    }
+
+    void BroadcastPatch()
+    {
         lock (_lock)
             if (_connections.Count == 0) return;
         var project = _host.Session.Project;

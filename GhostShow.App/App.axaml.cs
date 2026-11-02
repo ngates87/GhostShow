@@ -57,7 +57,9 @@ public partial class App : Application
         var outputs = new OutputManager(engine, _loggerFactory);
 
         // Audio opens its device in the background; playback runs on its own thread from the start (idle until Play).
-        var audio = new AudioService(_loggerFactory.CreateLogger<AudioService>()) { MasterVolume = settings.Settings.Audio.MasterVolume };
+        var audio = new AudioService(_loggerFactory.CreateLogger<AudioService>()) {
+             MasterVolume = settings.Settings.Audio.MasterVolume 
+        };
         _ = audio.OpenAsync(settings.Settings.Audio.DeviceName);
         var player = new PlaybackManager(engine, audio, new StopwatchClock());
         var playbackLoop = new PlaybackLoop(player, _loggerFactory.CreateLogger<PlaybackLoop>());

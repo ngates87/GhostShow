@@ -251,8 +251,12 @@ public sealed partial class EnvelopeEditorViewModel : ObservableObject
         Editor.SelectPoints(Clip.Lanes.Where(l => IsShown(l.Target)).SelectMany(l => l.Points), additive: false);
     }
 
+    /// <summary>Deletes the selected handles. With none selected it does nothing: the editor's Delete would take the selected clip.</summary>
     [RelayCommand]
-    void DeleteHandles() => Editor.DeleteCommand.Execute(null);
+    void DeleteHandles()
+    {
+        if (Editor.SelectedPoints.Count > 0) Editor.DeleteCommand.Execute(null);
+    }
 
     public static IReadOnlyList<CurveKind> Curves => PointPropertiesViewModel.Curves;
 

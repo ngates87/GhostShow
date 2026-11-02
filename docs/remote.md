@@ -1,9 +1,12 @@
 # Remote access (the web remote)
 
-Run the show from an iPad, a laptop or a phone while you stand in the room: you hear the room's speakers and see
-the real lights, and nobody needs to sit at the show computer. Sound and lights stay on the show computer; the
-device is a remote that shows the show and runs it. See [plan-remote.md](plan-remote.md) for what's coming (live
-faders, then tweaking and editing).
+Run and edit the show from a laptop, an iPad or a phone while you stand in the room: you hear the room's speakers
+and see the real lights, and nobody needs to sit at the show computer. Sound and lights stay on the show computer;
+the device is a remote. There are two pages:
+- **The full app** (`/app/`): the Timeline editor plus Lighting and Audio pages. See "Editing from the full app" below.
+- **The simple remote** (the plain address): run the show, on anything down to a phone.
+
+See [plan-remote.md](plan-remote.md) for what's coming (the other screens: patching, audio and DMX setup).
 
 ## Using it
 
@@ -43,6 +46,33 @@ Remote Access lists the paired devices, which are connected (and from where), an
 straight away. **New PIN** makes a new PIN; paired devices stay paired. While remote access is on, the menu bar shows
 how many devices are connected.
 
+## Editing from the full app
+
+Open `http://<address>:7700/app/`, or "Open the full app" on the simple remote. `/app/?open=Folder/Timeline` opens a
+timeline at start, so it can be bookmarked. The top row switches between Timeline, Lighting and Audio; Blackout and
+warnings stay visible across pages. The show's buttons are available along the bottom. Lighting can search the show
+computer's fixture library and add, duplicate, remove, rename, group, enable, move, readdress, or change the type and
+mode of a fixture. It can also add, remove, rename and renumber show universes. These are shared edits that save
+themselves. To undo one, use Undo on the Timeline page: the Lighting page has no Undo of its own yet. Which DMX adapter drives each universe, live faders, and audio settings are still managed on the show computer.
+Audio shows the show computer's devices and the files used by the show. The full app is only there if it has been built:
+`GhostShow.Browser/publish.sh` (it needs the WebAssembly tools).
+
+- **Edits are real.** Moving a clip, dragging a handle or adding a timeline changes the show on the show computer.
+  It plays straight away, and the desktop and other devices see it live.
+- **Undo is shared.** There's one history per timeline, whichever device made the edit: Undo on the laptop can take
+  back an edit made on the desktop, and the other way round.
+- **There's no Save button.** Edits save themselves on the show computer about half a second after you pause, and the
+  bottom corner shows Saving… and Saved. Ctrl+S saves straight away. A show that has never been saved has to be saved
+  on the show computer first, since that's where its folder is chosen; the corner says so until then.
+- **The Envelope Editor** opens over the timeline screen, since a browser page can't open a second window. Close goes
+  back to the timeline.
+- **If the connection drops,** the bar along the bottom says so. Edits made until it's back aren't kept: when it
+  reconnects, the page takes the show from the show computer again. The open timelines stay open.
+- **If two people edit at once:** the show computer's order decides. If another device's change arrives while one of
+  yours is on its way, the page takes the whole show again, so the copies can't drift apart.
+- **An operator** can look and use the show controls, but cannot edit: an edit is refused, the message says why, and
+  the screen goes back.
+
 ## Security
 
 - Off until switched on: nothing listens on the network before that.
@@ -67,14 +97,16 @@ how many devices are connected.
   - `audioDevices`: the show computer's audio devices, when they change.
   - `change`: every change to the show, as the edit operations the show computer applied (`ShowDocument.Encode`).
     The device applies them to its copy, so the two stay the same. A device that misses one reconnects and gets the
-    whole show again.
-  - `status`: the editor's timeline, what's playing (each player with its priority) and the desktop's warnings,
-    up to 20 times a second while something plays. It also says where each timeline a device is watching is
+    whole show again. A device isn't sent its own edit: it already has it.
+  - `status`: the editor's timeline, what's playing (each player with its priority), the desktop's warnings,
+    whether the show has unsaved changes (`unsaved`) and whether it still needs its first save on the show computer
+    (`needsFirstSave`), up to 20 times a second while something plays. It also says where each timeline a device is watching is
     (`timelines`, stopped ones included, with their length). A slow device gets only the newest status, never a
     backlog.
   - `issues`: a watched timeline's problems (missing fixtures, files, timelines), each time it's compiled.
   - `device`: the device again, when its role changes.
   - `result`: the answer to a command.
+  - `history`: what Undo and Redo would do next on this device (for its Undo button's label), after every change.
 - **Commands:** a device sends `{ "type": "command", "id": 7, "action": "run", "timeline": "<id>" }` and gets
   `{ "type": "result", "id": 7, "ok": true }`, or `ok: false` with an `error` to show.
   - **Actions:** `play`, `pause`, `stop`, `restart`, `seek` (`position`, in seconds), `run`, `stopTimeline`,
@@ -88,10 +120,15 @@ how many devices are connected.
     problems and status.
   - **Sound files:** `audio` (`file`, as the show names it) asks for a sound file's length and waveform.
   - **Test tone:** `testSound` (`device`, or none for the default output) plays a test tone on the show computer.
+  - **Edits:** `edit` (`description`, `ops`, and a `merge` number: edits with one number in quick succession are one
+    undo step) changes the show. See `GhostShow.Web/RemoteServer.Edits.cs` for how it works and
+    `GhostShow.Browser/Remote/RemoteEdits.cs` for the browser's side.
+  - **Undo, redo, save:** `undo` and `redo` act for the timeline the device watches; `save` saves on the show
+    computer.
   - **Where they run:** on the show computer's UI thread, through the same view models as the desktop's controls
     (`IShowControl`).
-  - **Roles:** the show computer checks the device's role for each command. `open` is editor-only, and so will
-    every edit be; an operator may run the show but not change it.
+  - **Roles:** the show computer checks the device's role for each command. `open`, `edit`, `undo`, `redo` and
+    `save` are editor-only; an operator may run the show but not change it.
 - **Close codes:** a device that isn't paired, or was removed, is closed with code 4401, and the page goes back to
   pairing.
 - **Building the page:** `dotnet build` builds it when Node.js is installed (`npm ci`, then `npm run build`, only

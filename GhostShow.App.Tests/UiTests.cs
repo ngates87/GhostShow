@@ -512,6 +512,21 @@ public class UiTests
     });
 
     [Fact]
+    public Task Delete_in_the_envelope_editor_takes_handles_but_never_the_clip() => Ui.Run(() =>
+    {
+        using var rig = new WindowRig();
+        var clip = AddClip(rig, 1, 4, (2, 100), (4, 100));
+        var (window, _) = OpenEnvelopeEditor(rig, 2);
+        Assert.Empty(rig.Editor.SelectedPoints);
+
+        window.KeyPress(Key.Delete, RawInputModifiers.None, PhysicalKey.Delete, null);
+        WindowRig.Pump(80);
+
+        Assert.Contains(clip, rig.Lighting.Events);
+        Assert.Equal(2, clip.Lanes[0].Points.Count);
+    });
+
+    [Fact]
     public Task On_an_expanded_track_double_clicking_an_envelope_line_adds_a_handle_and_elsewhere_opens_the_editor() => Ui.Run(() =>
     {
         using var rig = new WindowRig();

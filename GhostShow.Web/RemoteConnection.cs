@@ -12,8 +12,8 @@ namespace GhostShow.Web;
 /// <param name="received">Handles a message from the device (a command), one at a time, in order.</param>
 sealed class RemoteConnection(PairedDevice device, WebSocket socket, string address, Func<RemoteConnection, string, Task> received)
 {
-    /// <summary>The longest message a device may send (commands are small); a longer one closes the connection.</summary>
-    const int MaxMessage = 64 * 1024;
+    /// <summary>The longest message a device may send (an edit can hold many clips); a longer one closes the connection.</summary>
+    const int MaxMessage = 16 * 1024 * 1024;
 
     readonly Channel<string> _messages = Channel.CreateUnbounded<string>(new UnboundedChannelOptions { SingleReader = true });
     readonly CancellationTokenSource _closing = new();

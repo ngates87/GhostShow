@@ -133,10 +133,11 @@ The address map (`Controls/PatchMap`) is drawn directly rather than built from 5
 stay cheap. The gap arithmetic it shows (used channels, free ranges, collisions, openings) is `UniverseUsage` in
 Core, where it is unit tested.
 
-**Unsaved changes.** New, Open and closing the window go through `UnsavedChangesGuard`. With unsaved show
-changes it asks Save / Don't save / Cancel, and only proceeds once the show is saved or the user chose to discard.
-A save that doesn't happen (e.g. Save As cancelled) cancels the action. Machine settings (hardware assignments) are
-saved as soon as they change.
+**Saving show changes.** Edits to a saved show auto-save on the show computer after a short idle delay. Saves are
+serialized; if another edit arrives while a snapshot is being written, the show remains dirty and another save writes
+the latest state. Save / Ctrl+S still saves immediately. A new show or an older single-file show needs its first folder
+chosen on the show computer. New, Open and closing the window still go through `UnsavedChangesGuard` when a show has
+unsaved changes. Machine settings (hardware assignments) are saved as soon as they change.
 
 ## Editing the show
 

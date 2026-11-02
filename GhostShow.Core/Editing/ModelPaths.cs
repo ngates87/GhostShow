@@ -49,7 +49,13 @@ static class ModelPaths
     /// <summary>Makes a value the type a property or list takes: a JSON element (from the network) is read as it.</summary>
     public static object? Convert(object? value, Type type, string path)
     {
-        if (value is JsonElement json) return JsonSerializer.Deserialize(json, type, Storage.Json.Options);
+        if (value is JsonElement json)
+        {
+            var read = JsonSerializer.Deserialize(json, type, Storage.Json.Options);
+            // A timeline's folder isn't in its JSON (on disk it's where its file is): it travels beside it.
+            if (read is Timeline.ShowTimeline timeline && json.TryGetProperty("folder", out var folder)) timeline.Folder = folder.GetString() ?? "";
+            return read;
+        }
         if (value is null)
         {
             if (type.IsValueType && Nullable.GetUnderlyingType(type) is null) throw Missing(path, $"null isn't a {type.Name}");

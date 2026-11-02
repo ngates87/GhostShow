@@ -4,6 +4,10 @@ Goal: stand in the room with an iPad or a laptop, hear the room's real speakers 
 tweak and edit the show from there. No remote desktop, and nobody radioing the show PC. This is one of VenueMagic's
 biggest gaps: it has no good way to be used remotely. Decided 2026-10-29.
 
+**The current plan is [Next](#next-a-server-and-the-same-screens-everywhere).** The sections before it are the
+history of how we got there. The Svelte editor they describe (Step 3+, stages 5 and 6) was replaced by the app's own
+screens in the browser.
+
 ## Decisions
 
 - **Desktop + web remote.** The Avalonia app stays the full desktop editor. The show PC hosts a web app that
@@ -109,9 +113,8 @@ Each stage is usable on its own.
      - The tree's folders (a sorted set) are compared as a whole and keep their case-insensitive name rule.
      - Deleted timelines close their tabs and stop playing, whoever deleted them.
    - **1d (done):** only the setup screens still change the show directly: Fixtures (patch), DMX setup (universes)
-     and the custom fixture types. They re-apply the patch through `ShowSession.Apply` and have never had undo. No
-     stage needs a device to edit the patch, so they stay as they are for now. Devices reload the patch when
-     `Applied` fires, until a stage needs patch editing on the web.
+     and the custom fixture types. They re-apply the patch through `ShowSession.Apply` and have never had undo. Devices
+     reload the patch when `Applied` fires. Patching from a device is now wanted, so these move too (Next, step 4).
    - Edit operations, transactions and `ShowDocument`, with the desktop moved to them.
    - Done when there's no visible change and all tests pass.
 2. **Web host and pairing (done).** See [remote.md](remote.md).
@@ -145,65 +148,134 @@ Each stage is usable on its own.
    - **Decision point at stage 5:** once the web timeline exists, decide whether the desktop keeps its own editor
      or becomes a window around the web app (one UI to maintain). Two full editors is real ongoing cost.
 
-## Next: one app, on the show computer and on a laptop
+## Next: a server, and the same screens everywhere
 
-Decided 2026-10-30, after the experiment below.
-- **The main remote is a laptop's browser:** the full app, served by the show computer at `/app/`. Tablets can wait;
-  the simple pages stay for phones.
-- **The order of work:**
-  1. **Split the screens from the show computer.** Everything the screens ask of the show computer goes through
-     interfaces: local on the show computer, over the network on a laptop.
-     - **1a (done):** `ShowPlayback` (Core) took playback out of the desktop's `PlaybackViewModel`, with its tests.
-     - **1b (done):** `IPlayback` (Core) is what the screens ask of playback.
-       - `ShowPlayback` implements it on the show computer; `RemotePlayback` (GhostShow.Browser) implements it in the
-         browser, sending requests to the show computer and keeping its status.
-       - `PlaybackViewModel` is now the same file in both.
-       - The laptop's transport works its own timeline (`watch`, then `play` with a `timeline`), never moving the
-         desktop's editor.
-     - **1c (done):** the rest of what the screens need, sent by the show computer:
-       - the fixture profiles the show uses, and the patch whenever it changes (channels are named as on the desktop);
-       - sound files' lengths and waveforms, asked for by the name the show uses (the show computer finds the file);
-       - levels set by hand (so Snapshot works);
-       - the audio devices, and test tones.
+Decided 2026-10-30: the main remote is a laptop's browser, running the desktop app's own Avalonia screens compiled to
+WebAssembly (`GhostShow.Browser`, served at `/app/`). Sound and DMX stay on the show computer; the browser only sends
+requests and edits. Tablets can wait. The simple Svelte pages stay for phones.
 
-       The warnings already come in the status; the browser shows them once the main window is shared (1d).
-       `/app/?open=Folder/Timeline` opens a timeline at start.
-     - **1d:** the shared screens move from GhostShow.App into their own project, used by the desktop app and the
-       browser build.
-  2. **Edits from the laptop reach the show computer,** with undo shared with the desktop (timeline edits first).
-  3. **The desktop's main window in the browser** (was 1d): menus, the Timeline, Lighting and Audio tabs, warnings
-     and Blackout. It needs the shared screens in their own project.
-  4. **Patching from the browser** (asked for 2026-10-30):
-     - The Fixtures and DMX universe screens edit through `ShowDocument`, so they get undo and reach devices like
-       timeline edits. The show computer applies the patch again when fixtures or universes change.
-     - Fixture search runs on the show computer: the profile library (QLC+, Open Fixture Library, custom) is there.
-     - Custom fixture types are saved there.
-  5. **Audio setup from the browser** (asked for 2026-10-30): the output device, master volume, test tones, and the
-     show's sound files. These are the show computer's settings, so they're commands to it.
-  6. **DMX output setup from the browser:** which adapter drives which universe, also a show computer setting.
-  7. **Files on the show computer:** choosing a sound or opening a show needs a browser for the show computer's
-     folders (and uploading sounds from the laptop), alongside 5.
-  8. **Browser polish:**
-     - a symbol font;
-     - the Envelope Editor inside the page;
-     - checking which keyboard shortcuts the browser takes first.
+Decided 2026-11-02: **GhostShow becomes a server plus clients.** This replaces the earlier decision that the desktop app
+stays open as the host.
 
-## Experiment: the full app in the browser (Avalonia on WebAssembly)
+```
+Show computer: GhostShow server (no window)
+  show, DMX, audio, playback, saving, fixture library
+        │  the same connection for every screen
+        ├── laptop browser (Avalonia screens as WebAssembly)
+        ├── show computer's browser, same page
+        └── optional native window, same screens
+```
 
-Decided 2026-10-30: rather than a separate web editor, try the desktop app's own Avalonia screens compiled to
-WebAssembly. The same app would be native on the show computer and in the browser elsewhere, both talking to the show
-computer. `GhostShow.Browser` is that experiment.
+- **Why:** today the desktop has a direct path to the show and the browser has a second one over the network, so the two
+  keep drifting apart and every screen costs double. With one path, a screen looks and works the same anywhere on the
+  network.
+- **The screens stay Avalonia.** A Svelte or React rewrite would redo the timeline canvas and thousands of lines of
+  screens, and Avalonia in the browser already edits a real show.
+- **A native window stays, at least for now.** It's the same screens over the same connection. The UI tests can only run
+  natively, and a native build is far quicker to try than the 5-minute browser build. Whether it ever ships can wait.
+- **A crashed screen can't stop the show,** and autostart and show mode get simpler.
 
-**What it is.** The real Timeline screen and canvas, shared as source from GhostShow.App, on a copy of the show kept
-in step with the show computer over `/api/live`.
-- It reuses the token the web remote's page saved when the browser paired.
-- Stand-ins replace what needs DMX and audio (`Remote/PlaybackViewModel.cs`): transport, run and stop go to the
-  show computer, and opening a timeline opens it there too.
-- **Edits made in the browser stay in the browser** (not sent yet).
-- It isn't in GhostShow.slnx: it needs the WebAssembly build tools ("wasm-tools"). Those are installed in a private
-  SDK in `~/.dotnet` on the development machine; the system SDK is Ubuntu's build, owned by root.
+Reassessed 2026-11-01 and 2026-11-02.
 
-**Measured** in Chromium on the development PC (not an iPad), against the real app without a window:
+### Where it stands
+
+**Done, and checked in Chromium against the real app running without a window:**
+- **Splitting playback from the screens:** `IPlayback`, with `ShowPlayback` on the show computer and `RemotePlayback`
+  in the browser. `PlaybackViewModel` is the same file in both.
+- **What the show computer sends:** the fixture profiles, patch, waveforms, levels set by hand, audio devices and
+  test tones.
+- **Edits from the browser:** a drag reaches the show computer and the other devices, and desktop edits reach the
+  browser. Undo, redo and save work. An offline edit is flagged and discarded. An operator's edit is refused and
+  reverted.
+
+**Passes tests, but nobody has tried it in a browser:**
+- the page reloading the show when another device's edit overtakes one of its own.
+
+**Never tried at all:** a real laptop over Wi-Fi, the real desktop window with a device connected, real DMX hardware
+with a device connected.
+
+**Problems found:**
+- **Lighting and Audio are hand-built, not the desktop's screens.** `ShellView.cs` grew to 629 lines of UI built in
+  C#, which goes against "one app, same screens" and is two versions of each screen to keep up. Both pages were blank
+  until 2026-11-02. They now work in Chromium: renaming, readdressing, adding from the library, duplicating and
+  removing fixtures, and adding universes all reach the saved file. Ctrl+Z does nothing on these pages; Undo is on the
+  Timeline page.
+- **An exception during layout blanks every page until a reload,** with nothing on screen to say why. That's how the
+  blank pages looked: an empty dropdown's template threw a null reference.
+- **The desktop's Fixtures and DMX setup screens don't use `ShowDocument`.** They change the show directly, so they
+  have no undo and can't run in the browser as they are.
+- **Nothing in the repo tests the browser build.** It isn't in `GhostShow.slnx`, and the browser test scripts lived
+  only in a scratch folder, which has already been wiped once.
+- **`/app/` can go stale.** `dotnet build` doesn't rebuild it, so after a protocol change the page can quietly be
+  older than the server.
+- **Only a developer can get the full app today.** `FindBrowserApp` finds a publish in the source tree, or the
+  `GHOSTSHOW_BROWSER_APP` folder. An installed copy has no way to find it.
+
+### Decisions made
+
+Answered 2026-11-01:
+- **Saving:** browser edits commit like the desktop's, with no Save button. Auto-save stays, and the browser shows
+  Saving… or Saved instead of a button.
+- **Lighting and Audio:** patching and adding fixtures in the browser should work like the desktop, so the real screens
+  replace the hand-built pages (step 4). Those pages stay only until then, and get nothing new.
+- **Desktop feedback:** dragging a timeline onto the event track works, and removing ▶ next to an event was right.
+
+### The order of work
+
+Small steps; each one leaves the app working.
+
+1. **Fix what blocks real use (done).**
+   - The Envelope Editor opens inside the page where there are no windows (`EnvelopeEditorView`, shown by
+     `TimelineView`). Checked in Chromium, with edits reaching the show computer's saved file.
+   - `GhostShow.Browser/publish.sh` clears the old builds and always uses AOT.
+   - The browser's Save button became a save status.
+   - The blank Lighting and Audio pages are fixed.
+2. **The real Fixtures screen in the browser,** replacing `LightingPage` and the code around it in `ShellView.cs`. It's
+   wanted under any design, and it shows how hard moving a screen really is before going further.
+   1. Fixtures and universes through `ShowDocument` on the desktop. Gains undo; the existing tests are the safety net.
+   2. The fixture library behind an interface: local on the show computer, over the network in the browser.
+   3. The real screen in the browser, and the hand-built page deleted.
+3. **Browser tests in the repo** (Playwright, with their own small host), started alongside step 2 so that moved screens
+   have a safety net. With them, a check that the page and the server are the same version, so a stale `/app/` says so.
+4. **Split out the server:** a project with the engine, DMX, audio, saving and the remote server, and no Avalonia. The
+   desktop app hosts it in-process at first. `GhostShow.Cli` already runs the engine, DMX and audio with no window.
+5. **The native Timeline over the connection.** The riskiest step, and it has never been tried. The existing UI tests
+   will show whether the idea holds. If it goes badly, stop here: the current design still works.
+6. **Move the other screens, one at a time:**
+   - Audio, with its settings as commands to the show computer;
+   - DMX outputs: which adapter drives which universe;
+   - faders and the monitor;
+   - buttons;
+   - the file menu, with a browser for the show computer's folders (choosing a sound, opening a show, uploading sounds
+     from the laptop).
+7. **Run the server on its own:** autostart and packaging, so an installed copy serves `/app/` with no setup. Then delete
+   the old direct path and what's left of `ShellView.cs`.
+8. **Browser polish:**
+   - A symbol font (▾ and ⚙ show as boxes).
+   - Checking which keyboard shortcuts the browser takes first (Ctrl+W can't be taken back), and whether plain `http://`
+     limits the clipboard.
+   - Clearing a number box (Length, say) shows a raw `InvalidCastException` and pushes the toolbar around. Seen in the
+     browser; the desktop uses the same screen.
+
+Moving the screens into their own project stays optional. Linking the source works, so do it only if the list in
+`GhostShow.Browser.csproj` becomes a problem.
+
+After that, the choice is open: triggers (the biggest gap against VenueMagic), show mode and autostart, the rest of
+the importer (cue buttons, Chaos/Flash/Electric Short, audio fades, loop and length, version 381 files), chases and
+moving-light effects, VS-style docking.
+
+### Trying it today
+
+1. Build it: `GhostShow.Browser/publish.sh` (about 5 minutes). It needs the WebAssembly tools ("wasm-tools"), which are
+   in the private SDK in `~/.dotnet`; the system SDK is Ubuntu's build, owned by root. That's also why it isn't in
+   `GhostShow.slnx`.
+2. Start the app with `GHOSTSHOW_BROWSER_APP=<repo>/GhostShow.Browser/bin/Release/net10.0-browser/publish/wwwroot`.
+3. Switch Remote Access on.
+4. On the laptop, pair at `http://<address>:7700/`, then open `http://<address>:7700/app/`.
+
+### Measured
+
+Chromium on the development PC, against the real app without a window, 2026-10-30:
 
 | | Interpreted | AOT-compiled |
 |---|---|---|
@@ -211,26 +283,6 @@ in step with the show computer over `/api/live`.
 | Start, on this machine | ~1.1 s | about the same |
 | Stress timeline, 65,000 handles all in view: scroll / zoom / drag | 28 / 15 / 7 fps | 40 / 29 / 20 fps |
 | Same timeline zoomed in to editing scale: scroll / zoom / drag | | 48 / 109 / 55 fps |
-
-AOT (compiled to WebAssembly code rather than interpreted) is what makes it usable.
-
-**Known gaps:**
-- **Symbols:** some symbols (▾, ⚙) show as boxes; the browser has only the Inter font. Bundle a symbol font, or draw
-  them as icons.
-- **Audio:** sounds show no waveform or length (they're measured on the show computer, not sent yet).
-- **Windows:** browsers have none, so the Envelope Editor (a separate window) doesn't open.
-- **Channel names:** non-built-in fixture profiles aren't sent, so channels show as "U1 · 1".
-
-**Trying it:**
-1. Build it: `DOTNET_ROOT=~/.dotnet ~/.dotnet/dotnet publish GhostShow.Browser -c Release -p:RunAOTCompilation=true`
-   (about 5 minutes).
-2. Start the app with `GHOSTSHOW_BROWSER_APP=<repo>/GhostShow.Browser/bin/Release/net10.0-browser/publish/wwwroot`.
-3. Switch Remote Access on.
-4. On the device, pair at `http://<address>:7700/`, then open `http://<address>:7700/app/`.
-
-**The decision it informs:** if it feels right on the iPad (loading, scrolling, zooming, dragging with a finger, the
-keyboard), go Avalonia everywhere; if not, a Svelte editor. Either way, the next step is the same: the app's
-screens talking to the show computer through a connection rather than directly.
 
 ## Risks and notes
 
@@ -249,5 +301,5 @@ screens talking to the show computer through a connection rather than directly.
 
 ## Open questions
 
-None yet. Answered 2026-10-29: live levels hold when a device drops; the desktop stays open; operators get a simple
-view and can't edit.
+None right now. Answered 2026-10-29: live levels hold when a device drops; the desktop stays open;
+operators get a simple view and can't edit.

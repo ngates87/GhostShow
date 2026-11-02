@@ -3,6 +3,7 @@
              xmlns:vm="using:GhostShow.App.ViewModels"
              xmlns:tl="using:GhostShow.Core.Timeline"
              xmlns:controls="using:GhostShow.App.Controls"
+             xmlns:views="using:GhostShow.App.Views"
              x:Class="GhostShow.App.Views.TimelineView"
              x:DataType="vm:TimelineEditorViewModel">
   <UserControl.Styles>
@@ -689,5 +690,16 @@
     </Border>
     </Panel>
   </DockPanel>
+
+  <!-- The Envelope Editor where there are no second windows (a browser). Covers this screen; see ShowEnvelopeEditor. -->
+  <Border x:Name="EnvelopeEditorInPage" Grid.ColumnSpan="3" x:DataType="vm:EnvelopeEditorViewModel" Background="#141414" IsVisible="False">
+    <DockPanel>
+      <DockPanel DockPanel.Dock="Top" Margin="8,4">
+        <Button DockPanel.Dock="Right" Content="Close" Click="OnCloseEnvelopeEditorInPage" />
+        <TextBlock Text="{Binding Title}" FontWeight="SemiBold" VerticalAlignment="Center" />
+      </DockPanel>
+      <views:EnvelopeEditorView />
+    </DockPanel>
+  </Border>
   </Grid>
 </UserControl>

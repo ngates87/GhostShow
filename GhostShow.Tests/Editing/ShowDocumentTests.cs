@@ -252,6 +252,59 @@ public class ShowDocumentTests
         Assert.Contains("zone 2", copy.TimelineFolders);   // the tree's rule (case doesn't matter) holds in the copy too
     }
 
+    [Fact]
+    public void An_edit_that_came_as_JSON_can_be_passed_on_to_other_copies_as_JSON()
+    {
+        // A browser's edit reaches the show computer as JSON; the show computer tells the other devices.
+        var other = new ShowDocument(Copy(_project));
+        var added = new LightingClip { Start = S(20), Effect = new LightingEffect { Kind = EffectKind.Lightning } };
+        var browser = new ShowDocument(Copy(_project));
+        var insert = new InsertOp(Track.Then("events"), -1, added);
+        browser.Apply(new Transaction("Add effect", insert));
+        var fromDevice = new Transaction("Add effect", ShowDocument.Decode(JsonNode.Parse(browser.Encode(insert).ToJsonString())!),
+                                         ShowDocument.Decode(JsonNode.Parse("""{"op":"set","path":"timelines/%ID%/length","value":"00:01:00"}""".Replace("%ID%", _main.Id.ToString()))!));
+
+        var change = _doc.Apply(fromDevice, origin: "iPad");
+        other.Apply(new Transaction(change.Description, [.. change.Ops.Select(op => ShowDocument.Decode(JsonNode.Parse(_doc.Encode(op).ToJsonString())!))]));
+
+        Assert.IsType<LightingClip>(_lights.Events[^1]);
+        Assert.Equal(S(60), _main.Length);
+        Assert.Equal(Json(_project), Json(other.Project));
+    }
+
+    [Fact]
+    public void A_timeline_sent_as_JSON_keeps_its_folder()
+    {
+        var copy = new ShowDocument(Copy(_project));
+        var room = new ShowTimeline { Name = "Room", Folder = "Zone 2/Rooms" };
+        var insert = new InsertOp("timelines", -1, room);
+        _doc.Apply(new Transaction("New timeline", insert));
+
+        copy.Apply(new Transaction("New timeline", ShowDocument.Decode(JsonNode.Parse(_doc.Encode(insert).ToJsonString())!)));
+
+        Assert.Equal("Zone 2/Rooms", copy.Project.Timelines[^1].Folder);
+    }
+
+    [Fact]
+    public void Next_undo_is_the_latest_of_the_open_timeline_s_edits_and_the_show_s_and_never_another_timeline_s()
+    {
+        var other = new ShowTimeline { Name = "Scare" };
+        _doc.Apply(new Transaction("New timeline", new InsertOp("timelines", -1, other)));
+        _doc.Apply(new Transaction("Move clip", new SetOp(Clip.Then("start"), S(3))));
+        Assert.Equal("Move clip", _doc.NextUndo(_main.Id));
+        Assert.Equal("New timeline", _doc.NextUndo(other.Id));   // not main's clip
+        Assert.Equal("New timeline", _doc.NextUndo(null));
+
+        _doc.UndoLatest(_main.Id, origin: "iPad");
+        Assert.Equal(S(2), _clip.Start);
+        Assert.Equal("Move clip", _doc.NextRedo(_main.Id));
+        Assert.Null(_doc.NextRedo(other.Id));
+        Assert.Equal("iPad", _changes[^1].Origin);
+
+        _doc.RedoLatest(_main.Id);
+        Assert.Equal(S(3), _clip.Start);
+    }
+
     static readonly JsonSerializerOptions Options = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
 
     static string Json(Project project) => JsonSerializer.Serialize(new { project.Buttons, project.Timelines }, Options);

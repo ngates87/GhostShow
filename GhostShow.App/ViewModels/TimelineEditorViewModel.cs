@@ -232,13 +232,21 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
     readonly PlaybackViewModel _playback;
     readonly Func<Task<string?>> _pickAudioFile;
     readonly Action _markDirty;
+    readonly IEditHistory _history;
     readonly HashSet<Guid> _selection = [];
     List<(int Track, TimelineEvent Event)> _clipboard = [];
 
+    /// <param name="history">Undo and Redo: the show document's, unless they're elsewhere (in the browser build, on the show computer).</param>
     public TimelineEditorViewModel(ShowSession session, PlaybackViewModel playback, Func<Task<string?>> pickAudioFile, Action markDirty,
-                                   AudioDeviceList? audioDevices = null)
+                                   AudioDeviceList? audioDevices = null, IEditHistory? history = null)
     {
         _session = session;
+        _history = history ?? session.Document;
+        _history.HistoryChanged += () =>
+        {
+            OnPropertyChanged(nameof(UndoLabel));
+            OnPropertyChanged(nameof(RedoLabel));
+        };
         AudioDevices = audioDevices;
         if (audioDevices is not null) audioDevices.Changed += () =>
         {
@@ -265,9 +273,6 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
     }
 
     ShowDocument Document => _session.Document;
-
-    /// <summary>The open timeline's undo history (each timeline has its own), by its ID.</summary>
-    Guid Scope => SelectedTimeline?.Id ?? Guid.Empty;
 
     /// <summary>
     /// Makes an edit to the open timeline, as one undo step: the change is made on the model directly, and the
@@ -334,15 +339,8 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
     [ObservableProperty]
     public partial IReadOnlySet<Guid> ErrorEvents { get; private set; } = new HashSet<Guid>();
 
-    /// <summary>
-    /// What Undo takes back: the latest of the open timeline's edits and the show's (the tree, buttons). Each
-    /// timeline keeps its own history, so undoing here never reaches into another timeline.
-    /// </summary>
-    Guid UndoScope => Document.LatestUndo(Scope, Guid.Empty) ?? Scope;
-    Guid RedoScope => Document.LatestRedo(Scope, Guid.Empty) ?? Scope;
-
-    public string UndoLabel => Document.UndoDescription(UndoScope) is { } d ? $"Undo {d}" : "Undo";
-    public string RedoLabel => Document.RedoDescription(RedoScope) is { } d ? $"Redo {d}" : "Redo";
+    public string UndoLabel => _history.NextUndo(SelectedTimeline?.Id) is { } d ? $"Undo {d}" : "Undo";
+    public string RedoLabel => _history.NextRedo(SelectedTimeline?.Id) is { } d ? $"Redo {d}" : "Redo";
     public string SelectionLabel => (_selection.Count, _selectedPoints.Count) switch
     {
         (0, 0) => "Nothing selected",
@@ -811,10 +809,10 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
     void UnlinkClips() => Unlink();
 
     [RelayCommand]
-    void Undo() => Document.Undo(UndoScope);
+    void Undo() => _history.UndoLatest(SelectedTimeline?.Id);
 
     [RelayCommand]
-    void Redo() => Document.Redo(RedoScope);
+    void Redo() => _history.RedoLatest(SelectedTimeline?.Id);
 
     [RelayCommand]
     void ZoomIn() => PixelsPerSecond = Math.Min(MaxZoom, PixelsPerSecond * 1.5);
@@ -920,11 +918,6 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
         foreach (var tab in Tabs) tab.Refresh();
         foreach (var timeline in _session.Project.Timelines.Where(t => change.Timelines.Contains(t.Id))) Tree.NodeOf(timeline)?.Refresh();
         if (SelectedTimeline is { } open && change.Timelines.Contains(open.Id)) OnEdited();
-        else
-        {
-            OnPropertyChanged(nameof(UndoLabel));
-            OnPropertyChanged(nameof(RedoLabel));
-        }
     }
 
     void OnEdited()
@@ -939,8 +932,6 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
         OnPropertyChanged(nameof(Loop));
         OnPropertyChanged(nameof(LengthSeconds));
         foreach (var name in PlaybackProperties) OnPropertyChanged(name);
-        OnPropertyChanged(nameof(UndoLabel));
-        OnPropertyChanged(nameof(RedoLabel));
         Revision++;
         TrackProperties?.Refresh();
         EnvelopeEditor?.Refresh();

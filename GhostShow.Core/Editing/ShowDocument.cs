@@ -16,8 +16,10 @@ public enum ChangeKind { Do, Undo, Redo }
 /// that applies them stays the same as this one.</param>
 /// <param name="Origin">Who made it (a device's name; null: the desktop).</param>
 /// <param name="Timelines">The timelines it changed (to recompile and to save); empty for a change elsewhere (buttons).</param>
+/// <param name="MergeKey">The key it was made with (see <see cref="ShowDocument.Apply"/>), if any: a browser sends its
+/// edits on to the show computer, which merges them the same way.</param>
 public sealed record ShowChange(long Version, ChangeKind Kind, string Description, IReadOnlyList<EditOp> Ops, string? Origin,
-                                IReadOnlySet<Guid> Timelines);
+                                IReadOnlySet<Guid> Timelines, object? MergeKey = null);
 
 /// <summary>
 /// The open show, and the one way to change it: <see cref="Apply"/> a <see cref="Transaction"/> of edit operations.
@@ -31,7 +33,7 @@ public sealed record ShowChange(long Version, ChangeKind Kind, string Descriptio
 /// Edits with the same merge key in quick succession (typing into a field, dragging) become one undo step. Not thread
 /// safe: use it from one thread (the UI's).
 /// </summary>
-public sealed class ShowDocument
+public sealed class ShowDocument : IEditHistory
 {
     static readonly TimeSpan MergeWindow = TimeSpan.FromSeconds(2);
     const int Limit = 500;
@@ -69,6 +71,8 @@ public sealed class ShowDocument
 
     /// <summary>Raised after every change, undo and redo.</summary>
     public event Action<ShowChange>? Changed;
+
+    public event Action? HistoryChanged;
 
     /// <summary>Another show is open: forgets every history (not a change to the show, so <see cref="Changed"/> isn't raised).</summary>
     public void Open(Project project)
@@ -117,7 +121,7 @@ public sealed class ShowDocument
             if (history.Undo.Count > Limit) history.Undo.RemoveAt(0);
         }
         history.Redo.Clear();
-        return Raise(ChangeKind.Do, transaction.Description, transaction.Ops, origin);
+        return Raise(ChangeKind.Do, transaction.Description, transaction.Ops, origin, mergeKey);
     }
 
     /// <summary>
@@ -193,6 +197,22 @@ public sealed class ShowDocument
         return best;
     }
 
+    // ---- Undo and Redo for a screen: see IEditHistory ----
+
+    Guid UndoScope(Guid? timeline) => LatestUndo(timeline ?? Guid.Empty, Guid.Empty) ?? Guid.Empty;
+    Guid RedoScope(Guid? timeline) => LatestRedo(timeline ?? Guid.Empty, Guid.Empty) ?? Guid.Empty;
+
+    public string? NextUndo(Guid? timeline) => UndoDescription(UndoScope(timeline));
+    public string? NextRedo(Guid? timeline) => RedoDescription(RedoScope(timeline));
+
+    void IEditHistory.UndoLatest(Guid? timeline) => UndoLatest(timeline);
+    void IEditHistory.RedoLatest(Guid? timeline) => RedoLatest(timeline);
+
+    /// <param name="origin">Who asked (a device's name; null: the desktop).</param>
+    public ShowChange? UndoLatest(Guid? timeline, string? origin = null) => Undo(UndoScope(timeline), origin);
+
+    public ShowChange? RedoLatest(Guid? timeline, string? origin = null) => Redo(RedoScope(timeline), origin);
+
     public bool CanUndo(Guid scope) => _histories.TryGetValue(scope, out var h) && h.Undo.Count > 0;
     public bool CanRedo(Guid scope) => _histories.TryGetValue(scope, out var h) && h.Redo.Count > 0;
     public string? UndoDescription(Guid scope) => _histories.TryGetValue(scope, out var h) && h.Undo.Count > 0 ? h.Undo[^1].Description : null;
@@ -234,6 +254,7 @@ public sealed class ShowDocument
         {
             var node = JsonSerializer.SerializeToNode(timeline, Storage.Json.Options)!.AsObject();
             node["folder"] = timeline.Folder;
+            node["unsaved"] = timeline.HasUnsavedChanges;
             timelines.Add(node);
         }
         show["timelines"] = timelines;
@@ -250,6 +271,7 @@ public sealed class ShowDocument
         {
             var timeline = node.Deserialize<ShowTimeline>(Storage.Json.Options) ?? throw new EditException("Can't read a timeline of the show.");
             timeline.Folder = node["folder"]?.GetValue<string>() ?? "";
+            timeline.HasUnsavedChanges = node["unsaved"]?.GetValue<bool>() ?? false;
             project.Timelines.Add(timeline);
         }
         project.TimelineFolders = new SortedSet<string>(show["timelineFolders"]?.AsArray().Select(f => f!.GetValue<string>()) ?? []);
@@ -266,11 +288,15 @@ public sealed class ShowDocument
         switch (op)
         {
             case SetOp set:
-                node["value"] = JsonSerializer.SerializeToNode(set.Value, TypeOf(op) ?? ModelPaths.Property(Project, set.Path).Property.PropertyType, Storage.Json.Options);
+                node["value"] = set.Value is JsonElement valueFromDevice ? JsonSerializer.SerializeToNode(valueFromDevice)
+                    : JsonSerializer.SerializeToNode(set.Value, TypeOf(op) ?? ModelPaths.Property(Project, set.Path).Property.PropertyType, Storage.Json.Options);
                 break;
             case InsertOp insert:
                 node["index"] = insert.Index;
-                node["item"] = JsonSerializer.SerializeToNode(insert.Item, TypeOf(op) ?? ModelPaths.List(Project, insert.Path).ItemType, Storage.Json.Options);
+                node["item"] = insert.Item is JsonElement itemFromDevice ? JsonSerializer.SerializeToNode(itemFromDevice)
+                    : JsonSerializer.SerializeToNode(insert.Item, TypeOf(op) ?? ModelPaths.List(Project, insert.Path).ItemType, Storage.Json.Options);
+                // A timeline's folder isn't in its JSON (on disk it's where its file is): it travels beside it.
+                if (insert.Item is ShowTimeline timeline) node["item"]!["folder"] = timeline.Folder;
                 break;
             case MoveOp move:
                 node["index"] = move.Index;
@@ -294,7 +320,7 @@ public sealed class ShowDocument
 
     History HistoryOf(Guid scope) => _histories.TryGetValue(scope, out var h) ? h : _histories[scope] = new History();
 
-    ShowChange Raise(ChangeKind kind, string description, IReadOnlyList<EditOp> ops, string? origin)
+    ShowChange Raise(ChangeKind kind, string description, IReadOnlyList<EditOp> ops, string? origin, object? mergeKey = null)
     {
         var timelines = new HashSet<Guid>();
         foreach (var op in ops)
@@ -304,8 +330,9 @@ public sealed class ShowDocument
         }
         foreach (var timeline in Project.Timelines)
             if (timelines.Contains(timeline.Id)) timeline.HasUnsavedChanges = true;
-        var change = new ShowChange(++Version, kind, description, ops, origin, timelines);
+        var change = new ShowChange(++Version, kind, description, ops, origin, timelines, mergeKey);
         Changed?.Invoke(change);
+        HistoryChanged?.Invoke();
         return change;
     }
 

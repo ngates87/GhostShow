@@ -243,6 +243,18 @@ public class TimelineTreeTests : IDisposable
     }
 
     [Fact]
+    public void All_nodes_come_in_the_order_the_tree_shows_them_so_a_show_opens_on_its_first_timeline()
+    {
+        NewFolder("Rooms");
+        NewTimeline("Troll", inside: "Rooms");
+        NewTimeline("Zebra");
+
+        Assert.Equal(["Rooms", "Troll", "Main", "Zebra"], Tree.AllNodes().Select(n => n.Name));
+        _rig.Editor.Reload();
+        Assert.Equal("Troll", _rig.Editor.SelectedTimeline!.Name);
+    }
+
+    [Fact]
     public void Tree_changes_undo_and_redo_one_at_a_time_and_the_tree_follows()
     {
         NewFolder("Rooms");

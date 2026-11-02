@@ -34,6 +34,15 @@ public interface IRemoteHost
     /// <summary>Problems worth knowing about (the desktop's ⚠ list: patch errors, failing outputs). Safe from any thread.</summary>
     IReadOnlyList<string> Warnings { get; }
 
+    /// <summary>Whether the show has changes not saved yet. Safe from any thread.</summary>
+    bool HasUnsavedChanges { get; }
+
+    /// <summary>
+    /// Whether the show can't save itself yet: it has no show folder, and only the show computer can choose one
+    /// (File → Save). Until then its changes stay unsaved. Safe from any thread.
+    /// </summary>
+    bool NeedsFirstSave { get; }
+
     /// <summary>The show computer's audio output devices, by name (for audio tracks' outputs). On the show's thread.</summary>
     IReadOnlyList<string> AudioDevices { get; }
 

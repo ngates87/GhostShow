@@ -1,9 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk.WebAssembly">
   <!--
-    EXPERIMENT (see docs/plan-remote.md): GhostShow's own Avalonia screens, compiled to WebAssembly and run in a
-    browser (an iPad's), talking to the show computer over the web remote's connection. Not in GhostShow.slnx: it
-    needs the .NET WebAssembly build tools ("wasm-tools" workload), which the system SDK doesn't have. Build with
-    an SDK that has them, e.g. ~/.dotnet/dotnet publish GhostShow.Browser -c Release.
+    The full app in a browser (see docs/plan-remote.md): GhostShow's own Avalonia screens, compiled to WebAssembly,
+    talking to the show computer over the web remote's connection. Not in GhostShow.slnx: it needs the .NET
+    WebAssembly build tools ("wasm-tools" workload), which the system SDK doesn't have. Build with an SDK that has
+    them, e.g. ~/.dotnet/dotnet publish GhostShow.Browser -c Release.
   -->
   <PropertyGroup>
     <TargetFramework>net10.0-browser</TargetFramework>
@@ -43,8 +43,8 @@
     <Compile Include="$(AppDir)ViewModels\*.cs" LinkBase="App\ViewModels"
              Exclude="$(AppDir)ViewModels\AudioViewModel.cs;$(AppDir)ViewModels\DiagnosticsViewModel.cs;$(AppDir)ViewModels\MainViewModel.cs;$(AppDir)ViewModels\MonitorViewModel.cs;$(AppDir)ViewModels\OutputsViewModel.cs;$(AppDir)ViewModels\PerformanceMeterViewModel.cs;$(AppDir)ViewModels\RemoteViewModel.cs;$(AppDir)ViewModels\UniverseRowViewModel.cs;$(AppDir)ViewModels\SetupGuideViewModel.cs;$(AppDir)ViewModels\ProfileLibraryViewModel.cs;$(AppDir)ViewModels\FixtureSetupViewModel.cs" />
     <Compile Include="$(AppDir)Controls\*.cs" LinkBase="App\Controls" Exclude="$(AppDir)Controls\QrCodeView.cs;$(AppDir)Controls\LoadMeter.cs" />
-    <Compile Include="$(AppDir)Views\TimelineView.axaml.cs;$(AppDir)Views\EnvelopeEditorWindow.axaml.cs" LinkBase="App\Views" />
-    <AvaloniaXaml Include="$(AppDir)Views\TimelineView.axaml;$(AppDir)Views\EnvelopeEditorWindow.axaml" LinkBase="App\Views" />
+    <Compile Include="$(AppDir)Views\TimelineView.axaml.cs;$(AppDir)Views\EnvelopeEditorView.axaml.cs;$(AppDir)Views\EnvelopeEditorWindow.axaml.cs" LinkBase="App\Views" />
+    <AvaloniaXaml Include="$(AppDir)Views\TimelineView.axaml;$(AppDir)Views\EnvelopeEditorView.axaml;$(AppDir)Views\EnvelopeEditorWindow.axaml" LinkBase="App\Views" />
     <!-- At the root, as in the app: avares://ghostshow-app/Icons.axaml and …/Styles.axaml. -->
     <AvaloniaXaml Include="$(AppDir)Icons.axaml" Link="Icons.axaml" />
     <AvaloniaXaml Include="$(AppDir)Styles.axaml" Link="Styles.axaml" />
