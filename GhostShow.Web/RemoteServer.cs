@@ -76,8 +76,8 @@ public sealed partial class RemoteServer : IAsyncDisposable
     public DevicePairing Pairing { get; }
 
     /// <summary>
-    /// EXPERIMENT: a folder with the browser build of the app (GhostShow.Browser, published), served at /app/. Null:
-    /// not served. See docs/plan-remote.md.
+    /// A folder with the browser build of the app (GhostShow.Browser, published), served at /app/. Null: not served.
+    /// See docs/plan-remote.md.
     /// </summary>
     public string? BrowserAppFolder { get; set; }
 
@@ -112,6 +112,7 @@ public sealed partial class RemoteServer : IAsyncDisposable
         app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSeconds(10) });
         app.MapPost("/api/pair", (Func<HttpContext, Task<IResult>>)PairAsync);   // typed: so its result is the response
         app.Map("/api/live", LiveAsync);
+        app.MapGet("/api/library", ServeLibraryAsync);
         app.MapGet("/api/{**rest}", () => Results.NotFound());
         app.MapGet("/app/{**path}", ServeBrowserApp);
         app.MapGet("/{**path}", ServeFile);
@@ -263,12 +264,17 @@ public sealed partial class RemoteServer : IAsyncDisposable
         }
         context.Response.ContentType = type;
         context.Response.Headers.CacheControl = path.StartsWith("_framework/", StringComparison.Ordinal) && path != "_framework/blazor.boot.json" ? "public, max-age=31536000, immutable" : "no-cache";
-        if (context.Request.Headers.AcceptEncoding.ToString().Contains("br", StringComparison.Ordinal) && File.Exists(full + ".br"))
-        {
-            context.Response.Headers.ContentEncoding = "br";
-            context.Response.Headers.Vary = "Accept-Encoding";
-            full += ".br";
-        }
+        // Compressed, if the publish made it and the browser takes it. On a plain http:// address (a show computer on the
+        // local network) browsers only ask for gzip: Brotli is for secure connections. Uncompressed, the app is 50 MB.
+        context.Response.Headers.Vary = "Accept-Encoding";
+        string accepted = context.Request.Headers.AcceptEncoding.ToString();
+        foreach (var (encoding, extension) in new[] { ("br", ".br"), ("gzip", ".gz") })
+            if (accepted.Contains(encoding, StringComparison.Ordinal) && File.Exists(full + extension))
+            {
+                context.Response.Headers.ContentEncoding = encoding;
+                full += extension;
+                break;
+            }
         await context.Response.SendFileAsync(full);
     }
 
@@ -294,7 +300,7 @@ public sealed partial class RemoteServer : IAsyncDisposable
     // ---- commands ----
 
     /// <summary>What only an editor may do; an operator may run the show (play, stop, buttons, Blackout) but not change it.</summary>
-    static readonly HashSet<string> EditorOnly = ["open", "edit", "undo", "redo", "save", "profiles"];
+    static readonly HashSet<string> EditorOnly = ["open", "edit", "undo", "redo", "save", "saveProfile", "deleteProfile", "downloadLibrary"];
 
     /// <summary>A message from a device: a command, run on the show's thread, answered with a result.</summary>
     async Task ReceivedAsync(RemoteConnection connection, string json)
@@ -318,15 +324,18 @@ public sealed partial class RemoteServer : IAsyncDisposable
         {
             try
             {
-                error = action == "save"
-                    ? await await _host.InvokeAsync(_host.Control.SaveAsync)   // saving takes a moment: the show's thread isn't held up
-                    : await _host.InvokeAsync(() => Execute(connection, action, message));
+                error = action switch
+                {
+                    "save" => await await _host.InvokeAsync(_host.Control.SaveAsync),   // saving takes a moment: the show's thread isn't held up
+                    "saveProfile" or "deleteProfile" or "downloadLibrary" => await await _host.InvokeAsync(() => LibraryCommandAsync(message, action)),
+                    _ => await _host.InvokeAsync(() => Execute(connection, action, message)),
+                };
             }
             catch (EditException e)
             {
                 error = e.Message;
             }
-            catch (Exception e) when (e is FormatException or InvalidOperationException or ArgumentException or System.Text.Json.JsonException)
+            catch (Exception e) when (e is FormatException or InvalidOperationException or ArgumentException or InvalidDataException or System.Text.Json.JsonException)
             {
                 error = "The show computer didn't understand that.";
             }
@@ -373,9 +382,8 @@ public sealed partial class RemoteServer : IAsyncDisposable
             "seek" => control.Transport(TransportAction.Seek, position),
             "watch" => Watch(connection, Id("timeline")),
             "edit" => ApplyEdit(connection, message),
-            "undo" => UndoOrRedo(connection, undo: true),
-            "redo" => UndoOrRedo(connection, undo: false),
-            "profiles" => SearchProfiles(connection, message["query"]?.GetValue<string>() ?? ""),
+            "undo" => UndoOrRedo(connection, message, undo: true),
+            "redo" => UndoOrRedo(connection, message, undo: false),
             "run" => Run(Id("timeline"), playOnceOnly: message["playOnceOnly"]?.GetValue<bool>() == true),
             "stopTimeline" => control.StopTimeline(Id("timeline")),
             "stopRunning" => control.StopRunning(Id("running")),
@@ -480,6 +488,7 @@ public sealed partial class RemoteServer : IAsyncDisposable
             ["version"] = snapshot["version"]!.DeepClone(),
             ["show"] = snapshot["show"]!.DeepClone(),
             ["profiles"] = ProfilesJson(),
+            ["library"] = LibraryJson(),
             ["audioDevices"] = AudioDevicesJson(),
             ["fullApp"] = BrowserAppFolder is not null,   // the full app is served at /app/
         }.ToJsonString();

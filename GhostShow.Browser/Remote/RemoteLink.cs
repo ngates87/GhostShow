@@ -28,6 +28,9 @@ sealed partial class RemoteLink
     /// <summary>A change: its description and operations.</summary>
     public event Action<string, IReadOnlyList<EditOp>>? Changed;
 
+    /// <summary>Commands someone is waiting on (see <see cref="RequestAsync"/>), by number.</summary>
+    readonly Dictionary<int, TaskCompletionSource<string?>> _waiting = [];
+
     public event Action<JsonObject>? Status;
 
     /// <summary>"issues": a watched timeline's problems.</summary>
@@ -51,8 +54,8 @@ sealed partial class RemoteLink
     /// <summary>"history": what Undo and Redo would do next.</summary>
     public event Action<JsonObject>? History;
 
-    /// <summary>Fixture profiles matching a search on the show computer.</summary>
-    public event Action<JsonObject>? Profiles;
+    /// <summary>"library": what the fixture library says about itself, and its version.</summary>
+    public event Action<JsonObject>? Library;
 
     /// <summary>The connection dropped (it's being tried again).</summary>
     public event Action? Disconnected;
@@ -62,6 +65,12 @@ sealed partial class RemoteLink
 
     [JSImport("globalThis.localStorage.getItem")]
     private static partial string? GetItem(string key);
+
+    /// <summary>The token this browser got when it paired; null if it hasn't.</summary>
+    public static string? Token => GetItem("ghostshow.token");
+
+    /// <summary>The show computer's address, as the page was loaded from it.</summary>
+    public static string Origin => JSHost.GlobalThis.GetPropertyAsJSObject("location")!.GetPropertyAsString("origin")!;
 
     static string Host => JSHost.GlobalThis.GetPropertyAsJSObject("location")!.GetPropertyAsString("host")!;
     static bool Secure => JSHost.GlobalThis.GetPropertyAsJSObject("location")!.GetPropertyAsString("protocol") == "https:";
@@ -93,6 +102,8 @@ sealed partial class RemoteLink
             }
             _outgoing?.Writer.TryComplete();
             _outgoing = null;
+            foreach (var answer in _waiting.Values) answer.SetResult("Lost the connection to the show computer.");
+            _waiting.Clear();
             if (!_resyncing) Disconnected?.Invoke();
             _resyncing = false;
             if (socket.CloseStatus is { } status && (int)status == 4401)
@@ -142,13 +153,15 @@ sealed partial class RemoteLink
                     AudioDevices?.Invoke(json);
                     break;
                 case "result":
-                    Result?.Invoke(json);
+                    if (json["id"]?.GetValue<int>() is { } id && _waiting.Remove(id, out var answer))
+                        answer.SetResult(json["ok"]?.GetValue<bool>() == true ? null : json["error"]?.GetValue<string>() ?? "The show computer refused that.");
+                    else Result?.Invoke(json);
                     break;
                 case "history":
                     History?.Invoke(json);
                     break;
-                case "profiles":
-                    Profiles?.Invoke(json);
+                case "library":
+                    Library?.Invoke(json);
                     break;
             }
         }
@@ -166,6 +179,15 @@ sealed partial class RemoteLink
         var json = new JsonObject { ["type"] = "command", ["id"] = id, ["action"] = action };
         foreach (var (name, value) in fields) json[name] = value;
         return outgoing.Writer.TryWrite(json.ToJsonString()) ? id : null;
+    }
+
+    /// <summary>Sends a command and waits for its answer. Returns why it couldn't be done, or null if it was.</summary>
+    public Task<string?> RequestAsync(string action, params (string Name, JsonNode? Value)[] fields)
+    {
+        if (Send(action, fields) is not { } id) return Task.FromResult<string?>("Not connected to the show computer.");
+        var answer = new TaskCompletionSource<string?>();
+        _waiting[id] = answer;
+        return answer.Task;
     }
 
     /// <summary>Sends what's queued, one message at a time (a WebSocket can't send two at once).</summary>

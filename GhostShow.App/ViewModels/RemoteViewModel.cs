@@ -5,6 +5,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using GhostShow.Core.Editing;
 using GhostShow.Core.Engine;
+using GhostShow.Core.Fixtures;
 using GhostShow.Core.Playback;
 using GhostShow.Core.Storage;
 using GhostShow.Core.Timeline;
@@ -16,7 +17,7 @@ namespace GhostShow.App.ViewModels;
 /// <summary>The web remote's host: the desktop app, with the show edited on the UI thread.</summary>
 sealed class AppRemoteHost(ShowSession session, ShowPlayback playback, PlaybackViewModel focus, IShowControl control,
                             Func<IReadOnlyList<string>> warnings, AudioDeviceList audioDevices, Func<bool> hasUnsavedChanges,
-                            Func<bool> needsFirstSave) : IRemoteHost
+                            Func<bool> needsFirstSave, IFixtureLibrary library) : IRemoteHost
 {
     public Task<T> InvokeAsync<T>(Func<T> function) => Dispatcher.UIThread.InvokeAsync(function).GetTask();
     public ShowSession Session => session;
@@ -26,6 +27,7 @@ sealed class AppRemoteHost(ShowSession session, ShowPlayback playback, PlaybackV
     public IReadOnlyList<string> Warnings => warnings();
     public bool HasUnsavedChanges => hasUnsavedChanges();
     public bool NeedsFirstSave => needsFirstSave();
+    public IFixtureLibrary Library => library;
     public IReadOnlyList<string> AudioDevices => audioDevices.Names;
 
     public event Action? AudioDevicesChanged

@@ -44,16 +44,16 @@ public sealed partial class CustomProfileEditorViewModel : ObservableObject
         [new(null, "Work it out from the channels"), .. Enum.GetValues<FixtureCategory>().Select(c => new CategoryOption(c, c.Label()))];
 
     readonly FixtureProfile? _editing;
-    readonly Func<FixtureProfile, IReadOnlyDictionary<string, string>, string?> _save;
+    readonly Func<FixtureProfile, IReadOnlyDictionary<string, string>, Task<string?>> _save;
     readonly Action _cancel;
-    readonly Action<FixtureProfile>? _delete;
+    readonly Func<FixtureProfile, Task>? _delete;
 
     /// <param name="source">Where to start: null for blank, a profile to copy, or (with editInPlace) the custom profile to edit.</param>
     /// <param name="save">Saves the profile, given which modes were renamed (old name → new); returns why it couldn't, or null.</param>
     /// <param name="usedBy">How many of this show's fixtures use the profile being edited (deleting is only offered at 0).</param>
     public CustomProfileEditorViewModel(FixtureProfile? source, bool editInPlace, Func<string, string, string> newId,
-                                        Func<FixtureProfile, IReadOnlyDictionary<string, string>, string?> save, Action cancel,
-                                        Action<FixtureProfile>? delete = null, int usedBy = 0)
+                                        Func<FixtureProfile, IReadOnlyDictionary<string, string>, Task<string?>> save, Action cancel,
+                                        Func<FixtureProfile, Task>? delete = null, int usedBy = 0)
     {
         _editing = editInPlace ? source : null;
         _save = save;
@@ -198,18 +198,18 @@ public sealed partial class CustomProfileEditorViewModel : ObservableObject
     bool CanSave() => !HasProblems;
 
     [RelayCommand(CanExecute = nameof(CanSave))]
-    void Save()
+    async Task Save()
     {
         Error = null;
         var renamed = Modes.Where(m => m.OriginalName is not null && m.OriginalName != m.Name.Trim()).ToDictionary(m => m.OriginalName!, m => m.Name.Trim());
-        if (_save(Build(), renamed) is { } error) ShowError(error);
+        if (await _save(Build(), renamed) is { } error) ShowError(error);
     }
 
     [RelayCommand]
     void Cancel() => _cancel();
 
     [RelayCommand]
-    void Delete()
+    async Task Delete()
     {
         if (!CanDelete) return;
         if (!IsConfirmingDelete)
@@ -217,7 +217,7 @@ public sealed partial class CustomProfileEditorViewModel : ObservableObject
             IsConfirmingDelete = true;
             return;
         }
-        _delete!(_editing!);
+        await _delete!(_editing!);
     }
 
     [RelayCommand]

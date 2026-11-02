@@ -16,6 +16,7 @@ public sealed partial class RemoteServer
         _host.Session.Applied += OnPatchApplied;
         _host.Playback.AudioMeasured += OnAudioMeasured;
         _host.AudioDevicesChanged += OnAudioDevicesChanged;
+        SubscribeToLibrary();
     }
 
     void UnsubscribeFromShowData()
@@ -23,6 +24,7 @@ public sealed partial class RemoteServer
         _host.Session.Applied -= OnPatchApplied;
         _host.Playback.AudioMeasured -= OnAudioMeasured;
         _host.AudioDevicesChanged -= OnAudioDevicesChanged;
+        UnsubscribeFromLibrary();
     }
 
     void SendToAll(string message)

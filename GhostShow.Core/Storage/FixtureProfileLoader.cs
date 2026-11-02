@@ -93,4 +93,9 @@ public static class FixtureProfileLoader
     }
 
     public static string ToJson(FixtureProfile profile) => JsonSerializer.Serialize(profile, Json.Options);
+
+    /// <summary>The same JSON on one line, without the indentation: for sending the whole library to a device.</summary>
+    public static string ToJsonLine(FixtureProfile profile) => JsonSerializer.Serialize(profile, OneLine);
+
+    static readonly JsonSerializerOptions OneLine = new(Json.Options) { WriteIndented = false };
 }

@@ -46,7 +46,7 @@ public sealed partial class FixtureSetupViewModel : ObservableObject
         _session = session;
         Library = library;
         History = new ShowHistoryViewModel(history ?? session.Document);
-        library.Loaded += Reload;
+        library.Loaded += OnLibraryChanged;
         _session.Applied += ShowIssues;
         _session.Document.Changed += change =>
         {
@@ -178,7 +178,7 @@ public sealed partial class FixtureSetupViewModel : ObservableObject
         int usedBy = source is null ? 0 : _session.Project.Fixtures.Count(f => string.Equals(f.ProfileId, source.Id, StringComparison.OrdinalIgnoreCase));
         ProfileEditor = new CustomProfileEditorViewModel(source, editInPlace,
             newId: (manufacturer, model) => CustomProfiles.NewId(manufacturer, model, _session.Profiles),
-            save: SaveProfile, cancel: () => BackToBrowser(null), delete: DeleteProfile, usedBy: usedBy);
+            save: SaveProfileAsync, cancel: () => BackToBrowser(null), delete: DeleteProfileAsync, usedBy: usedBy);
         Step = SetupStep.EditProfile;
     }
 
@@ -186,9 +186,9 @@ public sealed partial class FixtureSetupViewModel : ObservableObject
     /// Saves it, moves this show's fixtures off any mode that was renamed, and goes back to the type picker with the
     /// saved type picked (so Next places it, or, when changing a fixture's type, uses it).
     /// </summary>
-    string? SaveProfile(FixtureProfile profile, IReadOnlyDictionary<string, string> renamedModes)
+    async Task<string?> SaveProfileAsync(FixtureProfile profile, IReadOnlyDictionary<string, string> renamedModes)
     {
-        if (Library.SaveCustom(profile) is { } error) return error;
+        if (await Library.SaveCustomAsync(profile) is { } error) return error;
         var moving = _session.Project.Fixtures
             .Where(f => string.Equals(f.ProfileId, profile.Id, StringComparison.OrdinalIgnoreCase) && renamedModes.ContainsKey(f.ModeName))
             .ToList();
@@ -197,19 +197,17 @@ public sealed partial class FixtureSetupViewModel : ObservableObject
             {
                 foreach (var fixture in moving) fixture.ModeName = renamedModes[fixture.ModeName];
             }, moving.Select(Only));
-        RefreshFixtures();
         BackToBrowser(profile);
         return null;
     }
 
-    void DeleteProfile(FixtureProfile profile)
+    async Task DeleteProfileAsync(FixtureProfile profile)
     {
-        if (Library.DeleteCustom(profile) is { } error)
+        if (await Library.DeleteCustomAsync(profile) is { } error)
         {
             ProfileEditor?.ShowError(error);
             return;
         }
-        RefreshFixtures();
         BackToBrowser(null);
     }
 
@@ -224,14 +222,18 @@ public sealed partial class FixtureSetupViewModel : ObservableObject
         if (pick is not null) Browser.Pick(pick);
     }
 
-    /// <summary>The fixture list again (they look their profiles up when made), keeping the selection and the step.</summary>
-    void RefreshFixtures()
+    /// <summary>
+    /// The profiles changed: the fixture list again (they look their profiles up when made) and the type picker,
+    /// keeping the selection and the step, so a library arriving or another device's new type doesn't interrupt anything.
+    /// </summary>
+    void OnLibraryChanged()
     {
         var selected = Selected?.Model;
         Fixtures.Clear();
         foreach (var fixture in _session.Project.Fixtures) Fixtures.Add(NewRow(fixture));
         Selected = Fixtures.FirstOrDefault(f => f.Model == selected) ?? Fixtures.FirstOrDefault();
-        _session.Apply();
+        Browser.SetLibrary(_session.Profiles);
+        ShowIssues();
     }
 
     /// <summary>From placing back to the type picker, keeping what was already added.</summary>
@@ -249,7 +251,7 @@ public sealed partial class FixtureSetupViewModel : ObservableObject
     {
         var last = Placement.Added.LastOrDefault();
         Step = SetupStep.Overview;
-        if (last is not null) Selected = last;
+        if (last is not null) Selected = Fixtures.FirstOrDefault(f => f.Model == last.Model);
     }
 
     /// <summary>One undo step takes them all back, as one click made them.</summary>
@@ -338,9 +340,9 @@ public sealed partial class FixtureSetupViewModel : ObservableObject
     /// <summary>
     /// Matches the list to the show's fixtures: rows for added ones, none for removed ones, the order, and every field.
     /// Rows that stay are kept, and so are the selection and the wizard's step, so an undo or another device's edit
-    /// doesn't throw away what's on screen.
+    /// doesn't throw away what's on screen. Public for a browser that just took the whole show again.
     /// </summary>
-    void Sync()
+    public void Sync()
     {
         var selectedId = Selected?.Model.Id;
         int selectedIndex = Selected is null ? -1 : Fixtures.IndexOf(Selected);

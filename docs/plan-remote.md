@@ -195,15 +195,9 @@ Reassessed 2026-11-01 and 2026-11-02.
 with a device connected.
 
 **Problems found:**
-- **Lighting and Audio are hand-built, not the desktop's screens.** `ShellView.cs` grew to 629 lines of UI built in
-  C#, which goes against "one app, same screens" and is two versions of each screen to keep up. Both pages were blank
-  until 2026-11-02. They now work in Chromium: renaming, readdressing, adding from the library, duplicating and
-  removing fixtures, and adding universes all reach the saved file. Ctrl+Z does nothing on these pages; Undo is on the
-  Timeline page.
+- **The Audio and Universes pages are still hand-built, not the desktop's screens,** in `ShellView.cs`, until step 6.
 - **An exception during layout blanks every page until a reload,** with nothing on screen to say why. That's how the
   blank pages looked: an empty dropdown's template threw a null reference.
-- **The real Fixtures screen can't run in the browser yet.** It reads the fixture library from the show computer's disk
-  (next: step 2).
 - **Nothing in the repo tests the browser build.** It isn't in `GhostShow.slnx`, and the browser test scripts lived
   only in a scratch folder, which has already been wiped once.
 - **`/app/` can go stale.** `dotnet build` doesn't rebuild it, so after a protocol change the page can quietly be
@@ -235,8 +229,12 @@ Small steps; each one leaves the app working.
    1. Fixtures and universes through `ShowDocument` on the desktop (done). Both screens have Undo and Redo on the show's
       history, and follow the show however it changes, keeping the selection and the wizard's step. `ShowSession`
       re-applies the patch by itself after a fixture or universe edit.
-   2. The fixture library behind an interface: local on the show computer, over the network in the browser.
-   3. The real screen in the browser, and the hand-built page deleted.
+   2. The fixture library behind an interface (done): `IFixtureLibrary`, with `LocalFixtureLibrary` on the show computer
+      and `RemoteFixtureLibrary` in the browser, which fetches the whole library, about half a megabyte compressed.
+   3. The real screen in the browser, and the hand-built patch page deleted (done). The Universes tab is still hand-built,
+      until the DMX setup screen comes across in step 6.
+
+   Moving this screen took a change to one screen's view models and a small interface: the pattern holds.
 3. **Browser tests in the repo** (Playwright, with their own small host), started alongside step 2 so that moved screens
    have a safety net. With them, a check that the page and the server are the same version, so a stale `/app/` says so.
 4. **Split out the server:** a project with the engine, DMX, audio, saving and the remote server, and no Avalonia. The
@@ -276,6 +274,10 @@ moving-light effects, VS-style docking.
 4. On the laptop, pair at `http://<address>:7700/`, then open `http://<address>:7700/app/`.
 
 ### Measured
+
+Over this PC's LAN address, in Chromium, 2026-11-02: the full app (AOT) is **15.7 MB** to download, compressed with
+gzip, since browsers don't ask for Brotli on plain `http://`; it would be 50.6 MB uncompressed. The fixture library is
+0.15 MB, and the page's longest frame while reading it is about 230 ms. Nobody has measured a real laptop on Wi-Fi yet.
 
 Chromium on the development PC, against the real app without a window, 2026-10-30:
 

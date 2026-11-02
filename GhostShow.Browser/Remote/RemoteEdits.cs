@@ -31,6 +31,8 @@ sealed class RemoteEdits : IEditHistory
     // What the show computer last said Undo and Redo would do, for the timeline shown here.
     Guid? _historyTimeline;
     string? _nextUndo, _nextRedo;
+    // The same for the show's own edits, for a setup screen (a null timeline).
+    string? _showUndo, _showRedo;
 
     public RemoteEdits(ShowDocument document, RemoteLink link)
     {
@@ -116,14 +118,16 @@ sealed class RemoteEdits : IEditHistory
         _overtaken = false;
         _saveCommand = null;
         _historyTimeline = null;
-        (_nextUndo, _nextRedo) = (null, null);
+        (_nextUndo, _nextRedo, _showUndo, _showRedo) = (null, null, null, null);
         HistoryChanged?.Invoke();
     }
 
     /// <summary>A "history" message: what Undo and Redo would do next.</summary>
     public void OnHistory(JsonObject message)
     {
-        _historyTimeline = Guid.Parse(message["timeline"]!.GetValue<string>());
+        _showUndo = message["showUndo"]?.GetValue<string>();
+        _showRedo = message["showRedo"]?.GetValue<string>();
+        _historyTimeline = message["timeline"]?.GetValue<string>() is { } timeline ? Guid.Parse(timeline) : null;
         _nextUndo = message["undo"]?.GetValue<string>();
         _nextRedo = message["redo"]?.GetValue<string>();
         HistoryChanged?.Invoke();
@@ -131,14 +135,22 @@ sealed class RemoteEdits : IEditHistory
 
     // ---- what the screens ask ----
 
-    public string? NextUndo(Guid? timeline) => timeline == _historyTimeline ? _nextUndo : null;
+    public string? NextUndo(Guid? timeline) => timeline is null ? _showUndo : timeline == _historyTimeline ? _nextUndo : null;
 
-    public string? NextRedo(Guid? timeline) => timeline == _historyTimeline ? _nextRedo : null;
+    public string? NextRedo(Guid? timeline) => timeline is null ? _showRedo : timeline == _historyTimeline ? _nextRedo : null;
 
-    /// <summary>Undoes for the timeline this device shows (the show computer knows which: "watch").</summary>
-    public void UndoLatest(Guid? timeline) => _link.Send("undo");
+    /// <summary>Undoes for the timeline this device shows (the show computer knows which: "watch"), or with none named, the show's own edits.</summary>
+    public void UndoLatest(Guid? timeline)
+    {
+        if (timeline is null) _link.Send("undo", ("show", true));
+        else _link.Send("undo");
+    }
 
-    public void RedoLatest(Guid? timeline) => _link.Send("redo");
+    public void RedoLatest(Guid? timeline)
+    {
+        if (timeline is null) _link.Send("redo", ("show", true));
+        else _link.Send("redo");
+    }
 
     public void Save()
     {

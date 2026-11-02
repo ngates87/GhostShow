@@ -58,7 +58,8 @@ public sealed partial class MainViewModel : ObservableObject
         _logger = logger;
 
         Outputs = new OutputsViewModel(session, outputs, settings, SaveSettingsAsync);
-        Library = new ProfileLibraryViewModel(session, paths, settings, logger);
+        var library = new LocalFixtureLibrary(session, paths, settings, logger);
+        Library = new ProfileLibraryViewModel(library);
         Fixtures = new FixtureSetupViewModel(session, Library);
         Control = new FixtureControlViewModel(session, ReportError);
         Channels = new ChannelsViewModel(session.Engine, ReportError);
@@ -72,7 +73,7 @@ public sealed partial class MainViewModel : ObservableObject
         AudioDevices = new AudioDeviceList(services.Audio);
         Timeline = new TimelineEditorViewModel(session, Playback, PickAudioFileAsync, MarkDirty, AudioDevices);
         Buttons = new ButtonsViewModel(session, Playback, Blackout, MarkDirty);
-        Remote = new RemoteViewModel(new AppRemoteHost(session, ShowPlayback, Playback, new AppShowControl(this), () => WarningsSnapshot, AudioDevices, () => IsDirty, () => _session.FilePath is null || _session.IsSingleFileShow),
+        Remote = new RemoteViewModel(new AppRemoteHost(session, ShowPlayback, Playback, new AppShowControl(this), () => WarningsSnapshot, AudioDevices, () => IsDirty, () => _session.FilePath is null || _session.IsSingleFileShow, library),
                                      settings.Remote, SaveSettingsAsync, logger);
         Audio = new AudioViewModel(services.Audio, AudioDevices, session, settings, SaveSettingsAsync);
         _ = AudioDevices.RefreshAsync();
@@ -363,7 +364,7 @@ public sealed partial class MainViewModel : ObservableObject
             return;
         }
         foreach (var profile in result.Profiles)
-            if (Library.SaveCustom(profile) is { } error) ReportError(error);
+            if (await Library.SaveCustomAsync(profile) is { } error) ReportError(error);
         _session.Use(result.Project);
         await AfterShowReplacedAsync();
         IsDirty = true;

@@ -20,26 +20,6 @@ public sealed partial class RemoteServer
     /// <summary>The device whose edit is being applied right now (show's thread only): it isn't told of its own edit.</summary>
     RemoteConnection? _applyingEditFrom;
 
-    /// <summary>Searches the fixture library on the show computer; the browser need not download the whole library.</summary>
-    string? SearchProfiles(RemoteConnection connection, string query)
-    {
-        query = query.Trim();
-        var profiles = _host.Session.Profiles.Profiles
-            .Where(p => query.Length == 0 || p.Manufacturer.Contains(query, StringComparison.OrdinalIgnoreCase)
-                                           || p.Model.Contains(query, StringComparison.OrdinalIgnoreCase)
-                                           || p.Type.Contains(query, StringComparison.OrdinalIgnoreCase))
-            .Take(100)
-            .Select(p => JsonNode.Parse(FixtureProfileLoader.ToJson(p)))
-            .ToArray();
-        connection.Send(new JsonObject
-        {
-            ["type"] = "profiles",
-            ["query"] = query,
-            ["profiles"] = new JsonArray(profiles),
-        }.ToJsonString());
-        return null;
-    }
-
     /// <summary>The "edit" command: <c>{ description, ops: [...], merge?: number }</c>.</summary>
     string? ApplyEdit(RemoteConnection connection, JsonObject message)
     {
@@ -60,26 +40,35 @@ public sealed partial class RemoteServer
         return null;
     }
 
-    /// <summary>The "undo" and "redo" commands: for the timeline the device shows (and the show's own edits).</summary>
-    string? UndoOrRedo(RemoteConnection connection, bool undo)
+    /// <summary>
+    /// The "undo" and "redo" commands: for the timeline the device shows (and the show's own edits), or with
+    /// <c>show: true</c>, the show's own edits only, for a setup screen where a timeline's edits can't be seen.
+    /// </summary>
+    string? UndoOrRedo(RemoteConnection connection, JsonObject message, bool undo)
     {
         var document = _host.Session.Document;
-        if (undo) document.UndoLatest(connection.Watching, origin: connection.Device.Name);
-        else document.RedoLatest(connection.Watching, origin: connection.Device.Name);
+        var timeline = message["show"]?.GetValue<bool>() == true ? null : connection.Watching;
+        if (undo) document.UndoLatest(timeline, origin: connection.Device.Name);
+        else document.RedoLatest(timeline, origin: connection.Device.Name);
         return null;
     }
 
     /// <summary>On the show's thread: what Undo and Redo would do next on this device, for its Undo button's label.</summary>
     void SendHistory(RemoteConnection connection)
     {
-        if (connection.Watching is not { } timeline) return;
         var document = _host.Session.Document;
-        connection.Send(new JsonObject
+        var message = new JsonObject
         {
             ["type"] = "history",
-            ["timeline"] = timeline.ToString(),
-            ["undo"] = document.NextUndo(timeline),
-            ["redo"] = document.NextRedo(timeline),
-        }.ToJsonString());
+            ["showUndo"] = document.NextUndo(null),
+            ["showRedo"] = document.NextRedo(null),
+        };
+        if (connection.Watching is { } timeline)
+        {
+            message["timeline"] = timeline.ToString();
+            message["undo"] = document.NextUndo(timeline);
+            message["redo"] = document.NextRedo(timeline);
+        }
+        connection.Send(message.ToJsonString());
     }
 }

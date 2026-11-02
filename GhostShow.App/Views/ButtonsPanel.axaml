@@ -49,7 +49,7 @@
       <DockPanel>
         <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
           <Button DockPanel.Dock="Right" Classes="small" Content="»" Command="{Binding ToggleOpenCommand}" Margin="4,0,0,0" ToolTip.Tip="Fold the buttons away" />
-          <Button DockPanel.Dock="Right" Classes="small" Content="＋" Command="{Binding AddCommand}" Margin="4,0,0,0" ToolTip.Tip="Add a button" />
+          <Button DockPanel.Dock="Right" Classes="small" Content="+" Command="{Binding AddCommand}" Margin="4,0,0,0" ToolTip.Tip="Add a button" />
           <ToggleButton DockPanel.Dock="Right" Classes="small" Content="Edit" IsChecked="{Binding IsEditing}" Padding="8,1" MinHeight="0"
                         ToolTip.Tip="Edit mode: click a button to change its name, colour, key and actions (instead of pressing it)" />
           <TextBlock Text="Buttons" FontWeight="SemiBold" VerticalAlignment="Center" />
@@ -147,7 +147,7 @@
         <!-- The buttons -->
         <ScrollViewer>
           <StackPanel>
-            <TextBlock Text="No buttons yet. ＋ adds one: give it actions (Run timeline, Stop, Blackout…) and a key." TextWrapping="Wrap" Opacity="0.7"
+            <TextBlock Text="No buttons yet. + adds one: give it actions (Run timeline, Stop, Blackout…) and a key." TextWrapping="Wrap" Opacity="0.7"
                        IsVisible="{Binding !HasButtons}" />
             <ItemsControl ItemsSource="{Binding Buttons}">
               <ItemsControl.ItemsPanel>

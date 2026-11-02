@@ -1,3 +1,4 @@
+using GhostShow.Core.Fixtures;
 using GhostShow.Core.Engine;
 using GhostShow.Core.Playback;
 
@@ -42,6 +43,9 @@ public interface IRemoteHost
     /// (File → Save). Until then its changes stay unsaved. Safe from any thread.
     /// </summary>
     bool NeedsFirstSave { get; }
+
+    /// <summary>The fixture library on the show computer: for a device's type picker, and custom fixture types.</summary>
+    IFixtureLibrary Library { get; }
 
     /// <summary>The show computer's audio output devices, by name (for audio tracks' outputs). On the show's thread.</summary>
     IReadOnlyList<string> AudioDevices { get; }

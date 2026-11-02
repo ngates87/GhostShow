@@ -639,9 +639,9 @@ public class UiTests
         var setup = rig.ViewModel.Fixtures;
         setup.StartAddCommand.Execute(null);
         WindowRig.Pump(200);
-        rig.Click(rig.CenterOf(rig.Find<Button>(b => b.Content as string == "＋ New fixture type…")));
+        rig.Click(rig.CenterOf(rig.Find<Button>(b => b.Content as string == "+ New fixture type…")));
         var mode = setup.ProfileEditor!.SelectedMode!;
-        Button Quick(string label) => rig.Find<Button>(b => b.Content as string == $"＋ {label}" && b.IsEffectivelyVisible);
+        Button Quick(string label) => rig.Find<Button>(b => b.Content as string == $"+ {label}" && b.IsEffectivelyVisible);
 
         rig.Click(rig.CenterOf(Quick("Red")));
         rig.Click(rig.CenterOf(Quick("Dimmer (intensity)")));

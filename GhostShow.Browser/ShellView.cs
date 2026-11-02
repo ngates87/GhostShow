@@ -42,13 +42,17 @@ sealed class ShellView : Border
     readonly ContentControl _page = new();
     readonly TextBlock _showName = new() { FontSize = 16, FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center, Margin = new(8, 4) };
     readonly StackPanel _buttons = new() { Orientation = Orientation.Horizontal, Spacing = 6 };
-    readonly List<FixtureProfile> _profileResults = [];
+    readonly RemoteFixtureLibrary _library;
+    readonly ContentControl _lightingContent = new() { HorizontalContentAlignment = HorizontalAlignment.Stretch, VerticalContentAlignment = VerticalAlignment.Stretch };
+    Control? _lightingPage;
+    FixtureSetupViewModel? _fixtures;
+    FixtureSetupView? _fixturesView;
+    bool _showingUniverses;
     TimelineEditorViewModel? _editor;
     bool _unsaved;
     long _noticeNumber;
     string _selectedPage = "Timeline";
     JsonArray? _sentAudioDevices;
-    string? _profileQuery;
 
     public ShellView()
     {
@@ -60,6 +64,7 @@ sealed class ShellView : Border
         _audioDevices = new AudioDeviceList(_link);
         _edits = new RemoteEdits(_session.Document, _link);
         _edits.Notice += ShowNotice;
+        _library = new RemoteFixtureLibrary(_session, _link, BuiltInProfiles);
         _session.Document.Changed += change => Dispatcher.UIThread.Post(() => OnDocumentChanged(change));
         _blackout.Click += (_, _) => _link.Send("blackout");
         AddHandler(KeyDownEvent, OnKeyDown, Avalonia.Interactivity.RoutingStrategies.Tunnel);
@@ -75,7 +80,7 @@ sealed class ShellView : Border
         _link.AudioDevices += m => Dispatcher.UIThread.Post(() => { _sentAudioDevices = m["devices"] as JsonArray; _audioDevices.Update(_sentAudioDevices); RefreshAudio(); });
         _link.Result += m => Dispatcher.UIThread.Post(() => _edits.OnResult(m));
         _link.History += m => Dispatcher.UIThread.Post(() => _edits.OnHistory(m));
-        _link.Profiles += m => Dispatcher.UIThread.Post(() => OnProfiles(m));
+        _link.Library += m => Dispatcher.UIThread.Post(() => _library.OnStatus(m));
         _link.Disconnected += () => Dispatcher.UIThread.Post(() =>
         {
             if (_editor is not null) ShowNotice("Lost the connection to the show computer. Trying again… Edits made now won't be kept.");
@@ -103,13 +108,16 @@ sealed class ShellView : Border
         _saveState.IsVisible = message["device"]?["role"]?.GetValue<string>() != "operator";
         _edits.OnHello();
         _playback.Reset();
-        UseProfiles(message["profiles"] as JsonArray);
+        _library.UseProfilesOfTheShow(message["profiles"] as JsonArray);
+        if (message["library"] is JsonObject library) _library.OnHello(library);
         _session.Use(ShowDocument.FromSnapshot(message["show"]!));
         _showName.Text = _session.Project.Name;
         _audioDevices.Update(_sentAudioDevices);
         if (_editor is null)
         {
             _editor = new TimelineEditorViewModel(_session, _playback, () => Task.FromResult<string?>(null), () => { }, _audioDevices, _edits);
+            _fixtures = new FixtureSetupViewModel(_session, new ProfileLibraryViewModel(_library), _edits);
+            _lightingPage = BuildLightingPage();
             BuildShell();
             OpenFromAddress();
         }
@@ -118,6 +126,7 @@ sealed class ShellView : Border
             if (_notice.Text?.StartsWith("Lost the connection", StringComparison.Ordinal) == true) _notice.Text = "";
             _editor.Reload();
             ReopenTabs(openTabs, showing);
+            _fixtures?.Sync();   // the same screen and selection, on the fresh copy
         }
         RefreshButtons();
         RefreshLighting();
@@ -155,7 +164,12 @@ sealed class ShellView : Border
         foreach (var label in new[] { "Timeline", "Lighting", "Audio" })
         {
             var nav = new Button { Content = label, Padding = new(14, 5), Margin = new(2), BorderThickness = new(1) };
-            nav.Click += (_, _) => { _selectedPage = label; RefreshPage(); };
+            nav.Click += (_, _) =>
+            {
+                _selectedPage = label;
+                if (label == "Lighting") _ = _library.LoadAsync();   // the type picker needs the whole library: only fetched once it's wanted
+                RefreshPage();
+            };
             _navigation.Children.Add(nav);
         }
         Child = root;
@@ -167,7 +181,7 @@ sealed class ShellView : Border
         if (_editor is null) return;
         _page.Content = _selectedPage switch
         {
-            "Lighting" => LightingPage(),
+            "Lighting" => _lightingPage,
             "Audio" => AudioPage(),
             _ => new TimelineView { DataContext = _editor, Margin = new(6) },
         };
@@ -182,30 +196,34 @@ sealed class ShellView : Border
         }
     }
 
-    Control LightingPage()
+    /// <summary>
+    /// The Lighting page: the desktop's real Fixtures screen, on this copy of the show. The universes are still a small
+    /// page built here, until the desktop's DMX setup screen comes across (see docs/plan-remote.md).
+    /// </summary>
+    Control BuildLightingPage()
     {
-        var page = new DockPanel { Margin = new(10) };
-        var heading = new StackPanel { Spacing = 3, Margin = new(6, 2, 6, 10) };
-        heading.Children.Add(new TextBlock { Text = "Lighting · Fixture patch", FontSize = 18, FontWeight = FontWeight.SemiBold });
-        heading.Children.Add(new TextBlock { Text = "Changes are sent to the show computer immediately and saved automatically.", Opacity = 0.7, TextWrapping = TextWrapping.Wrap });
-        DockPanel.SetDock(heading, Dock.Top);
-        page.Children.Add(heading);
+        var fixtures = new Button { Content = "Fixtures", Padding = new(12, 3) };
+        var universes = new Button { Content = "Universes", Padding = new(12, 3) };
+        fixtures.Click += (_, _) => { _showingUniverses = false; RefreshLighting(); };
+        universes.Click += (_, _) => { _showingUniverses = true; RefreshLighting(); };
+        var tabs = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Margin = new(8, 2) };
+        tabs.Children.Add(fixtures);
+        tabs.Children.Add(universes);
+        DockPanel.SetDock(tabs, Dock.Top);
+        var page = new DockPanel { Margin = new(6, 0) };
+        page.Children.Add(tabs);
+        page.Children.Add(_lightingContent);
+        return page;
+    }
 
-        var stack = new StackPanel { Spacing = 8, Margin = new(6, 0) };
+    Control UniversesPage()
+    {
+        var stack = new StackPanel { Spacing = 8, Margin = new(6) };
         stack.Children.Add(UniverseEditor());
-        stack.Children.Add(FixtureEditor());
-        stack.Children.Add(ProfileSearch());
         foreach (var issue in _session.Patch.Issues.Where(i => i.FixtureId is null))
             stack.Children.Add(new TextBlock { Text = issue.Message, Foreground = issue.Severity == PatchIssueSeverity.Error ? Brushes.OrangeRed : Brushes.Goldenrod, TextWrapping = TextWrapping.Wrap });
-        stack.Children.Add(new TextBlock { Text = "Which DMX adapter drives each universe is still configured on the show computer.", Opacity = 0.65, TextWrapping = TextWrapping.Wrap });
-        page.Children.Add(new ScrollViewer
-        {
-            Content = stack,
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            VerticalAlignment = VerticalAlignment.Stretch,
-            MinHeight = 300,
-        });
-        return page;
+        stack.Children.Add(new TextBlock { Text = "Which DMX adapter drives each universe is still configured on the show computer. Undo is on the Fixtures page.", Opacity = 0.65, TextWrapping = TextWrapping.Wrap });
+        return new ScrollViewer { Content = stack };
     }
 
     Control UniverseEditor()
@@ -242,180 +260,6 @@ sealed class ShellView : Border
         return new Border { Classes = { "card" }, Padding = new(10), Child = section };
     }
 
-    Control FixtureEditor()
-    {
-        var section = new StackPanel { Spacing = 4 };
-        section.Children.Add(new TextBlock { Text = $"Fixtures · {_session.Project.Fixtures.Count}", FontWeight = FontWeight.SemiBold });
-        if (_session.Project.Fixtures.Count == 0) section.Children.Add(new TextBlock { Text = "No fixtures are patched yet.", Opacity = 0.7 });
-        foreach (var fixture in _session.Project.Fixtures) section.Children.Add(FixtureRow(fixture));
-        return new Border { Classes = { "card" }, Padding = new(10), Child = section };
-    }
-
-    Control FixtureRow(FixtureInstance fixture)
-    {
-        var profile = _session.Profiles.Find(fixture.ProfileId);
-        var mode = profile?.FindMode(fixture.ModeName);
-        var name = new TextBox { Text = fixture.Name, PlaceholderText = "Fixture name", MinWidth = 150 };
-        name.LostFocus += (_, _) => EditModel("Rename fixture", fixture, "name", () => fixture.Name = name.Text ?? "");
-        var group = new TextBox { Text = fixture.Group, PlaceholderText = "Group (optional)", MinWidth = 140 };
-        group.LostFocus += (_, _) => EditModel("Change fixture group", fixture, "group", () => fixture.Group = string.IsNullOrWhiteSpace(group.Text) ? null : group.Text);
-        var universe = new NumericUpDown { Minimum = Project.FirstUniverse, Maximum = Project.LastUniverse, Increment = 1, Value = fixture.Universe, Width = 120 };
-        universe.LostFocus += (_, _) => EditModel("Move fixture to universe", fixture, "universe", () => fixture.Universe = (int)(universe.Value ?? fixture.Universe));
-        var address = new NumericUpDown { Minimum = 1, Maximum = 512, Increment = 1, Value = fixture.StartAddress, Width = 120 };
-        address.LostFocus += (_, _) => EditModel("Readdress fixture", fixture, "address", () => fixture.StartAddress = (int)(address.Value ?? fixture.StartAddress));
-        var enabled = new CheckBox { Content = "Enabled", IsChecked = fixture.Enabled, VerticalAlignment = VerticalAlignment.Center };
-        enabled.IsCheckedChanged += (_, _) => EditModel("Enable fixture", fixture, "enabled", () => fixture.Enabled = enabled.IsChecked == true);
-        var remove = new Button { Content = "Remove", Padding = new(8, 3) };
-        remove.Click += (_, _) => _session.Document.Record("Remove fixture", () => _session.Project.Fixtures.Remove(fixture), ShowDocument.Shallow(_session.Project));
-        var duplicate = new Button { Content = "Duplicate", Padding = new(8, 3) };
-        duplicate.Click += (_, _) => DuplicateFixture(fixture, mode);
-
-        var knownProfiles = _session.Profiles.Profiles.Concat(_profileResults).DistinctBy(p => p.Id).ToList();
-        var profilePicker = new ComboBox { ItemsSource = knownProfiles, SelectedItem = knownProfiles.FirstOrDefault(p => p.Id == fixture.ProfileId), MinWidth = 220 };
-        profilePicker.ItemTemplate = ProfileTemplate();
-        var modePicker = new ComboBox { ItemsSource = profile?.Modes, SelectedItem = mode, MinWidth = 180 };
-        modePicker.ItemTemplate = ModeTemplate();
-        bool updatingMode = false;
-        profilePicker.SelectionChanged += (_, _) =>
-        {
-            if (profilePicker.SelectedItem is not FixtureProfile selected) return;
-            EnsureProfile(selected);
-            var selectedMode = selected.FindMode(fixture.ModeName) ?? selected.Modes.FirstOrDefault();
-            updatingMode = true;
-            modePicker.ItemsSource = selected.Modes;
-            modePicker.SelectedItem = selectedMode;
-            updatingMode = false;
-            if (selectedMode is not null && (fixture.ProfileId != selected.Id || fixture.ModeName != selectedMode.Name))
-                EditModel("Change fixture type", fixture, "profile-mode", () => { fixture.ProfileId = selected.Id; fixture.ModeName = selectedMode.Name; });
-        };
-        modePicker.SelectionChanged += (_, _) =>
-        {
-            if (updatingMode || profilePicker.SelectedItem is not FixtureProfile selected || modePicker.SelectedItem is not FixtureMode selectedMode) return;
-            EnsureProfile(selected);
-            if (fixture.ProfileId != selected.Id || fixture.ModeName != selectedMode.Name)
-                EditModel("Change fixture mode", fixture, "profile-mode", () => { fixture.ProfileId = selected.Id; fixture.ModeName = selectedMode.Name; });
-        };
-        var details = new TextBlock { Text = mode is null ? $"Missing profile {fixture.ProfileId} / {fixture.ModeName}" : $"{profile} · {mode.Name} ({mode.Channels.Count} ch)", Opacity = 0.7, VerticalAlignment = VerticalAlignment.Center };
-        var fixtureIssues = _session.Patch.Issues.Where(i => i.FixtureId == fixture.Id).ToList();
-        var row = new StackPanel { Spacing = 3, Children =
-        {
-            new WrapPanel { Orientation = Orientation.Horizontal, Children = { name, group, universe, address, enabled, duplicate, remove } },
-            new WrapPanel { Orientation = Orientation.Horizontal, Children = { profilePicker, modePicker } }, details
-        }};
-        foreach (var issue in fixtureIssues)
-            row.Children.Add(new TextBlock { Text = issue.Message, Foreground = issue.Severity == PatchIssueSeverity.Error ? Brushes.OrangeRed : Brushes.Goldenrod, TextWrapping = TextWrapping.Wrap });
-        return new Border { Classes = { "card" }, Padding = new(8, 5), Child = row };
-    }
-
-    // A ComboBox with nothing selected still builds its template, with null. These must cope: an exception here happens
-    // during layout, and layout never recovers from one, so every page stays blank until the browser reloads.
-    static Avalonia.Controls.Templates.FuncDataTemplate<FixtureProfile?> ProfileTemplate() =>
-        new((profile, _) => new TextBlock { Text = profile?.ToString() }, true);
-
-    static Avalonia.Controls.Templates.FuncDataTemplate<FixtureMode?> ModeTemplate() =>
-        new((mode, _) => new TextBlock { Text = mode is null ? "" : $"{mode.Name} · {mode.Channels.Count} channels" }, true);
-
-    void EnsureProfile(FixtureProfile profile)
-    {
-        if (ReferenceEquals(_session.Profiles.Find(profile.Id), profile)) return;
-        var profiles = _session.Profiles.Profiles.Where(p => !string.Equals(p.Id, profile.Id, StringComparison.OrdinalIgnoreCase))
-            .Concat(_profileResults.Where(p => !string.Equals(p.Id, profile.Id, StringComparison.OrdinalIgnoreCase)))
-            .Append(profile);
-        _session.UseProfiles(new FixtureProfileLibrary(profiles.DistinctBy(p => p.Id, StringComparer.OrdinalIgnoreCase)));
-    }
-
-    void DuplicateFixture(FixtureInstance source, FixtureMode? mode)
-    {
-        var count = mode?.Channels.Count ?? 1;
-        int start = new UniverseUsage(_session.Patch.Fixtures.Where(f => f.Universe == source.Universe)).FirstFreeStart(count) ?? source.StartAddress;
-        var copy = new FixtureInstance
-        {
-            Name = $"{source.Name} copy", Group = source.Group, ProfileId = source.ProfileId, ModeName = source.ModeName,
-            Universe = source.Universe, StartAddress = start, Enabled = source.Enabled,
-        };
-        _session.Document.Record("Duplicate fixture", () => _session.Project.Fixtures.Add(copy), ShowDocument.Shallow(_session.Project));
-    }
-
-    Control ProfileSearch()
-    {
-        var section = new StackPanel { Spacing = 5 };
-        section.Children.Add(new TextBlock { Text = "Find a fixture type", FontWeight = FontWeight.SemiBold });
-        var search = new TextBox { Text = _profileQuery, PlaceholderText = "Search the show computer's fixture library", MinWidth = 260 };
-        var find = new Button { Content = "Search", Padding = new(10, 3) };
-        void Search()
-        {
-            string query = (search.Text ?? "").Trim();
-            if (query.Length == 0)
-            {
-                ShowNotice("Enter a fixture manufacturer or model to search.");
-                return;
-            }
-            _profileResults.Clear();
-            _profileQuery = _link.Send("profiles", ("query", query)) is null ? null : query;
-            if (_profileQuery is null) ShowNotice("Not connected: can't search the fixture library.");
-        }
-        find.Click += (_, _) => Search();
-        search.KeyDown += (_, e) => { if (e.Key == Avalonia.Input.Key.Enter) { Search(); e.Handled = true; } };
-        var result = new ComboBox { ItemsSource = _profileResults, MinWidth = 260, HorizontalAlignment = HorizontalAlignment.Stretch };
-        result.ItemTemplate = ProfileTemplate();
-        var mode = new ComboBox { MinWidth = 200 };
-        mode.ItemTemplate = ModeTemplate();
-        result.SelectionChanged += (_, _) =>
-        {
-            mode.ItemsSource = (result.SelectedItem as FixtureProfile)?.Modes;
-            mode.SelectedIndex = 0;
-        };
-        var add = new Button { Content = "Add fixture", Padding = new(10, 3) };
-        add.Click += (_, _) =>
-        {
-            if (result.SelectedItem is not FixtureProfile selected || mode.SelectedItem is not FixtureMode selectedMode) return;
-            if (selectedMode.Channels.Count is 0 or > 512)
-            {
-                ShowNotice($"{selected} · {selectedMode.Name} can't be patched because it has {selectedMode.Channels.Count} channels.");
-                return;
-            }
-            EnsureProfile(selected);
-            var allocation = FindFixtureAddress(selectedMode.Channels.Count);
-            if (allocation is null)
-            {
-                ShowNotice("No free DMX address is available in any universe.");
-                return;
-            }
-            var (universeNumber, start, createUniverse) = allocation.Value;
-            var fixture = new FixtureInstance { Name = selected.Model, ProfileId = selected.Id, ModeName = selectedMode.Name, Universe = universeNumber, StartAddress = start };
-            _session.Document.Record(createUniverse ? "Add universe and fixture" : "Add fixture", () =>
-            {
-                if (createUniverse) _session.Project.Universes.Add(new UniverseConfig { Number = universeNumber, Name = $"Universe {universeNumber}" });
-                _session.Project.Fixtures.Add(fixture);
-            }, ShowDocument.Shallow(_session.Project));
-        };
-        var searchRow = new WrapPanel { Orientation = Orientation.Horizontal, Children = { search, find } };
-        var addRow = new WrapPanel { Orientation = Orientation.Horizontal, Children = { result, mode, add } };
-        section.Children.Add(new TextBlock { Text = "Search the show computer's fixture library, choose a mode, then add it at the first free address.", Opacity = 0.7, TextWrapping = TextWrapping.Wrap });
-        section.Children.Add(searchRow);
-        if (_profileQuery is not null)
-            section.Children.Add(new TextBlock
-            {
-                Text = _profileResults.Count == 0 ? $"No fixture types found for ‘{_profileQuery}’." : $"{_profileResults.Count} fixture type(s) found.",
-                Opacity = 0.75,
-                TextWrapping = TextWrapping.Wrap,
-            });
-        section.Children.Add(addRow);
-        return new Border { Classes = { "card" }, Padding = new(10), Child = section };
-    }
-
-    (int Universe, int Address, bool CreateUniverse)? FindFixtureAddress(int channelCount)
-    {
-        foreach (var universe in _session.Project.Universes.OrderBy(u => u.Number))
-        {
-            var address = new UniverseUsage(_session.Patch.Fixtures.Where(f => f.Universe == universe.Number)).FirstFreeStart(channelCount);
-            if (address is { } start) return (universe.Number, start, false);
-        }
-
-        if (NextUniverseNumber() is not { } next) return null;
-        return (next, 1, true);
-    }
-
     int? NextUniverseNumber()
     {
         var used = _session.Project.Universes.Select(u => u.Number).ToHashSet();
@@ -427,16 +271,6 @@ sealed class ShellView : Border
     void EditModel(string description, object model, string field, Action apply)
     {
         _session.Document.Record(description, apply, [model], mergeKey: (model.GetHashCode(), field));
-    }
-
-    void OnProfiles(JsonObject message)
-    {
-        if (message["query"]?.GetValue<string>() != _profileQuery) return;
-        _profileResults.Clear();
-        foreach (var node in message["profiles"]?.AsArray() ?? [])
-            if (node is not null) _profileResults.Add(FixtureProfileLoader.ParseJson(node.ToJsonString()));
-        if (_profileResults.Count == 0) ShowNotice($"No fixture types found for ‘{_profileQuery}’.");
-        RefreshLighting();
     }
 
     void OnDocumentChanged(ShowChange change)
@@ -491,7 +325,9 @@ sealed class ShellView : Border
 
     void RefreshLighting()
     {
-        if (_selectedPage == "Lighting") RefreshPage();
+        // Only the universes page is rebuilt: the Fixtures screen follows the show by itself.
+        if (_showingUniverses) _lightingContent.Content = UniversesPage();
+        else if (_fixtures is not null) _lightingContent.Content = _fixturesView ??= new FixtureSetupView { DataContext = _fixtures };
     }
 
     void RefreshButtons()
@@ -604,15 +440,15 @@ sealed class ShellView : Border
         }
     }
 
-    /// <summary>The patch changed on the show computer: the same fixtures and universes here, so channels are named alike.</summary>
+    /// <summary>
+    /// The patch changed on the show computer. The fixtures and universes themselves arrive as edits, like every other
+    /// change; this brings the profiles they use, so channels are named alike.
+    /// </summary>
     void OnPatch(JsonObject message)
     {
-        UseProfiles(message["profiles"] as JsonArray);
-        _session.Project.Fixtures = ShowJson.FromNode<List<FixtureInstance>>(message["fixtures"]!) ?? [];
-        _session.Project.Universes = ShowJson.FromNode<List<UniverseConfig>>(message["universes"]!) ?? [];
+        _library.UseProfilesOfTheShow(message["profiles"] as JsonArray);
         _session.Apply();   // the screens follow (track headers name channels by fixture)
         _showName.Text = _session.Project.Name;
-        RefreshLighting();
     }
 
     /// <summary>
@@ -624,14 +460,5 @@ sealed class ShellView : Border
         int universe = message["universe"]!.GetValue<int>();
         var levels = Convert.FromBase64String(message["levels"]!.GetValue<string>());
         for (int address = 1; address <= levels.Length; address++) _session.Engine.SetChannel(universe, address, levels[address - 1]);
-    }
-
-    /// <summary>The built-in fixture profiles, and the show's others (QLC+, Open Fixture Library, custom) as the show computer sent them.</summary>
-    void UseProfiles(JsonArray? sent)
-    {
-        var profiles = BuiltInProfiles.ToDictionary(p => p.Id);
-        foreach (var node in sent ?? [])
-            if (node is not null) profiles[node["id"]!.GetValue<string>()] = FixtureProfileLoader.ParseJson(node.ToJsonString());
-        _session.UseProfiles(new FixtureProfileLibrary(profiles.Values));
     }
 }

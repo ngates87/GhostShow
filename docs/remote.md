@@ -3,10 +3,11 @@
 Run and edit the show from a laptop, an iPad or a phone while you stand in the room: you hear the room's speakers
 and see the real lights, and nobody needs to sit at the show computer. Sound and lights stay on the show computer;
 the device is a remote. There are two pages:
-- **The full app** (`/app/`): the Timeline editor plus Lighting and Audio pages. See "Editing from the full app" below.
+- **The full app** (`/app/`): the Timeline editor, the desktop's Fixtures screen and an Audio page. See "Editing from the
+  full app" below.
 - **The simple remote** (the plain address): run the show, on anything down to a phone.
 
-See [plan-remote.md](plan-remote.md) for what's coming (the other screens: patching, audio and DMX setup).
+See [plan-remote.md](plan-remote.md) for what's coming (the other screens: audio and DMX setup).
 
 ## Using it
 
@@ -50,10 +51,11 @@ how many devices are connected.
 
 Open `http://<address>:7700/app/`, or "Open the full app" on the simple remote. `/app/?open=Folder/Timeline` opens a
 timeline at start, so it can be bookmarked. The top row switches between Timeline, Lighting and Audio; Blackout and
-warnings stay visible across pages. The show's buttons are available along the bottom. Lighting can search the show
-computer's fixture library and add, duplicate, remove, rename, group, enable, move, readdress, or change the type and
-mode of a fixture. It can also add, remove, rename and renumber show universes. These are shared edits that save
-themselves. To undo one, use Undo on the Timeline page: the Lighting page has no Undo of its own yet. Which DMX adapter drives each universe, live faders, and audio settings are still managed on the show computer.
+warnings stay visible across pages. The show's buttons are available along the bottom. Lighting has the desktop's own
+Fixtures screen: the type picker with the show computer's whole fixture library, placing fixtures on the address map, new
+and edited custom fixture types (saved on the show computer), and Undo. A small Universes page beside it adds, removes,
+renames and renumbers universes. Which DMX adapter drives each universe, live faders, and audio settings are still
+managed on the show computer.
 Audio shows the show computer's devices and the files used by the show. The full app is only there if it has been built:
 `GhostShow.Browser/publish.sh` (it needs the WebAssembly tools).
 
@@ -105,8 +107,11 @@ Audio shows the show computer's devices and the files used by the show. The full
     backlog.
   - `issues`: a watched timeline's problems (missing fixtures, files, timelines), each time it's compiled.
   - `device`: the device again, when its role changes.
+  - `library`: the fixture library's text for its screen, and its `version`, which goes up when its profiles change. Also
+    in `hello`, as `library`.
   - `result`: the answer to a command.
-  - `history`: what Undo and Redo would do next on this device (for its Undo button's label), after every change.
+  - `history`: what Undo and Redo would do next on this device (for its Undo button's label), after every change: for its
+    timeline (`undo`, `redo`) and for the show's own edits (`showUndo`, `showRedo`).
 - **Commands:** a device sends `{ "type": "command", "id": 7, "action": "run", "timeline": "<id>" }` and gets
   `{ "type": "result", "id": 7, "ok": true }`, or `ok: false` with an `error` to show.
   - **Actions:** `play`, `pause`, `stop`, `restart`, `seek` (`position`, in seconds), `run`, `stopTimeline`,
@@ -123,12 +128,18 @@ Audio shows the show computer's devices and the files used by the show. The full
   - **Edits:** `edit` (`description`, `ops`, and a `merge` number: edits with one number in quick succession are one
     undo step) changes the show. See `GhostShow.Web/RemoteServer.Edits.cs` for how it works and
     `GhostShow.Browser/Remote/RemoteEdits.cs` for the browser's side.
-  - **Undo, redo, save:** `undo` and `redo` act for the timeline the device watches; `save` saves on the show
-    computer.
+  - **Undo, redo, save:** `undo` and `redo` act for the timeline the device watches, or with `show: true`, on the show's
+    own edits only (a setup screen, where a timeline's edits can't be seen); `save` saves on the show computer.
+  - **Fixture library:** `saveProfile` (`profile`, as JSON) and `deleteProfile` (`profile`, its ID) change custom fixture
+    types on the show computer; `downloadLibrary` starts downloading the online library. It isn't waited for, since a
+    device's commands run one at a time and Blackout mustn't wait behind it.
   - **Where they run:** on the show computer's UI thread, through the same view models as the desktop's controls
     (`IShowControl`).
-  - **Roles:** the show computer checks the device's role for each command. `open`, `edit`, `undo`, `redo` and
-    `save` are editor-only; an operator may run the show but not change it.
+  - **Roles:** the show computer checks the device's role for each command. `open`, `edit`, `undo`, `redo`, `save`,
+    `saveProfile`, `deleteProfile` and `downloadLibrary` are editor-only; an operator may run the show but not change it.
+- **The fixture library:** `GET /api/library?token=…` gives the whole library, one profile per line of JSON, compressed
+  with gzip: about 2,000 profiles, half a megabyte. A device fetches it the first time Lighting is opened. See
+  `GhostShow.Web/RemoteServer.Library.cs` and `GhostShow.Browser/Remote/RemoteFixtureLibrary.cs`.
 - **Close codes:** a device that isn't paired, or was removed, is closed with code 4401, and the page goes back to
   pairing.
 - **Building the page:** `dotnet build` builds it when Node.js is installed (`npm ci`, then `npm run build`, only

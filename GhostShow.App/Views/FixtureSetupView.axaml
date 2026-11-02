@@ -23,7 +23,7 @@
 
       <StackPanel DockPanel.Dock="Top" Spacing="6" Margin="0,0,0,8">
         <TextBlock Text="Fixtures" Classes="heading" />
-        <Button Content="＋ Add fixtures…" Command="{Binding StartAddCommand}" Classes="accent" HorizontalAlignment="Stretch"
+        <Button Content="+ Add fixtures…" Command="{Binding StartAddCommand}" Classes="accent" HorizontalAlignment="Stretch"
                 HorizontalContentAlignment="Center" IsEnabled="{Binding IsOverview}" />
         <StackPanel Orientation="Horizontal" Spacing="6" IsEnabled="{Binding IsOverview}">
           <Button Content="Duplicate" Command="{Binding DuplicateCommand}" ToolTip.Tip="A copy of the selected fixture at the first gap it fits"
@@ -95,7 +95,7 @@
 
         <Border DockPanel.Dock="Top" Classes="card" Margin="0,0,0,12"
                 IsVisible="{Binding Selected, Converter={x:Static ObjectConverters.IsNull}}">
-          <TextBlock Text="No fixture selected. Use ＋ Add fixtures… to add some, or pick one from the list or the patch overview."
+          <TextBlock Text="No fixture selected. Use + Add fixtures… to add some, or pick one from the list or the patch overview."
                      TextWrapping="Wrap" />
         </Border>
 
@@ -121,7 +121,7 @@
         <Border DockPanel.Dock="Top" Classes="wizard">
           <DockPanel>
             <Button DockPanel.Dock="Right" Content="Cancel" Command="{Binding CancelWizardCommand}" />
-            <Button DockPanel.Dock="Right" Content="＋ New fixture type…" Command="{Binding NewProfileCommand}" Margin="0,0,8,0"
+            <Button DockPanel.Dock="Right" Content="+ New fixture type…" Command="{Binding NewProfileCommand}" Margin="0,0,8,0"
                     ToolTip.Tip="Can't find your fixture? Make its type yourself: its modes and channels, from the fixture's manual" />
             <TextBlock Text="{Binding WizardTitle}" Classes="heading" VerticalAlignment="Center" TextWrapping="Wrap" />
           </DockPanel>
@@ -236,7 +236,7 @@
                               ToolTip.Tip="Where it's listed when browsing by type" />
                     <DockPanel Margin="0,12,0,0">
                       <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="4">
-                        <Button Content="＋" Command="{Binding AddModeCommand}" Padding="8,2" ToolTip.Tip="Add a mode" />
+                        <Button Content="+" Command="{Binding AddModeCommand}" Padding="8,2" ToolTip.Tip="Add a mode" />
                         <Button Content="Copy" Command="{Binding DuplicateModeCommand}" Padding="8,2" ToolTip.Tip="A copy of the selected mode, to change" />
                         <Button Content="−" Command="{Binding RemoveModeCommand}" Padding="8,2" ToolTip.Tip="Remove the selected mode" />
                       </StackPanel>
@@ -271,7 +271,7 @@
                               <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
                               <ItemsControl.ItemTemplate>
                                 <DataTemplate x:DataType="vm:FunctionOption">
-                                  <Button Content="{Binding Label, StringFormat='＋ {0}'}" Margin="0,0,6,6" Padding="8,3"
+                                  <Button Content="{Binding Label, StringFormat='+ {0}'}" Margin="0,0,6,6" Padding="8,3"
                                           Command="{Binding $parent[ItemsControl].((vm:ModeDraftViewModel)DataContext).AddChannelCommand}" CommandParameter="{Binding}" />
                                 </DataTemplate>
                               </ItemsControl.ItemTemplate>

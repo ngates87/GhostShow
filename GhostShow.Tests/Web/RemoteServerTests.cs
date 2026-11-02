@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using System.Net;
 using System.Net.Http.Json;
 using System.Net.WebSockets;
@@ -51,8 +52,9 @@ public sealed class RemoteServerTests : IAsyncLifetime
         public Waveform? GetWaveform(string path) => Measured.ContainsKey(path) ? new Waveform([10, 200, 30]) : null;
     }
 
-    sealed class Host(ShowSession session, ShowPlayback playback) : IRemoteHost
+    sealed class Host(ShowSession session, ShowPlayback playback, IFixtureLibrary library) : IRemoteHost
     {
+        public IFixtureLibrary Library => library;
         public readonly Lock Gate = new();
 
         public Task<T> InvokeAsync<T>(Func<T> function)
@@ -86,13 +88,16 @@ public sealed class RemoteServerTests : IAsyncLifetime
     readonly RemoteSettings _settings = new();
     readonly RemoteServer _server;
     readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(10) };
+    readonly AppPaths _paths = new(Path.Combine(Path.GetTempPath(), "ghostshow-remote-tests", Guid.NewGuid().ToString("N")));
+    readonly LocalFixtureLibrary _library;
 
     public RemoteServerTests()
     {
         _main = new ShowTimeline { Name = "Main", Length = S(30), Tracks = [new TimelineTrack { Name = "Lights", Kind = TrackKind.Lighting }] };
         _session.Use(new Project { Name = "Haunt 2026", Timelines = [_main] });
         _document = _session.Document;
-        _host = new Host(_session, new ShowPlayback(_session, _manager, _audioFiles));
+        _library = new LocalFixtureLibrary(_session, _paths, new MachineSettings(), NullLogger.Instance);
+        _host = new Host(_session, new ShowPlayback(_session, _manager, _audioFiles), _library);
         _server = new RemoteServer(_host, _settings, NullLogger.Instance);
     }
 
@@ -106,6 +111,7 @@ public sealed class RemoteServerTests : IAsyncLifetime
     {
         await _server.DisposeAsync();
         _http.Dispose();
+        if (Directory.Exists(_paths.ConfigDirectory)) Directory.Delete(_paths.ConfigDirectory, recursive: true);
     }
 
     async Task<string> PairAsync(string name = "iPad", string role = "editor")
@@ -560,6 +566,128 @@ public sealed class RemoteServerTests : IAsyncLifetime
         Assert.True((await CommandAsync(socket, new { action = "save" }))["ok"]!.GetValue<bool>());
 
         Assert.Equal(["save"], _host.Commands.Calls);
+    }
+
+    [Theory]
+    [InlineData("gzip, deflate, br", "br", "from brotli")]
+    [InlineData("gzip, deflate", "gzip", "from gzip")]   // a browser on a plain http:// address
+    [InlineData("", null, "plain")]
+    public async Task The_full_app_s_files_come_compressed_the_best_way_the_browser_takes(string accepts, string? encoding, string body)
+    {
+        var folder = Path.Combine(_paths.ConfigDirectory, "app");
+        Directory.CreateDirectory(folder);
+        await File.WriteAllTextAsync(Path.Combine(folder, "app.js"), "plain", TestContext.Current.CancellationToken);
+        await File.WriteAllTextAsync(Path.Combine(folder, "app.js.br"), "from brotli", TestContext.Current.CancellationToken);
+        await File.WriteAllTextAsync(Path.Combine(folder, "app.js.gz"), "from gzip", TestContext.Current.CancellationToken);
+        _server.BrowserAppFolder = folder;
+
+        // A client that doesn't unpack anything, so this reads which file was sent.
+        using var request = new HttpRequestMessage(HttpMethod.Get, "app/app.js");
+        if (accepts.Length > 0) request.Headers.TryAddWithoutValidation("Accept-Encoding", accepts);
+        var response = await _http.SendAsync(request, TestContext.Current.CancellationToken);
+
+        Assert.Equal(encoding, response.Content.Headers.ContentEncoding.SingleOrDefault());
+        Assert.Equal(body, await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+    }
+
+    // ---- the fixture library ----
+
+    /// <summary>A custom type's JSON, as a device sends it.</summary>
+    static JsonNode CustomType(string id)
+    {
+        var json = JsonNode.Parse(FixtureProfileLoader.ToJson(TestProfiles.Rgbw))!;
+        json["id"] = id;
+        return json;
+    }
+
+    [Fact]
+    public async Task A_paired_device_can_fetch_the_whole_library_and_others_can_t()
+    {
+        _session.UseProfiles(new FixtureProfileLibrary([TestProfiles.Rgbw, TestProfiles.Spot]));
+        string token = await PairAsync();
+        var cancel = TestContext.Current.CancellationToken;
+
+        Assert.Equal(HttpStatusCode.Unauthorized, (await _http.GetAsync("api/library?token=wrong", cancel)).StatusCode);
+
+        var response = await _http.GetAsync($"api/library?token={Uri.EscapeDataString(token)}", cancel);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("gzip", Assert.Single(response.Content.Headers.ContentEncoding));
+        Assert.True(long.Parse(response.Headers.GetValues("X-Library-Version").Single()) > 0);
+
+        using var unpacked = new StreamReader(new GZipStream(await response.Content.ReadAsStreamAsync(cancel), CompressionMode.Decompress));
+        var lines = (await unpacked.ReadToEndAsync(cancel)).Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        Assert.Equal([TestProfiles.Rgbw.Id, TestProfiles.Spot.Id], lines.Select(l => FixtureProfileLoader.ParseJson(l).Id));
+    }
+
+    [Fact]
+    public async Task A_device_saves_a_custom_type_on_the_show_computer_and_every_device_hears_the_library_changed()
+    {
+        using var socket = await ConnectAsync(await PairAsync());
+        using var other = await ConnectAsync(await PairAsync("Laptop"));
+        long before = (await NextAsync(other, "hello"))["library"]!["version"]!.GetValue<long>();
+
+        var result = await CommandAsync(socket, new { action = "saveProfile", profile = CustomType("custom/acme/fogger") });
+
+        Assert.True(result["ok"]!.GetValue<bool>(), result["error"]?.ToString());
+        Assert.NotNull(_session.Profiles.Find("custom/acme/fogger"));
+        Assert.True(File.Exists(CustomProfiles.PathOf(_paths, "custom/acme/fogger")));
+        Assert.True((await NextAsync(other, "library"))["version"]!.GetValue<long>() > before);
+    }
+
+    [Theory]
+    [InlineData("custom/../../evil")]
+    [InlineData("custom/a/../../../evil")]
+    [InlineData("generic/rgbw")]
+    [InlineData("custom/a\\b")]
+    public async Task A_custom_type_s_id_can_t_leave_the_profile_folder_or_replace_a_library_type(string id)
+    {
+        using var socket = await ConnectAsync(await PairAsync());
+
+        var result = await CommandAsync(socket, new { action = "saveProfile", profile = CustomType(id) });
+
+        Assert.False(result["ok"]!.GetValue<bool>());
+        Assert.Null(_session.Profiles.Find(id));
+    }
+
+    [Fact]
+    public async Task A_device_deletes_a_custom_type_unless_the_show_uses_it()
+    {
+        using var socket = await ConnectAsync(await PairAsync());
+        Assert.True((await CommandAsync(socket, new { action = "saveProfile", profile = CustomType("custom/acme/fogger") }))["ok"]!.GetValue<bool>());
+        var fixture = new FixtureInstance { Name = "Fog", ProfileId = "custom/acme/fogger", ModeName = TestProfiles.Rgbw.Modes[0].Name };
+        lock (_host.Gate) _session.Project.Fixtures.Add(fixture);
+
+        Assert.False((await CommandAsync(socket, new { action = "deleteProfile", profile = "custom/acme/fogger" }))["ok"]!.GetValue<bool>());
+        Assert.False((await CommandAsync(socket, new { action = "deleteProfile", profile = TestProfiles.Rgbw.Id }))["ok"]!.GetValue<bool>());
+
+        lock (_host.Gate) _session.Project.Fixtures.Remove(fixture);
+        Assert.True((await CommandAsync(socket, new { action = "deleteProfile", profile = "custom/acme/fogger" }))["ok"]!.GetValue<bool>());
+        Assert.Null(_session.Profiles.Find("custom/acme/fogger"));
+    }
+
+    [Fact]
+    public async Task An_operator_can_t_change_the_library()
+    {
+        using var socket = await ConnectAsync(await PairAsync(role: "operator"));
+
+        Assert.False((await CommandAsync(socket, new { action = "saveProfile", profile = CustomType("custom/acme/fogger") }))["ok"]!.GetValue<bool>());
+        Assert.False((await CommandAsync(socket, new { action = "downloadLibrary" }))["ok"]!.GetValue<bool>());
+        Assert.Null(_session.Profiles.Find("custom/acme/fogger"));
+    }
+
+    [Fact]
+    public async Task Undo_can_ask_for_the_show_s_edits_only_leaving_the_timeline_s_alone()
+    {
+        using var socket = await ConnectAsync(await PairAsync());
+        lock (_host.Gate) _document.Record("Rename the show", () => _session.Project.Name = "Other", ShowDocument.Shallow(_session.Project));
+        await Task.Delay(50, TestContext.Current.CancellationToken);
+        lock (_host.Gate) _document.Record("Change length", () => _main.Length = S(99), ShowDocument.Shallow(_main));
+        Assert.True((await CommandAsync(socket, new { action = "watch", timeline = _main.Id.ToString() }))["ok"]!.GetValue<bool>());
+
+        Assert.True((await CommandAsync(socket, new { action = "undo", show = true }))["ok"]!.GetValue<bool>());
+
+        Assert.Equal("Haunt 2026", _session.Project.Name);
+        Assert.Equal(S(99), _main.Length);
     }
 
     [Fact]
