@@ -1,0 +1,10 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:GhostShow.App.ViewModels"
+        xmlns:views="using:GhostShow.App.Views"
+        x:Class="GhostShow.App.Views.EnvelopeEditorWindow"
+        x:DataType="vm:EnvelopeEditorViewModel"
+        Title="{Binding Title}" Icon="avares://ghostshow-app/Assets/ghostshow.ico" Width="1100" Height="600" MinWidth="640" MinHeight="380"
+        Background="#141414" WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
+  <views:EnvelopeEditorView />
+</Window>

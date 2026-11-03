@@ -8,7 +8,7 @@ Profiles live outside shows, so one library serves every show.
 
 Loaded at startup in this order; a later source replaces an earlier profile with the same `id`:
 
-1. **Built-in** generic profiles, embedded in GhostShow (`GhostShow.Core/Fixtures/Profiles/*.json`): dimmer,
+1. **Built-in** generic profiles, embedded in GhostShow (`libs/GhostShow.Core/Fixtures/Profiles/*.json`): dimmer,
    4-channel dimmer pack, incandescent/halogen lamp, RGB, RGBW, RGBWA+UV, UV blacklight, strobe, fog machine, hazer,
    snow machine, bubble machine, and 4- and 8-channel relay packs for props. These cover haunt staples that the QLC+
    library barely has (it has 1 snow machine, no bubble machines and no relay packs).

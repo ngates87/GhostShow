@@ -133,10 +133,11 @@ The address map (`Controls/PatchMap`) is drawn directly rather than built from 5
 stay cheap. The gap arithmetic it shows (used channels, free ranges, collisions, openings) is `UniverseUsage` in
 Core, where it is unit tested.
 
-**Unsaved changes.** New, Open and closing the window go through `UnsavedChangesGuard`. With unsaved show
-changes it asks Save / Don't save / Cancel, and only proceeds once the show is saved or the user chose to discard.
-A save that doesn't happen (e.g. Save As cancelled) cancels the action. Machine settings (hardware assignments) are
-saved as soon as they change.
+**Saving show changes.** Edits to a saved show auto-save on the show computer after a short idle delay. Saves are
+serialized; if another edit arrives while a snapshot is being written, the show remains dirty and another save writes
+the latest state. Save / Ctrl+S still saves immediately. A new show or an older single-file show needs its first folder
+chosen on the show computer. New, Open and closing the window still go through `UnsavedChangesGuard` when a show has
+unsaved changes. Machine settings (hardware assignments) are saved as soon as they change.
 
 ## Editing the show
 
@@ -160,8 +161,10 @@ The timeline editor edits through it. Its code changes the model directly, as be
 The objects end up the same instances (a selected handle stays selected). Each edit names what it touches, either an
 object and everything in it, or only an object's own properties and lists, because comparing a whole big timeline
 takes tens of milliseconds and a clip or envelope well under one. The timeline tree and the show buttons go through it
-too, on the show's own history. Undo takes back the latest of that and the open timeline's. Only the setup screens
-(fixtures, universes) still change the model directly, with `ShowSession.Apply` (see [plan-remote.md](plan-remote.md)).
+too, on the show's own history. Undo takes back the latest of that and the open timeline's. The Fixtures and DMX setup screens edit through it too, each with Undo and Redo on the show's history
+(`ShowHistoryViewModel`), so Undo there never takes back a timeline edit you can't see. They follow the show however it
+changes (`FixtureSetupViewModel.Sync`, `OutputsViewModel.Sync`), and `ShowSession` re-applies the patch by itself
+after a fixture or universe edit. Custom fixture types aren't part of the show: they're files on the show computer.
 
 ## Playback on the show computer
 

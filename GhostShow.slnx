@@ -1,11 +1,17 @@
 <Solution>
-  <Project Path="GhostShow.App.Tests/GhostShow.App.Tests.csproj" />
-  <Project Path="GhostShow.App/GhostShow.App.csproj" />
-  <Project Path="GhostShow.Audio/GhostShow.Audio.csproj" />
-  <Project Path="GhostShow.Benchmarks/GhostShow.Benchmarks.csproj" />
-  <Project Path="GhostShow.Cli/GhostShow.Cli.csproj" />
-  <Project Path="GhostShow.Core/GhostShow.Core.csproj" />
-  <Project Path="GhostShow.Dmx/GhostShow.Dmx.csproj" />
-  <Project Path="GhostShow.Tests/GhostShow.Tests.csproj" />
-  <Project Path="GhostShow.Web/GhostShow.Web.csproj" />
+  <Folder Name="/apps/">
+    <Project Path="apps/GhostShow.App/GhostShow.App.csproj" />
+    <Project Path="apps/GhostShow.Cli/GhostShow.Cli.csproj" />
+  </Folder>
+  <Folder Name="/libs/">
+    <Project Path="libs/GhostShow.Audio/GhostShow.Audio.csproj" />
+    <Project Path="libs/GhostShow.Core/GhostShow.Core.csproj" />
+    <Project Path="libs/GhostShow.Dmx/GhostShow.Dmx.csproj" />
+    <Project Path="libs/GhostShow.Web/GhostShow.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/GhostShow.App.Tests/GhostShow.App.Tests.csproj" />
+    <Project Path="tests/GhostShow.Benchmarks/GhostShow.Benchmarks.csproj" />
+    <Project Path="tests/GhostShow.Tests/GhostShow.Tests.csproj" />
+  </Folder>
 </Solution>

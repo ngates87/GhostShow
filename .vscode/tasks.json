@@ -1,0 +1,24 @@
+{
+  // What F5 runs before starting the app: see dev.cs.
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "build everything",
+      "type": "process",
+      "command": "dotnet",
+      "args": ["run", "dev.cs", "--", "--build-only"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": "$msCompile",
+      "group": { "kind": "build", "isDefault": true }
+    },
+    {
+      "label": "build everything but the full app",
+      "type": "process",
+      "command": "dotnet",
+      "args": ["run", "dev.cs", "--", "--build-only", "--skip-browser"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": "$msCompile",
+      "group": "build"
+    }
+  ]
+}

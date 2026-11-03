@@ -24,7 +24,7 @@ To export or back up a show, copy or zip the whole folder.
 - **Every timeline has a permanent ID** inside its file. Anything that refers to a timeline uses the ID, so renaming
   or moving it never breaks a reference. A timeline file copied by hand outside the app gets a new ID when the show
   is opened (and keeps it once saved).
-- **Changes in the tree apply to the files on Save,** like every other change: new, renamed, moved and deleted
+- **Changes in the tree auto-save** after a short pause, like every other show edit: new, renamed, moved and deleted
   timelines and folders. Saving writes only the timelines that changed, each file atomically (a failed save never
   leaves a half-written file). It only deletes or moves files it loaded or wrote itself; anything else in the folder
   (notes, backups, a timeline file it couldn't read) is left alone, and a deleted folder that still holds such files
@@ -121,9 +121,9 @@ moment apart, a "start zone" timeline starts its rooms, a show's start timeline 
 
 ### Built-in effects
 
-A lighting clip can be a built-in effect instead of a Level Control (Effects ▾ on the toolbar, or right-click an
+A lighting clip can be a built-in effect instead of a Level Control (drag it from the Effects list under the timelines onto a lighting track, Effects ▾ on the toolbar, or right-click an
 empty part of a lighting row → Add effect here ▸): **Lightning** (strikes of cold flickering flashes), **Brown out**
-(the power sags, stutters and drops out, then recovers), **Explosion** (a blinding flash, then a dying fireball glow
+(the power sags, stutters and drops out, then recovers; it dims what's lit, so the lights must be up when it starts, from an earlier clip or the channel's starting level, and in the dark the clip says so), **Explosion** (a blinding flash, then a dying fireball glow
 in the dark), **Failing bulb** (mostly on, with stuttering drop-outs), **Fire** (a warm restless flicker),
 **Strobe** (hard flashes in the dark), **Heartbeat** (lub-dub pulses of colour) and **Police lights** (red and blue
 double flashes).

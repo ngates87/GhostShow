@@ -1,0 +1,26 @@
+{
+  // F5 in VS Code. These need Microsoft's C# extension.
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "GhostShow",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build everything",
+      "program": "${workspaceFolder}/apps/GhostShow.App/bin/Debug/net10.0/ghostshow-app.dll",
+      "cwd": "${workspaceFolder}",
+      "console": "internalConsole"
+    },
+    {
+      // After editing a screen or Core, the first one rebuilds the full app, about 5 minutes. This one doesn't, so /app/
+      // is whatever was last built.
+      "name": "GhostShow (skip the full app)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build everything but the full app",
+      "program": "${workspaceFolder}/apps/GhostShow.App/bin/Debug/net10.0/ghostshow-app.dll",
+      "cwd": "${workspaceFolder}",
+      "console": "internalConsole"
+    }
+  ]
+}

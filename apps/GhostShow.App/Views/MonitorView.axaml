@@ -1,0 +1,20 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:GhostShow.App.ViewModels"
+             xmlns:controls="using:GhostShow.App.Controls"
+             x:Class="GhostShow.App.Views.MonitorView"
+             x:DataType="vm:LightingViewModel">
+  <DockPanel Margin="0,12">
+    <StackPanel DockPanel.Dock="Top" Spacing="6" Margin="0,0,0,8">
+      <StackPanel Orientation="Horizontal" Spacing="8">
+        <TextBlock Text="DMX monitor" Classes="heading" VerticalAlignment="Center" />
+        <ComboBox ItemsSource="{Binding UniverseNumbers}" SelectedItem="{Binding ActiveUniverseChoice}" MinWidth="80" Margin="12,0,0,0" />
+      </StackPanel>
+      <TextBlock Text="{Binding Monitor.Source}" Opacity="0.75" />
+    </StackPanel>
+    <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+      <controls:DmxMonitorGrid Values="{Binding Monitor.Values}" ChangedAt="{Binding Monitor.ChangedAt}"
+                               Revision="{Binding Monitor.Revision}" Fill="{DynamicResource SystemControlHighlightAccentBrush}" />
+    </ScrollViewer>
+  </DockPanel>
+</UserControl>

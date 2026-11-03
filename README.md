@@ -3,24 +3,42 @@
 Open-source, cross-platform show control for haunted houses: DMX lighting (fixtures, patching, manual control) and
 audio, played together from timelines. Built with C# / .NET 10 (LTS), Avalonia and SoundFlow.
 
+## Folders
+
+| Folder | What's in it |
+|---|---|
+| `apps/` | The programs: `GhostShow.App` (desktop), `GhostShow.Browser` (the same app for browsers), `GhostShow.Cli` (command line) |
+| `libs/` | The parts they're built from: `GhostShow.Core`, `GhostShow.Dmx`, `GhostShow.Audio`, `GhostShow.Web` |
+| `tests/` | `GhostShow.Tests`, `GhostShow.App.Tests`, `GhostShow.Benchmarks` |
+| `installer/` | The Windows installer |
+| `docs/` | Documentation |
+
 ## Build, test, run
 
 Requires the .NET 10 SDK. Node.js 20.19 or newer builds the web remote's page (without it the build still works,
 and the page says it wasn't built).
 
+    dotnet run dev.cs                                         # build everything, then start the desktop app
     dotnet build
     dotnet test
-    dotnet run --project GhostShow.App                   # the desktop app
+    dotnet run --project apps/GhostShow.App                   # the desktop app
+
+`dev.cs` works the same on Windows and Linux, and F5 in VS Code uses it too (with Microsoft's C# extension). Unlike a
+plain `dotnet build`, it also builds the full app for browsers (`/app/`), which needs .NET's WebAssembly tools. It only
+rebuilds that when it's out of date, which takes about 5 minutes; `dotnet run dev.cs -- --skip-browser` leaves it as it is.
 
 Command line:
 
-    dotnet run --project GhostShow.Cli -- detect         # find USB DMX adapters and their serial numbers
-    dotnet run --project GhostShow.Cli -- soak --minutes 30 [--opendmx /dev/ttyUSB0 --dark]
-    dotnet run --project GhostShow.Cli -- soak-playback --minutes 30
-    dotnet run --project GhostShow.Cli -- demo Demo      # sample show folder (put a thunder.wav in Demo/audio/)
-    dotnet run --project GhostShow.Cli -- run Demo "Rooms/Lightning Room" --dry --silent
+    dotnet run --project apps/GhostShow.Cli -- detect         # find USB DMX adapters and their serial numbers
+    dotnet run --project apps/GhostShow.Cli -- soak --minutes 30 [--opendmx /dev/ttyUSB0 --dark]
+    dotnet run --project apps/GhostShow.Cli -- soak-playback --minutes 30
+    dotnet run --project apps/GhostShow.Cli -- demo Demo      # sample show folder (put a thunder.wav in Demo/audio/)
+    dotnet run --project apps/GhostShow.Cli -- run Demo "Rooms/Lightning Room" --dry --silent
 
-Benchmarks: `dotnet run -c Release --project GhostShow.Benchmarks -- --filter '*'`
+Benchmarks: `dotnet run -c Release --project tests/GhostShow.Benchmarks -- --filter '*'`
+
+Windows installer: `installer/build.sh 1.2.0` writes `artifacts/GhostShow-Setup-1.2.0.exe`. See
+[docs/windows-installer.md](docs/windows-installer.md).
 
 ## The app
 
@@ -63,5 +81,6 @@ or with `ghostshow library download`), the QLC+ library (~1,400) if QLC+ happens
 - [Timelines and playback](docs/timeline.md): model, playback rules, transport, editing while playing, audio, the Timeline screen
 - [Remote access](docs/remote.md): running the show from an iPad, laptop or phone on the show's network
 - [Hardware](docs/hardware.md): Open DMX setup, testing procedure, troubleshooting
+- [Windows installer](docs/windows-installer.md): building it, what it does on the show computer, what to expect
 - [Fixture profiles](docs/fixture-profiles.md): profile format, QLC+ import, patch validation
 - [Performance](docs/performance.md): targets, method, measured results, known limitations

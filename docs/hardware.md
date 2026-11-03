@@ -42,7 +42,7 @@ confusion.
 ## Setup
 
 ### Linux
-1. Plug in the adapter. `ghostshow detect` (or **Lighting → DMX setup → Scan for adapters** in the app) should list it, e.g.
+1. Plug in the adapter. `ghostshow detect` (or **Lighting → DMX setup → Scan again** in the app) should list it, e.g.
    `/dev/ttyUSB0  (Open DMX, S/N AB0PFDWZ)`.
 2. Permission: you must be in the `dialout` group (`sudo usermod -aG dialout $USER`, then log out and in). Without
    it, the port shows as in use or access denied.
@@ -60,7 +60,7 @@ The adapter appears as `/dev/cu.usbserial-<serial number>`; GhostShow reads the 
 
 ## In the app
 
-**Lighting → DMX setup** lists the show's universes. For each one, choose its device: the simulator or a detected adapter.
+**Lighting → DMX setup** lists the show's universes. For each one, choose its device: the simulator or a detected adapter. A laptop's browser shows the same screen: the show computer still does the detecting, and the device you pick is the one plugged into the show computer.
 The choice is saved for this computer (`machine.json`), not in the show. Status shows Connected with the live frame
 rate, or the fault and that it's retrying.
 
