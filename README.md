@@ -18,9 +18,14 @@ audio, played together from timelines. Built with C# / .NET 10 (LTS), Avalonia a
 Requires the .NET 10 SDK. Node.js 20.19 or newer builds the web remote's page (without it the build still works,
 and the page says it wasn't built).
 
+    dotnet run dev.cs                                         # build everything, then start the desktop app
     dotnet build
     dotnet test
     dotnet run --project apps/GhostShow.App                   # the desktop app
+
+`dev.cs` works the same on Windows and Linux, and F5 in VS Code uses it too (with Microsoft's C# extension). Unlike a
+plain `dotnet build`, it also builds the full app for browsers (`/app/`), which needs .NET's WebAssembly tools. It only
+rebuilds that when it's out of date, which takes about 5 minutes; `dotnet run dev.cs -- --skip-browser` leaves it as it is.
 
 Command line:
 

@@ -53,8 +53,8 @@ how many devices are connected.
 Open `http://<address>:7700/app/`, or "Open the full app" on the simple remote. `/app/?open=Folder/Timeline` opens a
 timeline at start, so it can be bookmarked. The top row switches between Timeline, Lighting and Audio; Blackout and
 warnings stay visible across pages. The show's buttons are available along the bottom. The Windows installer includes the
-full app. From source, it's only there if it has been built: `apps/GhostShow.Browser/publish.sh` (it needs the WebAssembly
-tools).
+full app. From source, it's only there if it has been built on that computer, and Remote Access doesn't offer it otherwise:
+`dotnet run dev.cs` at the top of the repo builds it (it needs the WebAssembly tools).
 
 Lighting is the desktop's own section, screen for screen:
 - **DMX setup:** the show's universes, and which device each goes out on. **The hardware stays on the show computer:**

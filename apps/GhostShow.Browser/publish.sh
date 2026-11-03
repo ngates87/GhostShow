@@ -6,6 +6,7 @@
 #
 # Always AOT-compiled: the interpreted build is too slow to edit with (see docs/plan-remote.md, "Measured").
 # Starts clean: publishing over an old build leaves its files behind, and the folder keeps growing.
+# dev.cs at the top of the repo does this same build, for Windows too: keep the two in step.
 set -euo pipefail
 cd "$(dirname "$0")"
 
