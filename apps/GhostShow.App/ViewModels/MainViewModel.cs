@@ -452,7 +452,7 @@ public sealed partial class MainViewModel : ObservableObject
     internal async Task<string?> SaveForDeviceAsync()
     {
         if (_session.FilePath is null || _session.IsSingleFileShow)
-            return "This show hasn't been saved as a folder yet. Choose where on the show computer (File → Save).";
+            return "This show hasn't got a name yet: use File → Save.";
         return await WriteShowAsync(folder: null) ? null : "Couldn't save the show: see the show computer.";
     }
 

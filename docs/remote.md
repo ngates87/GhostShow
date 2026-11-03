@@ -7,7 +7,7 @@ the device is a remote. There are two pages:
   "Editing from the full app" below.
 - **The simple remote** (the plain address): run the show, on anything down to a phone.
 
-See [plan-remote.md](plan-remote.md) for what's coming (the remaining screens: audio, buttons, the file menu).
+See [plan-remote.md](plan-remote.md) for what's coming (the remaining screens).
 
 ## Using it
 
@@ -72,9 +72,12 @@ Audio shows the show computer's devices and the files used by the show; its sett
   It plays straight away, and the desktop and other devices see it live.
 - **Undo is shared.** There's one history per timeline, whichever device made the edit: Undo on the laptop can take
   back an edit made on the desktop, and the other way round.
-- **There's no Save button.** Edits save themselves on the show computer about half a second after you pause, and the
-  bottom corner shows Saving… and Saved. Ctrl+S saves straight away. A show that has never been saved has to be saved
-  on the show computer first, since that's where its folder is chosen; the corner says so until then.
+- **Edits save themselves** on the show computer about half a second after you pause, once the show has a name, and the
+  bottom corner shows Saving… and Saved. Ctrl+S saves straight away.
+- **The File menu:** New, Open, Save and Rename. A new show has no name until File → Save (or Ctrl+S) asks for one. Shows
+  made this way are kept in `Documents/GhostShow/<show name>` on the show computer, and Open lists the shows in that
+  folder. Rename also renames the show's folder, wherever it is. Leaving a show that
+  has never been saved asks first; any other is saved before it's left.
 - **The Envelope Editor** opens over the timeline screen, since a browser page can't open a second window. Close goes
   back to the timeline.
 - **If the connection drops,** the bar along the bottom says so. Edits made until it's back aren't kept: when it
@@ -123,6 +126,7 @@ Audio shows the show computer's devices and the files used by the show; its sett
   - `levels`: the levels of the universe a device asked for with `watchLevels`, up to 20 times a second while they
     change: `levels`, `controlled` (by the timeline, 1 or 0) and `sent` (as last sent to the output), 512 bytes each as
     base64, and `source` (where `sent` came from, for the monitor). A slow device gets only the newest.
+  - `shows`: the names of the shows a device can open, answering `listShows`.
   - `result`: the answer to a command.
   - `history`: what Undo and Redo would do next on this device (for its Undo button's label), after every change: for its
     timeline (`undo`, `redo`) and for the show's own edits (`showUndo`, `showRedo`).
@@ -144,6 +148,8 @@ Audio shows the show computer's devices and the files used by the show; its sett
     `apps/GhostShow.Browser/Remote/RemoteEdits.cs` for the browser's side.
   - **Undo, redo, save:** `undo` and `redo` act for the timeline the device watches, or with `show: true`, on the show's
     own edits only (a setup screen, where a timeline's edits can't be seen); `save` saves on the show computer.
+  - **File menu:** `listShows`; `newShow` and `openShow` (`name`), with `discardUnsaved: true` once the person agreed to
+    lose a show that was never saved; `saveShowAs` (`name`, a show's first save); `renameShow` (`name`).
   - **Fixture library:** `saveProfile` (`profile`, as JSON) and `deleteProfile` (`profile`, its ID) change custom fixture
     types on the show computer; `downloadLibrary` starts downloading the online library. It isn't waited for, since a
     device's commands run one at a time and Blackout mustn't wait behind it.
@@ -157,7 +163,7 @@ Audio shows the show computer's devices and the files used by the show; its sett
     about 30 times a second.
   - **Where they run:** on the show computer's UI thread, through the same view models as the desktop's controls
     (`IShowControl`).
-  - **Roles:** the show computer checks the device's role for each command. `open`, `edit`, `undo`, `redo`, `save`,
+  - **Roles:** the show computer checks the device's role for each command. `open`, `edit`, `undo`, `redo`, `save`, the file menu's commands,
     `saveProfile`, `deleteProfile`, `downloadLibrary`, `scanOutputs`, `assignOutput` and the commands that set levels are
     editor-only; an operator may run the show but not change it.
 - **The fixture library:** `GET /api/library?token=…` gives the whole library, one profile per line of JSON, compressed

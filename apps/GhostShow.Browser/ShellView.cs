@@ -43,6 +43,7 @@ sealed class ShellView : Border
     readonly ContentControl _page = new();
     readonly TextBlock _showName = new() { FontSize = 16, FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center, Margin = new(8, 4) };
     readonly StackPanel _buttons = new() { Orientation = Orientation.Horizontal, Spacing = 6 };
+    readonly FileMenu _fileMenu;
     readonly RemoteFixtureLibrary _library;
     readonly RemoteOutputSetup _outputSetup;
     readonly RemoteLiveLevels _levels;
@@ -65,6 +66,7 @@ sealed class ShellView : Border
         _audioDevices = new AudioDeviceList(_link);
         _edits = new RemoteEdits(_session.Document, _link);
         _edits.Notice += ShowNotice;
+        _fileMenu = new FileMenu(_link, ShowNotice, () => _session.Project.Name);
         _library = new RemoteFixtureLibrary(_session, _link, BuiltInProfiles);
         _outputSetup = new RemoteOutputSetup(_link);
         _levels = new RemoteLiveLevels(_session, _link);
@@ -111,7 +113,9 @@ sealed class ShellView : Border
 
         _who.Text = $"{message["device"]?["name"]} ({message["device"]?["role"]})";
         _sentAudioDevices = message["audioDevices"] as JsonArray;
-        _saveState.IsVisible = message["device"]?["role"]?.GetValue<string>() != "operator";
+        bool isOperator = message["device"]?["role"]?.GetValue<string>() == "operator";
+        _saveState.IsVisible = !isOperator;
+        _fileMenu.Button.IsVisible = !isOperator;
         _edits.OnHello();
         _playback.Reset();
         _library.UseProfilesOfTheShow(message["profiles"] as JsonArray);
@@ -148,8 +152,10 @@ sealed class ShellView : Border
     {
         var root = new DockPanel();
         var header = new DockPanel { [DockPanel.DockProperty] = Dock.Top };
+        DockPanel.SetDock(_fileMenu.Button, Dock.Left);
         DockPanel.SetDock(_showName, Dock.Left);
         DockPanel.SetDock(_blackout, Dock.Right);
+        header.Children.Add(_fileMenu.Button);
         header.Children.Add(_showName);
         header.Children.Add(_blackout);
         header.Children.Add(_sections);
@@ -176,7 +182,7 @@ sealed class ShellView : Border
             if (_selectedPage == "Lighting") _ = _library.LoadAsync();   // the type picker needs the whole library: only fetched once it's wanted
             RefreshPage();
         };
-        Child = root;
+        Child = new Panel { Children = { root, _fileMenu.Questions } };
         RefreshPage();
     }
 
@@ -288,7 +294,7 @@ sealed class ShellView : Border
     void OnKeyDown(object? sender, Avalonia.Input.KeyEventArgs e)
     {
         if (e.Key != Avalonia.Input.Key.S || !e.KeyModifiers.HasFlag(Avalonia.Input.KeyModifiers.Control)) return;
-        _edits.Save();
+        _fileMenu.Save();
         e.Handled = true;
     }
 
@@ -340,8 +346,9 @@ sealed class ShellView : Border
         bool unsaved = message["unsaved"]?.GetValue<bool>() == true;
         bool needsFirstSave = message["needsFirstSave"]?.GetValue<bool>() == true;
         _saveState.Text = !unsaved ? "Saved"
-            : needsFirstSave ? "Not saved: choose its folder on the show computer (File → Save)"
+            : needsFirstSave ? "Not saved: File → Save gives it a name"
             : "Saving…";
+        _fileMenu.Update(unsaved, needsFirstSave);
         if (unsaved != _unsaved)
         {
             _unsaved = unsaved;

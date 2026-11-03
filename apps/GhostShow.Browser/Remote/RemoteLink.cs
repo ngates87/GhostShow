@@ -48,6 +48,9 @@ sealed partial class RemoteLink
     /// <summary>"audioDevices": the show computer's audio devices changed.</summary>
     public event Action<JsonObject>? AudioDevices;
 
+    /// <summary>"shows": the shows that can be opened, answering "listShows".</summary>
+    public event Action<JsonObject>? Shows;
+
     /// <summary>"result": the answer to a command.</summary>
     public event Action<JsonObject>? Result;
 
@@ -157,6 +160,9 @@ sealed partial class RemoteLink
                     break;
                 case "audioDevices":
                     AudioDevices?.Invoke(json);
+                    break;
+                case "shows":
+                    Shows?.Invoke(json);
                     break;
                 case "result":
                     if (json["id"]?.GetValue<int>() is { } id && _waiting.Remove(id, out var answer))

@@ -46,6 +46,11 @@ public sealed class RemoteServerTests : IAsyncLifetime
         public string? Open(Guid timelineId) => Did($"open {timelineId}");
         public string? TestSound(string? device) => Did($"testSound {device}");
         public Task<string?> SaveAsync() => Task.FromResult(Did("save"));
+        public IReadOnlyList<string> SavedShows() => ["Haunt 2026", "Test show"];
+        public Task<string?> NewShowAsync(bool discardUnsaved) => Task.FromResult(Did($"new {discardUnsaved}"));
+        public Task<string?> OpenShowAsync(string name, bool discardUnsaved) => Task.FromResult(Did($"openShow {name} {discardUnsaved}"));
+        public Task<string?> SaveShowAsAsync(string name) => Task.FromResult(Did($"saveAs {name}"));
+        public Task<string?> RenameShowAsync(string name) => Task.FromResult(Did($"rename {name}"));
     }
 
     /// <summary>Sound files, measured when the test says so.</summary>
@@ -579,6 +584,39 @@ public sealed class RemoteServerTests : IAsyncLifetime
         Assert.True((await CommandAsync(socket, new { action = "save" }))["ok"]!.GetValue<bool>());
 
         Assert.Equal(["save"], _host.Commands.Calls);
+    }
+
+    [Fact]
+    public async Task A_device_can_list_start_open_name_and_rename_shows()
+    {
+        using var socket = await ConnectAsync(await PairAsync());
+
+        await socket.SendAsync(Encoding.UTF8.GetBytes("""{"type":"command","id":99,"action":"listShows"}"""), WebSocketMessageType.Text, true, TestContext.Current.CancellationToken);
+        var shows = await NextAsync(socket, "shows");
+        Assert.Equal(["Haunt 2026", "Test show"], shows["shows"]!.AsArray().Select(n => n!.GetValue<string>()));
+
+        await CommandAsync(socket, new { action = "newShow", discardUnsaved = true });
+        await CommandAsync(socket, new { action = "openShow", name = "Test show" });
+        await CommandAsync(socket, new { action = "saveShowAs", name = "Scares" });
+        await CommandAsync(socket, new { action = "renameShow", name = "Scares 2" });
+
+        Assert.Equal(["new True", "openShow Test show False", "saveAs Scares", "rename Scares 2"], _host.Commands.Calls);
+    }
+
+    [Theory]
+    [InlineData("listShows")]
+    [InlineData("newShow")]
+    [InlineData("openShow")]
+    [InlineData("saveShowAs")]
+    [InlineData("renameShow")]
+    public async Task An_operator_cant_use_the_file_menu(string action)
+    {
+        using var socket = await ConnectAsync(await PairAsync(role: "operator"));
+
+        var result = await CommandAsync(socket, new { action, name = "Scares" });
+
+        Assert.False(result["ok"]!.GetValue<bool>());
+        Assert.Empty(_host.Commands.Calls);
     }
 
     [Theory]

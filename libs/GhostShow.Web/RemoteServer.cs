@@ -310,7 +310,7 @@ public sealed partial class RemoteServer : IAsyncDisposable
     // ---- commands ----
 
     /// <summary>What only an editor may do; an operator may run the show (play, stop, buttons, Blackout) but not change it.</summary>
-    static readonly HashSet<string> EditorOnly = ["open", "edit", "undo", "redo", "save", "saveProfile", "deleteProfile", "downloadLibrary",
+    static readonly HashSet<string> EditorOnly = ["open", "edit", "undo", "redo", "save", "listShows", "newShow", "openShow", "saveShowAs", "renameShow", "saveProfile", "deleteProfile", "downloadLibrary",
                                                   "scanOutputs", "assignOutput", "setChannel", "clearUniverse", "setFixtureChannel", "setFixtureControl"];
 
     /// <summary>A message from a device: a command, run on the show's thread, answered with a result.</summary>
@@ -338,6 +338,11 @@ public sealed partial class RemoteServer : IAsyncDisposable
                 error = action switch
                 {
                     "save" => await await _host.InvokeAsync(_host.Control.SaveAsync),   // saving takes a moment: the show's thread isn't held up
+                    "listShows" => await ListShows(connection),
+                    "newShow" => await await _host.InvokeAsync(() => _host.Control.NewShowAsync(Discard(message))),
+                    "openShow" => await await _host.InvokeAsync(() => _host.Control.OpenShowAsync(ShowName(message), Discard(message))),
+                    "saveShowAs" => await await _host.InvokeAsync(() => _host.Control.SaveShowAsAsync(ShowName(message))),
+                    "renameShow" => await await _host.InvokeAsync(() => _host.Control.RenameShowAsync(ShowName(message))),
                     "saveProfile" or "deleteProfile" or "downloadLibrary" => await await _host.InvokeAsync(() => LibraryCommandAsync(message, action)),
                     _ when LightingActions.Contains(action) => await _host.InvokeAsync(() => LightingCommand(connection, action, message)),
                     _ => await _host.InvokeAsync(() => Execute(connection, action, message)),
@@ -360,6 +365,22 @@ public sealed partial class RemoteServer : IAsyncDisposable
             ["ok"] = error is null,
             ["error"] = error,
         }.ToJsonString());
+    }
+
+    static string ShowName(JsonObject message) => message["name"]?.GetValue<string>() ?? throw new FormatException("No name.");
+
+    static bool Discard(JsonObject message) => message["discardUnsaved"]?.GetValue<bool>() == true;
+
+    /// <summary>The "listShows" command: sends the device the shows it can open.</summary>
+    async Task<string?> ListShows(RemoteConnection connection)
+    {
+        var names = await _host.InvokeAsync(_host.Control.SavedShows);
+        connection.Send(new JsonObject
+        {
+            ["type"] = "shows",
+            ["shows"] = new JsonArray([.. names.Select(name => JsonValue.Create(name))]),
+        }.ToJsonString());
+        return null;
     }
 
     string? Execute(RemoteConnection connection, string action, JsonObject message)

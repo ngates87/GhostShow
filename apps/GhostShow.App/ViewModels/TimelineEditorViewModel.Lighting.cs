@@ -5,6 +5,9 @@ using GhostShow.Core.Timeline;
 
 namespace GhostShow.App.ViewModels;
 
+/// <summary>One entry of the effects list, dragged onto a lighting track. No kind: a Level Control clip.</summary>
+public sealed record EffectChoice(string Name, string Description, EffectKind? Kind, TimeSpan Length);
+
 /// <summary>A track's row in the lanes area. The header list and the canvas both lay out from these, so they always line up.</summary>
 public sealed record TimelineRow(int TrackIndex, TrackRowViewModel Track, double Top, double Height)
 {
@@ -293,18 +296,39 @@ public sealed partial class TimelineEditorViewModel
         return clip;
     }
 
+    /// <summary>What the effects list offers: Level Control, then the built-in effects (VenueMagic's library of fixture effects).</summary>
+    public static IReadOnlyList<EffectChoice> EffectChoices { get; } =
+    [
+        new(LightingClip.DefaultName, "Handles you set yourself", null, new LightingClip().Length),
+        .. EffectInfo.All.Select(info => new EffectChoice(info.Name, info.Description, info.Kind, info.DefaultLength)),
+    ];
+
+    /// <summary>A choice from the effects list, let go over a lighting track.</summary>
+    public void DropEffect(EffectChoice choice, TrackRowViewModel row, TimeSpan time)
+    {
+        if (choice.Kind is { } kind) AddEffectAt(row, time, kind);
+        else AddClipAt(row, time);
+    }
+
+    /// <summary>Asks the screen to scroll a time into view. The Effects menu adds at the playhead, which may be out of view.</summary>
+    public event Action<TimeSpan>? RevealRequested;
+
     /// <summary>The toolbar's Effects menu: the effect at the playhead, on the selected lighting track (or the first one).</summary>
     [RelayCommand]
     void AddEffect(EffectKind kind)
     {
-        if (EffectsTrack() is { } row) AddEffectAt(row, SnapTime(_playback.Position), kind);
+        if (EffectsTrack() is not { } row) return;
+        AddEffectAt(row, SnapTime(_playback.Position), kind);
+        RevealRequested?.Invoke(_playback.Position);
     }
 
     /// <summary>The Effects menu's Level Control: a clip at the playhead, on the selected lighting track (or the first one).</summary>
     [RelayCommand]
     void AddLevelControl()
     {
-        if (EffectsTrack() is { } row) AddClipAt(row, SnapTime(_playback.Position));
+        if (EffectsTrack() is not { } row) return;
+        AddClipAt(row, SnapTime(_playback.Position));
+        RevealRequested?.Invoke(_playback.Position);
     }
 
     TrackRowViewModel? EffectsTrack() => SelectedTrack is { IsLighting: true } selected ? selected : Tracks.FirstOrDefault(t => t.IsLighting);

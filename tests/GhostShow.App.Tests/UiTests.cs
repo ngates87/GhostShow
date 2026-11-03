@@ -19,6 +19,51 @@ public class UiTests
 {
     static TimeSpan S(double seconds) => TimeSpan.FromSeconds(seconds);
 
+    /// <summary>Saving and opening finish off the UI thread, so the test keeps the UI running until they have.</summary>
+    static string? Finish(Task<string?> command)
+    {
+        while (!command.IsCompleted) WindowRig.Pump(20);
+        return command.Result;
+    }
+
+    [Fact]
+    public Task A_show_made_on_a_device_can_be_named_renamed_and_opened_again() => Ui.Run(() =>
+    {
+        using var rig = new WindowRig();
+        var app = rig.ViewModel;
+        rig.ViewModel.IsDirty = true;
+        Assert.NotNull(Finish(app.NewShowForDeviceAsync(discardUnsaved: false)));   // it was never saved: the person has to agree
+
+        Assert.Null(Finish(app.NewShowForDeviceAsync(discardUnsaved: true)));
+        Assert.Null(Finish(app.SaveShowAsForDeviceAsync("Scares")));
+        Assert.Equal("Scares", rig.Session.Project.Name);
+        Assert.Equal(["Scares"], app.SavedShowsForDevice());
+        Assert.NotNull(Finish(app.SaveShowAsForDeviceAsync("Again")));   // it has a name now: Rename is for that
+
+        Assert.Null(Finish(app.RenameShowForDeviceAsync("Big scares")));
+        Assert.Equal(["Big scares"], app.SavedShowsForDevice());
+        Assert.Equal("Big scares", Path.GetFileName(rig.Session.ShowFolder));
+
+        Assert.Null(Finish(app.NewShowForDeviceAsync(discardUnsaved: false)));
+        Assert.Null(rig.Session.ShowFolder);
+        Assert.NotNull(Finish(app.SaveShowAsForDeviceAsync("big SCARES")));   // that name is taken, and nothing is overwritten
+        Assert.Null(Finish(app.OpenShowForDeviceAsync("Big scares", discardUnsaved: true)));
+        Assert.Equal("Big scares", rig.Session.Project.Name);
+    });
+
+    [Theory]
+    [InlineData("../outside")]
+    [InlineData("..")]
+    [InlineData("a/b")]
+    [InlineData("")]
+    public Task A_device_cant_name_a_show_outside_the_shows_folder(string name) => Ui.Run(() =>
+    {
+        using var rig = new WindowRig();
+        Assert.NotNull(Finish(rig.ViewModel.SaveShowAsForDeviceAsync(name)));
+        Assert.NotNull(Finish(rig.ViewModel.OpenShowForDeviceAsync(name, discardUnsaved: true)));
+        Assert.Null(rig.Session.ShowFolder);
+    });
+
     [Fact]
     public Task F2_renames_a_timeline_in_the_tree_by_typing() => Ui.Run(() =>
     {
@@ -493,6 +538,25 @@ public class UiTests
         window.Close();
         remote.IsEnabled = false;
         for (var i = 0; i < 100 && remote.IsOn; i++) WindowRig.Pump(50);
+    });
+
+    [Fact]
+    public Task An_effect_dragged_from_the_list_lands_where_it_is_dropped() => Ui.Run(() =>
+    {
+        using var rig = new WindowRig();
+        var entry = rig.Find<Views.TimelineView>().GetVisualDescendants().OfType<Border>().First(b => b.DataContext is EffectChoice { Kind: EffectKind.Strobe });
+        var track = rig.TrackRow("Lighting").Track.Track;
+        int before = track.Events.Count;
+
+        rig.Drag(rig.CenterOf(entry), rig.At(rig.TrackRow("Lighting"), 4));
+
+        var clip = Assert.IsType<LightingClip>(track.Events[before]);
+        Assert.Equal(EffectKind.Strobe, clip.Effect?.Kind);
+        Assert.Equal(4, clip.Start.TotalSeconds, 0.5);
+
+        // Let go anywhere else: nothing is added.
+        rig.Drag(rig.CenterOf(entry), rig.CenterOf(entry));
+        Assert.Equal(before + 1, track.Events.Count);
     });
 
     [Fact]

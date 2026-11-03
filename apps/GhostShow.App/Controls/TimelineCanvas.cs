@@ -136,6 +136,45 @@ public sealed class TimelineCanvas : Control
 
     (TimelineRow? Row, TimeSpan At, string? Refused)? _dropPreview;   // where a timeline being dragged over would land (a ghost diamond), or why it can't
 
+    (TimelineRow Row, TimeSpan At, TimeSpan Length, string Name)? _effectPreview;   // where an entry of the effects list would land
+
+    /// <summary>
+    /// An entry of the effects list being dragged, at a point on this canvas (null: off it): shows the clip it would add.
+    /// Only a lighting track can take one. Returns whether it would land.
+    /// </summary>
+    public bool PreviewEffect(EffectChoice choice, Point? at)
+    {
+        _effectPreview = at is { } point && Editor is { } editor && RowAt(point.Y) is { Track.IsLighting: true } row
+            ? (row, editor.SnapTime(TimeAt(point.X)), choice.Length, choice.Name)
+            : null;
+        InvalidateVisual();
+        return _effectPreview is not null;
+    }
+
+    /// <summary>Let go: adds the clip where the preview showed it, if anywhere.</summary>
+    public void DropEffect(EffectChoice choice)
+    {
+        var preview = _effectPreview;
+        _effectPreview = null;
+        InvalidateVisual();
+        if (preview is { } landing) Editor?.DropEffect(choice, landing.Row.Track, landing.At);
+    }
+
+    void DrawEffectPreview(DrawingContext context)
+    {
+        if (_effectPreview is not { } preview) return;
+        var ghost = new Rect(X(preview.At), RulerHeight + preview.Row.Top, Math.Max(X(preview.Length), EffectGhostMinWidth), preview.Row.Height);
+        context.FillRectangle(EffectGhostFill, ghost, 4);
+        context.DrawRectangle(EffectBorder, ghost.Deflate(0.5), 4);
+        DrawText(context, preview.Name, ghost.TopLeft + new Point(4, 1), ghost.Width - 8, size: 11);
+        context.DrawLine(SnapGuidePen, new Point(ghost.X, RulerHeight), new Point(ghost.X, Bounds.Height));
+    }
+
+    // Zoomed out, a clip's real width can be a few pixels, too little to see while aiming.
+    const double EffectGhostMinWidth = 70;
+
+    static readonly IBrush EffectGhostFill = new SolidColorBrush(Color.FromArgb(120, 0x7E, 0x57, 0xC2));
+
     public TimelineCanvas()
     {
         Focusable = true;
@@ -349,6 +388,7 @@ public sealed class TimelineCanvas : Control
         if (_snapGuide is { } guide) context.DrawLine(SnapGuidePen, new Point(X(guide), RulerHeight), new Point(X(guide), bounds.Height));
         if (_drag == DragKind.Box) context.DrawRectangle(BoxFill, BoxPen, new Rect(_dragStart, _boxEnd).Normalize());
         DrawDropPreview(context, editor);
+        DrawEffectPreview(context);
         DrawRuler(context, step, left, right, bounds.Width);
     }
 
@@ -436,6 +476,9 @@ public sealed class TimelineCanvas : Control
                 double icons = DrawClipIcons(context, clip, rect, titleY);
                 string title = effect ? $"⚡ {clip.Name ?? clip.KindName}" : clip.Name ?? clip.KindName;
                 DrawText(context, title, new Point(rect.X + 4, titleY), Math.Min(labelRoom, rect.Width - 8 - icons), size: 11);
+                // Some effects only dim what's already lit, so in the dark they're a flat line that looks broken: say why.
+                if (effect && levels.Count > 0 && levels.All(channel => (channel.Find(clip)?.Handles ?? clip.EnvelopeFor(channel.Channel.Target, channel.StartLevelOf(clip))).All(p => p.Value == 0)))
+                    DrawText(context, "Nothing to dim: the lights are at 0 here", new Point(rect.X + 4, rect.Y + ClipTitle + 2), Math.Min(labelRoom, rect.Width - 8), size: 11);
                 break;
             }
             case AudioEvent audio:

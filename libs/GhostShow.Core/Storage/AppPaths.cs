@@ -5,7 +5,17 @@ public sealed record AppPaths(string ConfigDirectory)
 {
     /// <summary>Linux: ~/.config/GhostShow. Windows: %APPDATA%\GhostShow. macOS: ~/Library/Application Support/GhostShow.</summary>
     public static AppPaths Default { get; } =
-        new(Path.Combine(FolderPath(Environment.SpecialFolder.ApplicationData), "GhostShow"));
+        new(Path.Combine(FolderPath(Environment.SpecialFolder.ApplicationData), "GhostShow"))
+        {
+            ShowsDirectory = Path.Combine(FolderPath(Environment.SpecialFolder.MyDocuments), "GhostShow"),
+        };
+
+    /// <summary>
+    /// Where a show named from a device is saved, one folder per show: Documents/GhostShow on a real install. A device
+    /// can't choose a place, since the desktop's folder picker is on the show computer. Inside the config folder
+    /// otherwise, so tests never touch the real Documents.
+    /// </summary>
+    public string ShowsDirectory { get; init; } = Path.Combine(ConfigDirectory, "shows");
 
     // Without DoNotVerify, GetFolderPath returns "" when the folder doesn't exist yet (e.g. a fresh ~/.config),
     // which would silently turn every path relative to the working directory.

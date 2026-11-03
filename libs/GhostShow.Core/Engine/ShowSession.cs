@@ -148,6 +148,9 @@ public sealed class ShowSession
         return warnings;
     }
 
+    /// <summary>The show's folder was renamed on disk. Sound files inside it are named relative to it, so they still resolve.</summary>
+    public void FolderMoved(string folder) => FilePath = Path.Combine(Path.GetFullPath(folder), ShowFolderStore.ShowFileName);
+
     /// <summary>The show's folder (for a single-file show, the folder the file is in); relative audio references resolve against it.</summary>
     public string? ShowFolder => FilePath is null ? null : Path.GetDirectoryName(Path.GetFullPath(FilePath));
 

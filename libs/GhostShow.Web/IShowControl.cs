@@ -35,6 +35,24 @@ public interface IShowControl
     /// <summary>Saves the show where it's saved already (choosing a place is done on the show computer).</summary>
     Task<string?> SaveAsync();
 
+    /// <summary>The shows a device can open: the folders in the shows folder (<c>AppPaths.ShowsDirectory</c>).</summary>
+    IReadOnlyList<string> SavedShows();
+
+    /// <summary>
+    /// Starts a new show. The show open now is saved first if it has a folder. If it has never been saved, this is
+    /// refused unless <paramref name="discardUnsaved"/> says the person agreed to lose it.
+    /// </summary>
+    Task<string?> NewShowAsync(bool discardUnsaved);
+
+    /// <summary>Opens a show from the shows folder by name. The show open now is treated as in <see cref="NewShowAsync"/>.</summary>
+    Task<string?> OpenShowAsync(string name, bool discardUnsaved);
+
+    /// <summary>A show's first save: names it and saves it in the shows folder. After this it saves itself.</summary>
+    Task<string?> SaveShowAsAsync(string name);
+
+    /// <summary>Renames the open show and its folder.</summary>
+    Task<string?> RenameShowAsync(string name);
+
     /// <summary>Plays a short test tone on an audio output (null: the default), to check which speakers it is.</summary>
     string? TestSound(string? device);
 }

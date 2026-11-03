@@ -1,6 +1,8 @@
 using System.ComponentModel;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
+using Avalonia.Media;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.VisualTree;
@@ -40,6 +42,10 @@ public partial class TimelineView : UserControl
         TimelineTree.AddHandler(PointerPressedEvent, OnTreePressed, RoutingStrategies.Tunnel);
         TimelineTree.AddHandler(PointerMovedEvent, OnTreeMoved, RoutingStrategies.Tunnel);
         TimelineTree.AddHandler(PointerReleasedEvent, (_, _) => _pressed = null, RoutingStrategies.Tunnel);
+        EffectList.AddHandler(PointerPressedEvent, OnEffectPressed, RoutingStrategies.Tunnel);
+        EffectList.AddHandler(PointerMovedEvent, OnEffectMoved, RoutingStrategies.Tunnel);
+        EffectList.AddHandler(PointerReleasedEvent, OnEffectReleased, RoutingStrategies.Tunnel);
+        EffectList.AddHandler(PointerCaptureLostEvent, (_, _) => EndEffectDrag(), RoutingStrategies.Tunnel);
         TimelineTree.AddHandler(DragDrop.DragOverEvent, OnTreeDragOver);
         TimelineTree.AddHandler(DragDrop.DropEvent, OnTreeDrop);
         // The in-place rename box: focus it when it appears, commit when focus leaves it.
@@ -97,6 +103,7 @@ public partial class TimelineView : UserControl
             _editor.Playback.PropertyChanged -= OnPlaybackChanged;
             _editor.Tree.PropertyChanged -= OnTreeChanged;
             _editor.PropertyChanged -= OnEditorChanged;
+            _editor.RevealRequested -= Reveal;
             _editor.EnvelopeEditorRequested -= ShowEnvelopeEditor;
         }
         _editor = DataContext as TimelineEditorViewModel;
@@ -105,6 +112,7 @@ public partial class TimelineView : UserControl
             _editor.Playback.PropertyChanged += OnPlaybackChanged;
             _editor.Tree.PropertyChanged += OnTreeChanged;
             _editor.PropertyChanged += OnEditorChanged;
+            _editor.RevealRequested += Reveal;
             _editor.EnvelopeEditorRequested += ShowEnvelopeEditor;
         }
     }
@@ -298,6 +306,88 @@ public partial class TimelineView : UserControl
         LanesScroll.UpdateLayout();
         LanesScroll.Offset = LanesScroll.Offset.WithX(Math.Max(0, seconds * editor.PixelsPerSecond - pointerInView));
         e.Handled = true;
+    }
+
+    // ---- dragging from the effects list ----
+    // By following the pointer rather than with the system's drag and drop: it's all inside this screen, and this way it
+    // works the same with a mouse, a finger and in a browser.
+
+    EffectChoice? _draggedEffect;
+
+    void OnEffectPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if ((e.Source as Control)?.DataContext is not EffectChoice choice || !e.GetCurrentPoint(EffectList).Properties.IsLeftButtonPressed) return;
+        _draggedEffect = choice;
+        e.Pointer.Capture(EffectList);
+        ShowEffectChip(choice, e);
+        e.Handled = true;
+    }
+
+    void OnEffectMoved(object? sender, PointerEventArgs e)
+    {
+        if (_draggedEffect is not { } choice) return;
+        bool lands = Canvas.PreviewEffect(choice, PointOnLanes(e));
+        MoveEffectChip(e, lands ? choice.Name : $"{choice.Name}: drop on a lighting track");
+    }
+
+    void OnEffectReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        if (_draggedEffect is not { } choice) return;
+        Canvas.PreviewEffect(choice, PointOnLanes(e));
+        Canvas.DropEffect(choice);
+        _draggedEffect = null;
+        HideEffectChip();
+        e.Pointer.Capture(null);
+    }
+
+    void EndEffectDrag()
+    {
+        if (_draggedEffect is { } choice) Canvas.PreviewEffect(choice, null);
+        _draggedEffect = null;
+        HideEffectChip();
+    }
+
+    // The chip that follows the pointer, so the drag shows from the moment it starts, wherever the pointer is. On the
+    // adorner layer, the window's top layer, because it has to cross from the list to the lanes.
+    Border? _effectChip;
+
+    void ShowEffectChip(EffectChoice choice, PointerEventArgs e)
+    {
+        if (AdornerLayer.GetAdornerLayer(this) is not { } layer) return;
+        _effectChip = new Border
+        {
+            Background = new SolidColorBrush(Color.Parse("#7E57C2")), CornerRadius = new CornerRadius(4), Padding = new Thickness(8, 3),
+            IsHitTestVisible = false, Child = new TextBlock { Foreground = Brushes.White },
+        };
+        layer.Children.Add(_effectChip);
+        MoveEffectChip(e, choice.Name);
+    }
+
+    void MoveEffectChip(PointerEventArgs e, string text)
+    {
+        if (_effectChip is not { Parent: Visual layer, Child: TextBlock label } chip) return;
+        label.Text = text;
+        var at = e.GetPosition(layer);
+        Avalonia.Controls.Canvas.SetLeft(chip, at.X + 14);
+        Avalonia.Controls.Canvas.SetTop(chip, at.Y + 14);
+    }
+
+    void HideEffectChip()
+    {
+        if (_effectChip?.Parent is AdornerLayer layer) layer.Children.Remove(_effectChip);
+        _effectChip = null;
+    }
+
+    /// <summary>The pointer on the canvas, or null if it's outside the part of it in view.</summary>
+    Point? PointOnLanes(PointerEventArgs e) =>
+        new Rect(LanesScroll.Bounds.Size).Contains(e.GetPosition(LanesScroll)) ? e.GetPosition(Canvas) : null;
+
+    /// <summary>Scrolls a time into view, if it's out of view.</summary>
+    void Reveal(TimeSpan time)
+    {
+        if (_editor is not { } editor) return;
+        double x = time.TotalSeconds * editor.PixelsPerSecond, left = LanesScroll.Offset.X, width = LanesScroll.Viewport.Width;
+        if (width > 0 && (x < left || x > left + width - 20)) LanesScroll.Offset = LanesScroll.Offset.WithX(Math.Max(0, x - width * 0.1));
     }
 
     /// <summary>While playing, scroll so the playhead stays visible (it jumps to near the left edge when it runs off).</summary>

@@ -198,6 +198,8 @@ Reassessed 2026-11-01 and 2026-11-02.
 controlling a real fixture through the real adapter, both worked. So did adding a custom fixture type from it, placing a
 fixture of that type and controlling it.
 
+**Tried by hand on Windows, 2026-11-03:** `dotnet run dev.cs` built everything, and Remote Access then offered the full app.
+
 **Never tried at all:** choosing a real adapter from a browser (DMX setup has only picked fake ones), a long unattended run
 with devices connected.
 
@@ -223,7 +225,14 @@ Answered 2026-11-01:
 
 ### The order of work
 
-GhostShow needs to be running for real in about 6 months: around May 2027 (said 2026-11-02, an estimate).
+The priorities for the whole program (said 2026-11-03):
+1. **Timelines (lighting and audio), full remote editing, and the server and clients design.**
+2. **Triggered timelines, with their behaviour right.**
+3. **Everything else is a bonus.**
+
+The haunt is in October 2027, and serious prep starts in August. GhostShow should be fairly ready by about June 2027 (said
+2026-11-03, replacing an earlier estimate of May). Ideas beyond this plan, screens and room tablets, are in
+[plan-screens.md](plan-screens.md).
 
 Small steps; each one leaves the app working.
 
