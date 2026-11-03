@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia;
 using Avalonia.Headless;
 using Avalonia.Input;
+using Avalonia.Input.Platform;
 using Avalonia.VisualTree;
 using GhostShow.App.ViewModels;
 using GhostShow.Core.Fixtures;
@@ -452,6 +453,46 @@ public class UiTests
         rig.ViewModel.CurrentPage = Page.Timeline;
         WindowRig.Pump(50);
         Assert.False(rig.Find<Views.LightingView>().IsEffectivelyVisible);
+    });
+
+    [Fact]
+    public Task Remote_access_shows_its_addresses_as_links_to_themselves() => Ui.Run(() =>
+    {
+        using var rig = new WindowRig();
+        var remote = rig.ViewModel.Remote;
+        var free = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+        free.Start();
+        remote.Port = ((System.Net.IPEndPoint)free.LocalEndpoint).Port;
+        free.Stop();
+        remote.IsEnabled = true;
+        for (var i = 0; i < 100 && !remote.IsOn; i++) WindowRig.Pump(50);
+        Assert.True(remote.IsOn, remote.Status);
+
+        var window = new Views.RemoteWindow { DataContext = remote };
+        window.Show();
+        WindowRig.Pump(50);
+        var links = window.GetVisualDescendants().OfType<HyperlinkButton>().Where(l => l.IsEffectivelyVisible).ToList();
+
+        // Text and destination have to agree: a link that opens somewhere other than what it says is worse than none.
+        Assert.Equal(remote.Addresses, links.Select(l => (string?)l.Content).Take(remote.Addresses.Count));
+        Assert.All(links, l => Assert.Equal((string?)l.Content, l.NavigateUri?.ToString()));
+
+        // A link's text can't be selected, so its menu has to copy it.
+        foreach (var link in links)
+        {
+            link.ContextMenu!.Open(link);
+            WindowRig.Pump(50);
+            ((MenuItem)link.ContextMenu.Items[0]!).RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(MenuItem.ClickEvent));
+            WindowRig.Pump(50);
+            link.ContextMenu.Close();
+            var copied = window.Clipboard!.TryGetTextAsync();
+            while (!copied.IsCompleted) WindowRig.Pump(10);
+            Assert.Equal((string?)link.Content, copied.Result);
+        }
+
+        window.Close();
+        remote.IsEnabled = false;
+        for (var i = 0; i < 100 && remote.IsOn; i++) WindowRig.Pump(50);
     });
 
     [Fact]

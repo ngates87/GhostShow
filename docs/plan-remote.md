@@ -194,8 +194,12 @@ Reassessed 2026-11-01 and 2026-11-02.
 **Passes tests, but nobody has tried it in a browser:**
 - the page reloading the show when another device's edit overtakes one of its own.
 
-**Never tried at all:** a real laptop over Wi-Fi, the real desktop window with a device connected, real DMX hardware
-with a device connected.
+**Tried by hand on another laptop, 2026-11-02, with both computers on Wi-Fi:** starting and stopping a timeline, and
+controlling a real fixture through the real adapter, both worked. So did adding a custom fixture type from it, placing a
+fixture of that type and controlling it.
+
+**Never tried at all:** choosing a real adapter from a browser (DMX setup has only picked fake ones), a long unattended run
+with devices connected.
 
 **Problems found:**
 - **The Audio page is still hand-built, not the desktop's screen,** in `ShellView.cs`, until step 6.
@@ -218,6 +222,8 @@ Answered 2026-11-01:
 - **Desktop feedback:** dragging a timeline onto the event track works, and removing ▶ next to an event was right.
 
 ### The order of work
+
+GhostShow needs to be running for real in about 6 months: around May 2027 (said 2026-11-02, an estimate).
 
 Small steps; each one leaves the app working.
 
@@ -282,7 +288,7 @@ moving-light effects, VS-style docking.
 
 Over this PC's LAN address, in Chromium, 2026-11-02: the full app (AOT) is **15.7 MB** to download, compressed with
 gzip, since browsers don't ask for Brotli on plain `http://`; it would be 50.6 MB uncompressed. The fixture library is
-0.15 MB, and the page's longest frame while reading it is about 230 ms. Nobody has measured a real laptop on Wi-Fi yet.
+0.15 MB, and the page's longest frame while reading it is about 230 ms. A real laptop on Wi-Fi works (see "Where it stands"), but its download time and fader lag haven't been measured.
 
 Chromium on the development PC, against the real app without a window, 2026-10-30:
 

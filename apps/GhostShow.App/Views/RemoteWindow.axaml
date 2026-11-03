@@ -34,14 +34,28 @@
             <ItemsControl ItemsSource="{Binding Addresses}">
               <ItemsControl.ItemTemplate>
                 <DataTemplate x:DataType="x:String">
-                  <SelectableTextBlock Text="{Binding}" FontFamily="monospace" FontSize="16" />
+                  <HyperlinkButton Content="{Binding}" NavigateUri="{Binding}" Padding="0" FontFamily="monospace" FontSize="16"
+                                   ToolTip.Tip="Opens it in this computer's browser. Right-click to copy it.">
+                    <HyperlinkButton.ContextMenu>
+                      <ContextMenu>
+                        <MenuItem Header="Copy address" Tag="{Binding}" Click="CopyAddress" />
+                      </ContextMenu>
+                    </HyperlinkButton.ContextMenu>
+                  </HyperlinkButton>
                 </DataTemplate>
               </ItemsControl.ItemTemplate>
             </ItemsControl>
           </StackPanel>
           <StackPanel Spacing="4" IsVisible="{Binding FullAppAddress, Converter={x:Static ObjectConverters.IsNotNull}}">
             <TextBlock Text="The full app (timelines, editing), on a laptop" Opacity="0.75" />
-            <SelectableTextBlock Text="{Binding FullAppAddress}" FontFamily="monospace" FontSize="16" />
+            <HyperlinkButton Content="{Binding FullAppAddress}" NavigateUri="{Binding FullAppAddress}" Padding="0" FontFamily="monospace" FontSize="16"
+                             ToolTip.Tip="Opens it in this computer's browser. Right-click to copy it.">
+              <HyperlinkButton.ContextMenu>
+                <ContextMenu>
+                  <MenuItem Header="Copy address" Tag="{Binding FullAppAddress}" Click="CopyAddress" />
+                </ContextMenu>
+              </HyperlinkButton.ContextMenu>
+            </HyperlinkButton>
           </StackPanel>
           <StackPanel Spacing="4">
             <TextBlock Text="PIN" Opacity="0.75" />

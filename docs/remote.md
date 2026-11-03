@@ -14,7 +14,8 @@ See [plan-remote.md](plan-remote.md) for what's coming (the remaining screens: a
 1. On the show computer: **View → Remote Access…**, then switch **Let devices on this network connect** on. It
    stays on (it starts with GhostShow) until you switch it off.
 2. On the device, on the same network: open the address shown, e.g. `http://192.168.1.20:7700/`, or point its
-   camera at the QR code.
+   camera at the QR code. On the show computer the addresses are links: clicking one opens it in that computer's
+   browser, and right-clicking copies it.
 3. Enter the **PIN** shown on the show computer. Name the device, and choose what it's for:
    - **Editor:** run, tweak and edit the show.
    - **Operator:** start and stop it and see how it's doing (a phone at the entrance).
