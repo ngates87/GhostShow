@@ -86,14 +86,13 @@ public class ShowPlaybackTests
     }
 
     [Fact]
-    public void Play_loads_what_it_needs_and_launch_makes_copies_unless_play_once_only()
+    public void Play_loads_what_it_needs_and_launch_makes_copies_unless_one_at_a_time()
     {
         _playback.Play(_main.Id);
         Assert.Equal(TransportState.Playing, _playback.StatusOf(_main.Id).State);
 
         Assert.True(_playback.Launch(_scare.Id));
         Assert.True(_playback.Launch(_scare.Id));                       // a second copy, as VenueMagic does
-        Assert.False(_playback.Launch(_scare.Id, playOnceOnly: true));   // not while one is running
         Assert.Equal(2, _manager.Running.Count(r => r.TimelineId == _scare.Id));
 
         _playback.StopTimeline(_scare.Id);

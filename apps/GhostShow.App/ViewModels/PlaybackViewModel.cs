@@ -123,11 +123,11 @@ public sealed partial class PlaybackViewModel : ObservableObject
 
     /// <summary>
     /// Runs a timeline from its start (a show button): as a new copy if it's already running, as VenueMagic does,
-    /// or, with playOnceOnly, not at all while it's running. Returns whether it started.
+    /// or not at all if it plays one at a time and is still playing. Returns whether it started.
     /// </summary>
-    public bool Launch(ShowTimeline timeline, bool playOnceOnly = false)
+    public bool Launch(ShowTimeline timeline)
     {
-        bool started = Show.Launch(timeline.Id, playOnceOnly);
+        bool started = Show.Launch(timeline.Id);
         Tick();
         return started;
     }

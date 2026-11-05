@@ -891,8 +891,7 @@ public class TimelineEditorTests : IDisposable
         var properties = Editor.Properties!;
         Assert.Equal((true, "Event", "Rooms/Room lights"), (properties.IsCommand, properties.Kind, properties.Target?.Path));
         properties.Target = properties.Timelines.Single(t => t.Id == other.Id);
-        properties.PlayOnceOnly = true;
-        Assert.Equal((other.Id, true), (e.TimelineId, e.PlayOnceOnly));
+        Assert.Equal(other.Id, e.TimelineId);
 
         _rig.Playback.Seek(S(0));
         _rig.Play();
@@ -1442,7 +1441,7 @@ public class TimelineEditorTests : IDisposable
 
         Editor.MakeScareCommand.Execute(null);
 
-        Assert.Equal(new TimelinePlayback(10, true, S(1), 1, true), Editor.SelectedTimeline.Playback);
+        Assert.Equal(new TimelinePlayback(10, true, S(1), 1, true, OneAtATime: true), Editor.SelectedTimeline.Playback);
         Assert.Equal(TimelineEditorViewModel.Pause, Editor.OverrideMode);
     }
 
@@ -1459,7 +1458,15 @@ public class TimelineEditorTests : IDisposable
 
         Assert.Equal(new TimelinePlayback(10, false, S(2), 0.25, true), Editor.SelectedTimeline!.Playback);
         Assert.Equal("Priority 10 · others' sound at 25% · releases at end · 2 s release", Editor.PlaybackSummary);
-        Assert.Equal(10, _rig.Compiled.Playback.Priority);   // the player has it straight away
+        Editor.Loop = true;
+        Editor.OneAtATime = true;
+        Assert.Equal("Loops · one at a time · Priority 10 · others' sound at 25% · releases at end · 2 s release", Editor.PlaybackSummary);
+        Assert.True(Editor.SelectedTimeline.Playback.OneAtATime);
+        Assert.True(_rig.Compiled.Playback.OneAtATime);   // the player has it straight away
+        Editor.UndoCommand.Execute(null);
+        Assert.False(Editor.OneAtATime);
+        Editor.UndoCommand.Execute(null);
+        Assert.Equal(("Priority 10 · others' sound at 25% · releases at end · 2 s release", false), (Editor.PlaybackSummary, Editor.Loop));
 
         Editor.UndoCommand.Execute(null);
         Assert.False(Editor.ReleaseAtEnd);

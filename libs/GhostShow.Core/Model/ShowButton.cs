@@ -3,9 +3,9 @@ using System.Text.Json.Serialization;
 namespace GhostShow.Core.Model;
 
 /// <summary>
-/// A show button (VenueMagic's): on the buttons panel, with a name, a colour and optionally a key; pressing it (a
-/// click or the key) runs its actions in order, e.g. stop the ambient, run the scare, nothing else to remember.
-/// Buttons belong to the show (show.json). Later, triggers (MIDI, sensors) can press them too.
+/// A show button (VenueMagic's): on the buttons panel, with a name, a colour and any number of triggers; pressing it
+/// (a click or a trigger) runs its actions in order, e.g. stop the ambient, run the scare, nothing else to remember.
+/// Buttons belong to the show (show.json).
 /// </summary>
 public sealed class ShowButton
 {
@@ -16,17 +16,30 @@ public sealed class ShowButton
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Color { get; set; }
 
-    /// <summary>The keyboard key that presses it (a key name: "F5", "D1" for 1, "Q"); null for none.</summary>
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public string? Key { get; set; }
+    /// <summary>What presses it, apart from a click. A trigger does exactly what clicking the button does.</summary>
+    public List<ButtonTrigger> Triggers { get; set; } = [];
 
     public List<ButtonAction> Actions { get; set; } = [];
 
     public ShowButton Clone() => new()
     {
-        Name = Name, Color = Color, Key = null,   // a copy doesn't take the key
+        Name = Name, Color = Color,   // a copy doesn't take the triggers: one input presses one button
         Actions = Actions.Select(a => a.Clone()).ToList(),
     };
+}
+
+/// <summary>
+/// An input that presses a show button: where it comes from and which one it is. Every kind of input is described this
+/// way, so a new kind only has to supply these two (see docs/plan-triggers.md).
+/// </summary>
+public sealed class ButtonTrigger
+{
+    public const string Keyboard = "keyboard";
+
+    public string Source { get; set; } = Keyboard;
+
+    /// <summary>Which input of that source. Keyboard: the key's name ("F5", "D1" for the 1 key, "Q").</summary>
+    public string Address { get; set; } = "";
 }
 
 /// <summary>Something a show button does when pressed.</summary>
@@ -42,16 +55,13 @@ public abstract class ButtonAction
 
 /// <summary>
 /// Plays a timeline from its start (VenueMagic's Run Timeline): a new copy if it's already running, so a scare
-/// fired twice plays twice; with <see cref="PlayOnceOnly"/>, nothing while it's still running.
+/// fired twice plays twice. A timeline that plays one at a time (TimelinePlayback.OneAtATime) doesn't start again while it runs.
 /// </summary>
 public sealed class RunTimelineAction : ButtonAction
 {
     public Guid TimelineId { get; set; }
 
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public bool PlayOnceOnly { get; set; }
-
-    public override ButtonAction Clone() => new RunTimelineAction { TimelineId = TimelineId, PlayOnceOnly = PlayOnceOnly };
+    public override ButtonAction Clone() => new RunTimelineAction { TimelineId = TimelineId };
 }
 
 /// <summary>Stops a timeline, every copy of it playing (each releasing its lights with its release fade).</summary>

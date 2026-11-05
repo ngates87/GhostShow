@@ -51,9 +51,9 @@ sealed class RemotePlayback(RemoteLink link) : IPlayback
         link.Send("cue", ("timeline", timelineId.ToString()), ("position", position.TotalSeconds));
 
     /// <summary>Asks for it; whether it started shows in the next status. Answers true (it was asked).</summary>
-    public bool Launch(Guid timelineId, bool playOnceOnly = false)
+    public bool Launch(Guid timelineId)
     {
-        link.Send("run", ("timeline", timelineId.ToString()), ("playOnceOnly", playOnceOnly));
+        link.Send("run", ("timeline", timelineId.ToString()));
         return true;
     }
 

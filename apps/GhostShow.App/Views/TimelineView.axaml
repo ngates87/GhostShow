@@ -197,6 +197,12 @@
             </DockPanel>
             <ScrollViewer>
               <StackPanel Spacing="8">
+                <CheckBox Content="Loop" IsChecked="{Binding Loop}"
+                          ToolTip.Tip="Start again from the beginning at the end, until stopped (the same as the loop button under the timeline)" />
+                <CheckBox Content="Play one at a time" IsChecked="{Binding OneAtATime}"
+                          ToolTip.Tip="Starting it while it's already playing (a button, a key, another timeline's event) does nothing. Off: each start plays another copy." />
+                <Separator Margin="0,4" />
+                <TextBlock Text="Playing alongside other timelines" FontWeight="SemiBold" />
                 <TextBlock TextWrapping="Wrap" Opacity="0.75" FontSize="12"
                            Text="Several timelines can play at once. Where two set the same channel, the higher priority wins (equal: the one started last). A timeline with a higher priority overrides lower ones: only on the channels it uses." />
                 <Grid ColumnDefinitions="*,120" RowDefinitions="Auto,8,Auto,8,Auto,8,Auto,8,Auto">
@@ -217,7 +223,7 @@
                                 ToolTip.Tip="Releases: lets go of its channels when it ends (not looping), so what's underneath comes back. Holds: keeps its final look." />
                 </Grid>
                 <Button Content="Make it a scare" Command="{Binding MakeScareCommand}" HorizontalAlignment="Right"
-                        ToolTip.Tip="Priority 10, pauses what it overlaps, and lets go at its end with a 1 s fade, so the ambient comes back by itself" />
+                        ToolTip.Tip="Priority 10, plays one at a time, pauses what it overlaps, and lets go at its end with a 1 s fade, so the ambient comes back by itself" />
               </StackPanel>
             </ScrollViewer>
           </DockPanel>
@@ -628,8 +634,6 @@
                     <ComboBox ItemsSource="{x:Static vm:EventPropertiesViewModel.Commands}" SelectedIndex="{Binding CommandIndex}" HorizontalAlignment="Stretch" />
                     <TextBlock Text="Timeline" Classes="label" />
                     <ComboBox ItemsSource="{Binding Timelines}" SelectedItem="{Binding Target}" HorizontalAlignment="Stretch" PlaceholderText="(choose a timeline)" />
-                    <CheckBox Content="Play once only" IsChecked="{Binding PlayOnceOnly}" IsVisible="{Binding IsRun}"
-                              ToolTip.Tip="Off: each time the playhead gets here another copy plays, even while one is still playing. On: nothing while it's still playing." />
                     <TextBlock Text="Symbol" Classes="label" />
                     <ComboBox ItemsSource="{x:Static vm:EventPropertiesViewModel.Symbols}" SelectedItem="{Binding Symbol}" HorizontalAlignment="Stretch"
                               ToolTip.Tip="How it's marked on the lane (green: run, red: stop)">

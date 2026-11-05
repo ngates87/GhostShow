@@ -106,14 +106,16 @@ public sealed class PlaybackManager
 
     /// <summary>
     /// Plays a loaded timeline from its start: its own player if that's stopped, otherwise a new copy (beyond
-    /// <see cref="MaxCopies"/>, the oldest copy stops). Returns what it's playing as (to stop or pause by), or null if
-    /// the timeline isn't loaded.
+    /// <see cref="MaxCopies"/>, the oldest copy stops). A timeline that plays one at a time doesn't start while it's
+    /// already playing. Returns what it's playing as (to stop or pause by), or null if it didn't start: not loaded, or
+    /// one at a time and already playing.
     /// </summary>
     public Guid? Launch(Guid timelineId)
     {
         lock (_lock)
         {
             if (!_slots.TryGetValue(timelineId, out var own)) return null;
+            if (own.Timeline.Playback.OneAtATime && IsRunning(timelineId)) return null;
             if (own.Player.Status.State == TransportState.Stopped)
             {
                 own.Player.Restart();
@@ -301,8 +303,8 @@ public sealed class PlaybackManager
         switch (cue.Command)
         {
             case TimelineCommand.Run:
-                if (cue.PlayOnceOnly && IsRunning(cue.Timeline)) return;
-                if (Launch(cue.Timeline) is null) CueNotLoaded?.Invoke(cue);
+                if (!IsLoaded(cue.Timeline)) CueNotLoaded?.Invoke(cue);
+                else Launch(cue.Timeline);   // doesn't start if it plays one at a time and is still playing
                 break;
             case TimelineCommand.Stop:
                 StopTimeline(cue.Timeline);

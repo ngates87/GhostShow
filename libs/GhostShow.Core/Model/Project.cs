@@ -12,12 +12,13 @@ namespace GhostShow.Core.Model;
 public sealed class Project
 {
     /// <summary>
+    /// 6: a button has a list of triggers, in place of its one key (older keys aren't carried over).
     /// 5: a show is a folder: show.json (this) plus a file per timeline under timelines/, in folders.
     /// 4: timelines (tracks of levels, audio and marker events) replace the prototype's scenes, which are converted.
     /// 3: universes numbered from 1, like consoles and sACN (earlier versions started at 0; loading shifts them up).
     /// 2: fixtures added, output hardware moved to machine settings. 1: the timeline prototype.
     /// </summary>
-    public const int CurrentSchemaVersion = 5;
+    public const int CurrentSchemaVersion = 6;
 
     /// <summary>Universe numbers run 1-63999: sACN's range, the widest of the protocols GhostShow will speak.</summary>
     public const int FirstUniverse = 1, LastUniverse = 63999;

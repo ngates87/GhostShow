@@ -126,6 +126,14 @@ sealed class WindowRig : IDisposable
 
     public void Key(Key key, RawInputModifiers modifiers = RawInputModifiers.None)
     {
+        KeyDown(key, modifiers);
+        Window.KeyRelease(key, modifiers, PhysicalKey.None, null);
+        Pump(20);
+    }
+
+    /// <summary>Presses a key without letting go, as when it's held down (again: as when it repeats).</summary>
+    public void KeyDown(Key key, RawInputModifiers modifiers = RawInputModifiers.None)
+    {
         Window.KeyPress(key, modifiers, PhysicalKey.None, null);
         Pump(80);
     }

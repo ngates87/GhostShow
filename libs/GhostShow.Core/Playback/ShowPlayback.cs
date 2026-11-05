@@ -167,12 +167,11 @@ public sealed class ShowPlayback : IPlayback
 
     /// <summary>
     /// Runs a timeline from its start, as a show button does: a new copy if it's already running (as VenueMagic
-    /// does), or, with playOnceOnly, nothing while it runs. Returns whether it started.
+    /// does), or nothing if it plays one at a time and is still playing. Returns whether it started.
     /// </summary>
-    public bool Launch(Guid timelineId, bool playOnceOnly = false)
+    public bool Launch(Guid timelineId)
     {
         EnsureLoaded(timelineId);
-        if (playOnceOnly && Manager.IsRunning(timelineId)) return false;
         return Manager.Launch(timelineId) is not null;
     }
 

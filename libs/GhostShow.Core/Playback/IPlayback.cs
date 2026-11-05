@@ -43,8 +43,8 @@ public interface IPlayback
     /// <summary>Shows a timeline's look at a time: seeks there and, if it was stopped, holds it there paused.</summary>
     void Cue(Guid timelineId, TimeSpan position);
 
-    /// <summary>Runs a timeline from its start, as a show button does: another copy if it's running, unless playOnceOnly.</summary>
-    bool Launch(Guid timelineId, bool playOnceOnly = false);
+    /// <summary>Runs a timeline from its start, as a show button does: another copy if it's running, unless it plays one at a time.</summary>
+    bool Launch(Guid timelineId);
 
     /// <summary>Stops a timeline and every copy of it.</summary>
     void StopTimeline(Guid timelineId);

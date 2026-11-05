@@ -73,8 +73,10 @@ public sealed class ShowTimeline
 /// <param name="DuckOthers">While this plays, lower-priority timelines' sounds play at this volume (0-1). 1: untouched.</param>
 /// <param name="ReleaseAtEnd">At the end (when not looping), let go of its channels instead of holding its final look:
 /// what an override usually wants, so the ambient comes back by itself.</param>
+/// <param name="OneAtATime">Starting it while it's already playing (a button, a key, another timeline's event) does
+/// nothing. Otherwise each start plays another copy, as VenueMagic does. A scare wants this, so it can't stack.</param>
 public sealed record TimelinePlayback(int Priority = 0, bool PauseOverridden = false, TimeSpan ReleaseFade = default,
-                                      double DuckOthers = 1, bool ReleaseAtEnd = false);
+                                      double DuckOthers = 1, bool ReleaseAtEnd = false, bool OneAtATime = false);
 
 /// <summary>Which side of a stereo output a track plays on.</summary>
 public enum AudioSide { Stereo, Left, Right }
@@ -550,7 +552,7 @@ public sealed record Level(byte To, int? Channel = null, ChannelFunction? Contro
 [JsonConverter(typeof(JsonStringEnumConverter<TimelineCommand>))]
 public enum TimelineCommand
 {
-    /// <summary>Plays it from its start: a new copy if it's already running (unless play once only).</summary>
+    /// <summary>Plays it from its start: a new copy if it's already running (unless that timeline plays one at a time).</summary>
     Run,
 
     /// <summary>Stops it, every copy (each releasing its lights with its release fade).</summary>
@@ -573,17 +575,13 @@ public sealed class TimelineCommandEvent : TimelineEvent
     /// <summary>The timeline it runs or stops (<see cref="ShowTimeline.Id"/>).</summary>
     public Guid TimelineId { get; set; }
 
-    /// <summary>Run: do nothing while that timeline is still running (otherwise each run plays another copy).</summary>
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public bool PlayOnceOnly { get; set; }
-
     /// <summary>The marker it's drawn with on its lane.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public EventSymbol Symbol { get; set; }
 
     public override TimelineEvent Clone() => new TimelineCommandEvent
     {
-        Name = Name, Start = Start, Enabled = Enabled, Command = Command, TimelineId = TimelineId, PlayOnceOnly = PlayOnceOnly, Symbol = Symbol,
+        Name = Name, Start = Start, Enabled = Enabled, Command = Command, TimelineId = TimelineId, Symbol = Symbol,
     };
 }
 

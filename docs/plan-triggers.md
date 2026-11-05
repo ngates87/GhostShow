@@ -25,8 +25,8 @@ Stream Deck 3   ┘
 
 - **Inputs become one kind of event:** a source, an address and pressed or released. OSC and DMX input send values, so
   each needs a threshold to become pressed or released.
-- **A running timeline:** decided by the action's Play once only (exists). It stays off by default, matching
-  VenueMagic's copies; a "scare" preset turns it on.
+- **A running timeline:** decided by the timeline's **Play one at a time** (built, in Timeline properties). It stays
+  off by default, matching VenueMagic's copies; Make it a scare turns it on.
 - **Firing again is configurable, per trigger:**
   - a **re-arm time**, so a flickering sensor or a passing crowd doesn't fire it over and over;
   - **when the re-arm time starts:** straight away when it fires, or once the timelines it started have finished,
@@ -74,8 +74,8 @@ shared channels. A paused timeline resumes only once everything that paused it h
 
 1. **Behaviour, with a key:** left, right and stereo; overlap by output; the three override options and the scare preset
    (built). Trying an ambient and a scare on a button, on real lights and speakers, is still to do.
-2. **Triggers on buttons:** the list of triggers, re-arm settings, arming and its indicator, the focus warning, and when
-   each last fired.
+2. **Triggers on buttons:** the list of triggers, with keyboard keys learned by pressing them (built, desktop only). Still
+   to do: re-arm settings, arming and its indicator, the focus warning, and when each last fired.
 3. **Input monitor:** every event, used or not, and which button it pressed. Learn: press it, trip the input, and the
    input is filled in.
 4. **Serial input:** pick a port and baud rate, and see each line with a timestamp and what it was understood as. It only
@@ -89,6 +89,10 @@ shared channels. A paused timeline resumes only once everything that paused it h
 - How did VenueMagic treat a trigger fired while its timeline runs, and does it have other options worth matching? No
   documentation was found online, so this relies on memory and the user's show files.
 - Stream Deck: talk to it directly, or through Elgato's software?
+- **Keys while a field has focus:** keys don't press buttons while typing in a field, and a field keeps focus after you
+  change a setting there, such as Priority in Timeline properties. A show could be left where its keys silently do nothing.
+  To settle with the focus warning: warn, drop focus when a click lands elsewhere, or let keys like F5 always work.
+- **The browser** shows and presses buttons but has no button editor, so it can't set triggers yet.
 - **Rooms (parked, not decided):** a folder in the timeline tree could own outputs (per channel, so one dimmer pack can split
   between rooms, plus audio device and side), so a scare can take its whole room, not only the channels it sets. To settle:
   what a light the scare doesn't set does while taken (dark or hold, as moving heads and fog can't just go to 0), lights

@@ -369,6 +369,7 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
         {
             if (SelectedTimeline is not { } timeline || value == timeline.Loop) return;
             Edit(value ? "Loop timeline" : "Stop looping", () => timeline.Loop = value, roots: Only(timeline));
+            OnPropertyChanged(nameof(PlaybackSummary));
         }
     }
 
@@ -382,7 +383,7 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
     void ToggleTimelineProperties() => IsTimelinePropertiesOpen = !IsTimelinePropertiesOpen;
 
     static readonly string[] PlaybackProperties =
-        [nameof(Priority), nameof(OverrideMode), nameof(IsSuppressing), nameof(ReleaseFadeSeconds), nameof(DuckPercent), nameof(ReleaseAtEnd), nameof(PlaybackSummary)];
+        [nameof(OneAtATime), nameof(Priority), nameof(OverrideMode), nameof(IsSuppressing), nameof(ReleaseFadeSeconds), nameof(DuckPercent), nameof(ReleaseAtEnd), nameof(PlaybackSummary)];
 
     void SetPlayback(string description, string field, Func<TimelinePlayback, TimelinePlayback> change)
     {
@@ -390,6 +391,16 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
         var (old, updated) = (timeline.Playback, change(timeline.Playback));
         if (old == updated) return;
         Edit(description, () => timeline.Playback = updated, (timeline.Id, "playback", field), Only(timeline));
+    }
+
+    /// <summary>
+    /// Starting it while it's already playing (a button, a key, another timeline's event) does nothing. Off: each
+    /// start plays another copy, as VenueMagic does.
+    /// </summary>
+    public bool OneAtATime
+    {
+        get => SelectedTimeline?.Playback.OneAtATime ?? false;
+        set => SetPlayback(value ? "Play one at a time" : "Play a copy each time", "one", p => p with { OneAtATime = value });
     }
 
     /// <summary>Higher wins channels shared with other playing timelines (0 normal; e.g. 10 for scares).</summary>
@@ -425,6 +436,7 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
     void MakeScare() => SetPlayback("Make it a scare", "preset", p => p with
     {
         Priority = Math.Max(p.Priority, 10),
+        OneAtATime = true,
         PauseOverridden = true,
         DuckOthers = 1,
         ReleaseAtEnd = true,
@@ -450,13 +462,16 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
         set => SetPlayback(value ? "Release at the end" : "Hold at the end", "end", p => p with { ReleaseAtEnd = value });
     }
 
-    /// <summary>On the folded Timeline properties strip: "Normal", or "Priority 10 · pauses others · releases at end".</summary>
+    /// <summary>On the folded Timeline properties strip: "Normal", or "Loops · one at a time · Priority 10 · pauses others".</summary>
     public string PlaybackSummary
     {
         get
         {
-            if (SelectedTimeline?.Playback is not { } p || p == new TimelinePlayback()) return "Normal";
+            if (SelectedTimeline is not { } timeline || (timeline.Playback == new TimelinePlayback() && !timeline.Loop)) return "Normal";
+            var p = timeline.Playback;
             var parts = new List<string>();
+            if (timeline.Loop) parts.Add("Loops");
+            if (p.OneAtATime) parts.Add(parts.Count == 0 ? "One at a time" : "one at a time");
             if (p.Priority != 0) parts.Add($"Priority {p.Priority}");
             if (p.PauseOverridden) parts.Add("pauses others");
             else if (p.DuckOthers < 1) parts.Add($"others' sound at {p.DuckOthers:P0}");

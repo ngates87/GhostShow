@@ -114,11 +114,9 @@ public sealed partial class EventPropertiesViewModel : ObservableObject
         set
         {
             if (Command is { } e) Change(value == 1 ? "Make it Stop timeline" : "Make it Run timeline", e.Command, value == 1 ? TimelineCommand.Stop : TimelineCommand.Run, v => e.Command = v, "command");
-            OnPropertyChanged(nameof(IsRun));
         }
     }
 
-    public bool IsRun => Command?.Command == TimelineCommand.Run;
 
     /// <summary>Every timeline in the show, by its place in the tree.</summary>
     public IReadOnlyList<TimelineChoice> Timelines =>
@@ -131,15 +129,6 @@ public sealed partial class EventPropertiesViewModel : ObservableObject
         set
         {
             if (Command is { } e && value is not null) Change("Change the event's timeline", e.TimelineId, value.Id, v => e.TimelineId = v, "target");
-        }
-    }
-
-    public bool PlayOnceOnly
-    {
-        get => Command?.PlayOnceOnly == true;
-        set
-        {
-            if (Command is { } e) Change(value ? "Play once only" : "Play every time", e.PlayOnceOnly, value, v => e.PlayOnceOnly = v, "once");
         }
     }
 

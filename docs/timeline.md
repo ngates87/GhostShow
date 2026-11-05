@@ -47,7 +47,7 @@ To export or back up a show, copy or zip the whole folder.
 | `LightingEffect` | Kind, Strength (0–1), Rate, Color, Seed, Ending (BackToBefore, Dark) | A built-in effect's settings; its envelopes are made from them |
 | `LaneTarget` | A fixture and its control (Intensity, Red, …) or channel number; or a universe and DMX address | Fixture targets follow the fixture when it's re-addressed |
 | `CurvePoint` | Time, Value (0–255), Curve (Linear, Step, Spline) | An envelope handle: a level at a time. Curve says how the level gets here from the previous handle |
-| `TimelineCommandEvent` | Start, Command (Run, Stop), TimelineId, PlayOnceOnly | On an event track: runs or stops another timeline when the playhead gets there |
+| `TimelineCommandEvent` | Start, Command (Run, Stop), TimelineId | On an event track: runs or stops another timeline when the playhead gets there |
 | `AudioEvent` | Start, File, Length (optional), Offset, Volume, FadeIn, FadeOut, Loop | Plays from Offset into the file; for Length if set, otherwise to the end of the file (forever, if looping) |
 
 Every event (clip) has an ID, a name (optional; a description is generated when there's none), Enabled, Locked
@@ -100,8 +100,8 @@ An event track (Add track ▾ → Event track) holds events that **run or stop o
 gets to them, as VenueMagic's Run Timeline event does: a room's "play" timeline starts its lights and its sounds a
 moment apart, a "start zone" timeline starts its rooms, a show's start timeline its zones.
 
-- **Run timeline** plays it from its start: another copy if it's already running (as a show button does), or, with
-  **Play once only**, nothing while it's still running. **Stop timeline** stops it, every copy, each releasing its
+- **Run timeline** plays it from its start: another copy if it's already running (as a show button does), or nothing
+  while it's still playing if that timeline is set to **play one at a time**. **Stop timeline** stops it, every copy, each releasing its
   lights with its own release fade.
 - **When they fire:** while playing, each update fires the events the playhead passed since the last one; events
   right at the start fire on Play and Restart, and again each time a looping timeline goes round; an event at the very
@@ -114,7 +114,7 @@ moment apart, a "start zone" timeline starts its rooms, a show's start timeline 
   there's none; one undo step); a ghost diamond shows where it will go. The open timeline can't be dropped on its own
   lanes (it would start copies of itself): the lane says so instead. Or
   "+ Event" (with an event track selected) or a double-click on the row adds a Run timeline event, for the first
-  other timeline in the tree; the properties panel picks Run or Stop, the timeline, Play once only and the
+  other timeline in the tree; the properties panel picks Run or Stop, the timeline and the
   event's symbol (diamond, circle, square, triangle, star, flag, bolt, skull or ghost; green: run, red: stop),
   with what it runs or stops in its tooltip; they move, copy, paste, lock and delete like
   clips. They take no time.
@@ -187,8 +187,12 @@ anything. The **Playing** list (under the timeline tree) shows everything playin
 and **Stop all**; Playback → Stop All Timelines does the same. Blackout, New, Open and closing stop everything at
 once.
 
-Each timeline's **Timeline properties** say how it plays alongside others. They slide out from the strip at the right edge
-of the timeline, and folded, the strip shows a summary of them:
+Each timeline's **Timeline properties** slide out from the strip at the right edge of the timeline; folded, the strip
+shows a summary of them. **Loop** (the same as the loop button under the timeline) starts it again at its end until it's
+stopped. **Play one at a time**: starting it while it's playing (a button, a key, another timeline's event) does
+nothing; otherwise each start plays another copy, as in VenueMagic. VenueMagic sets "play one only" on each button and
+event instead; GhostShow sets it once, on the timeline, so a scare can't stack whatever starts it. The rest say how it
+plays alongside others:
 
 | Setting | Effect |
 |---|---|
@@ -197,7 +201,8 @@ of the timeline, and folded, the strip shows a summary of them:
 | Release fade | When it stops (or releases at its end), its channels fade from where it left them to whatever is underneath: a lower timeline, or the manual level. 0 snaps back |
 | At the end: Holds / Releases | Holds: a non-looping timeline keeps its final look. Releases: it lets go at its end, so what's underneath comes back by itself (what an override usually wants) |
 
-**Make it a scare** sets the usual values: priority 10, Pause, and letting go at its end with a 1 s release fade. Trigger
+**Make it a scare** sets the usual values: priority 10, play one at a time, Pause, and letting go at its end with a 1 s
+release fade. Trigger
 the scare and the room's ambient comes back on its own when it's done. Pause stops a whole timeline, so give each room
 its own ambient, started together by a "Start Show" timeline.
 

@@ -69,7 +69,7 @@ public class ShowFolderStoreTests : IDisposable
                 new TimelineTrack
                 {
                     Name = "Starts", Kind = TrackKind.Event,
-                    Events = [new TimelineCommandEvent { Name = "Lobby", Start = TimeSpan.FromSeconds(1.5), TimelineId = lobbyId, Command = TimelineCommand.Run, PlayOnceOnly = true, Symbol = EventSymbol.Skull },
+                    Events = [new TimelineCommandEvent { Name = "Lobby", Start = TimeSpan.FromSeconds(1.5), TimelineId = lobbyId, Command = TimelineCommand.Run, Symbol = EventSymbol.Skull },
                               new TimelineCommandEvent { Start = TimeSpan.FromSeconds(7), TimelineId = lobbyId, Command = TimelineCommand.Stop }],
                 },
             ],
@@ -82,7 +82,7 @@ public class ShowFolderStoreTests : IDisposable
         project.AddFolder("Empty for now");
         project.Buttons =
         [
-            new ShowButton { Name = "Scare 1", Color = "#C62828", Key = "F5", Actions = [new StopTimelineAction { TimelineId = lightning.Id }, new RunTimelineAction { TimelineId = lightning.Id, PlayOnceOnly = true }] },
+            new ShowButton { Name = "Scare 1", Color = "#C62828", Triggers = [new ButtonTrigger { Address = "F5" }, new ButtonTrigger { Address = "NumPad1" }], Actions = [new StopTimelineAction { TimelineId = lightning.Id }, new RunTimelineAction { TimelineId = lightning.Id }] },
             new ShowButton { Name = "Panic", Actions = [new StopAllAction(), new BlackoutAction()] },
         ];
 
@@ -97,9 +97,11 @@ public class ShowFolderStoreTests : IDisposable
         Assert.Equal(["Empty for now", "Rooms", "Rooms/Graveyard"], loaded.TimelineFolders);
         Assert.Equal(("Haunt", project.Id), (loaded.Name, loaded.Id));
         Assert.Equal([1, 3], loaded.Universes.Select(u => u.Number));
-        Assert.Equal([("Scare 1", "#C62828", "F5"), ("Panic", null, null)], loaded.Buttons.Select(b => (b.Name, b.Color, b.Key)));
+        Assert.Equal([("Scare 1", "#C62828", "F5,NumPad1"), ("Panic", null, "")],
+                     loaded.Buttons.Select(b => (b.Name, b.Color, string.Join(",", b.Triggers.Select(t => t.Address)))));
+        Assert.Equal(ButtonTrigger.Keyboard, loaded.Buttons[0].Triggers[0].Source);
         var run = Assert.IsType<RunTimelineAction>(loaded.Buttons[0].Actions[1]);
-        Assert.Equal((lightning.Id, true), (run.TimelineId, run.PlayOnceOnly));
+        Assert.Equal(lightning.Id, run.TimelineId);
         Assert.IsType<StopTimelineAction>(loaded.Buttons[0].Actions[0]);
         Assert.Equal([typeof(StopAllAction), typeof(BlackoutAction)], loaded.Buttons[1].Actions.Select(a => a.GetType()));
         var reloaded = Assert.Single(loaded.Fixtures);
@@ -120,8 +122,8 @@ public class ShowFolderStoreTests : IDisposable
         Assert.Equal((false, 0.4, 1.0), (timeline.Tracks[1].Enabled, timeline.Tracks[1].Volume, timeline.Tracks[0].Volume));
         var starts = timeline.Tracks[3];
         Assert.Equal(TrackKind.Event, starts.Kind);
-        Assert.Equal([("Lobby", 1.5, lobbyId, TimelineCommand.Run, true, EventSymbol.Skull), (null, 7.0, lobbyId, TimelineCommand.Stop, false, EventSymbol.Diamond)],
-                     starts.Events.Cast<TimelineCommandEvent>().Select(e => (e.Name, e.Start.TotalSeconds, e.TimelineId, e.Command, e.PlayOnceOnly, e.Symbol)));
+        Assert.Equal([("Lobby", 1.5, lobbyId, TimelineCommand.Run, EventSymbol.Skull), (null, 7.0, lobbyId, TimelineCommand.Stop, EventSymbol.Diamond)],
+                     starts.Events.Cast<TimelineCommandEvent>().Select(e => (e.Name, e.Start.TotalSeconds, e.TimelineId, e.Command, e.Symbol)));
         var storm = Assert.IsType<LightingClip>(Assert.Single(timeline.Tracks[2].Events)).Effect!;
         Assert.Equal((EffectKind.Lightning, 0.8, 3.0, "#CCDDFF", 42, EffectEnding.Dark), (storm.Kind, storm.Strength, storm.Rate, storm.Color, storm.Seed, storm.Ending));
         Assert.Null(((LightingClip)timeline.Tracks[0].Events[0]).Effect);

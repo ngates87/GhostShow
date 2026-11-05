@@ -10,22 +10,13 @@ namespace GhostShow.App.ViewModels;
 
 /// <summary>
 /// The buttons panel (beside the timeline): the show's buttons (VenueMagic's), each running its actions in order
-/// when clicked or when its key is pressed anywhere in the app (except while typing in a field). A button lights up
-/// while a timeline it runs is playing. In edit mode, buttons are added, named, coloured, given a key and actions,
+/// when clicked or when one of its keys is pressed anywhere in the app (except while typing in a field). A button lights
+/// up while a timeline it runs is playing. In edit mode, buttons are added, named, coloured, given keys and actions,
 /// reordered and removed; a click selects instead of pressing. Edits mark the show unsaved (no undo yet).
 /// </summary>
 public sealed partial class ButtonsViewModel : ObservableObject
 {
     public static IReadOnlyList<string> Palette { get; } = ["#455A64", "#C62828", "#AD1457", "#6A1B9A", "#283593", "#1565C0", "#00838F", "#2E7D32", "#9E9D24", "#EF6C00", "#5D4037"];
-
-    /// <summary>The keys a button can have: F1 and F3-F12 (F2 renames), the digits and the letters, all without modifiers.</summary>
-    public static IReadOnlyList<KeyChoice> AllKeys { get; } =
-    [
-        new(null, "None"),
-        .. new[] { 1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 }.Select(n => new KeyChoice($"F{n}", $"F{n}")),
-        .. Enumerable.Range(0, 10).Select(n => new KeyChoice($"D{n}", n.ToString())),
-        .. Enumerable.Range('A', 26).Select(c => new KeyChoice(((char)c).ToString(), ((char)c).ToString())),
-    ];
 
     readonly ShowSession _session;
     readonly PlaybackViewModel _playback;
@@ -43,6 +34,7 @@ public sealed partial class ButtonsViewModel : ObservableObject
         session.Document.Changed += change =>
         {
             if (change.Ops.Any(o => o.Path == "buttons" || o.Path.StartsWith("buttons/", StringComparison.Ordinal))) Sync();
+            if (change.Ops.Any(o => o.Path.StartsWith("timelines", StringComparison.Ordinal))) RefreshTimelines();
         };
     }
 
@@ -90,6 +82,7 @@ public sealed partial class ButtonsViewModel : ObservableObject
     {
         oldValue?.IsSelected = false;
         newValue?.IsSelected = true;
+        LearningKeyFor = null;   // waiting for a key belongs to the button being edited
     }
 
     partial void OnIsEditingChanged(bool value)
@@ -102,13 +95,35 @@ public sealed partial class ButtonsViewModel : ObservableObject
     [ObservableProperty]
     public partial string Status { get; private set; } = "";
 
-    /// <summary>The show's timelines (for the actions' pickers), by their place in the tree.</summary>
-    public IReadOnlyList<TimelineChoice> Timelines =>
-        _session.Project.Timelines.OrderBy(t => t.TreePath, StringComparer.OrdinalIgnoreCase).Select(t => new TimelineChoice(t.Id, t.TreePath)).ToList();
+    /// <summary>
+    /// The show's timelines (for the actions' pickers), by their place in the tree. The same list each time until a
+    /// timeline is added, removed, renamed or moved: a dropdown handed a new list while a choice is being made in it
+    /// loses the choice, and puts back the old one.
+    /// </summary>
+    public IReadOnlyList<TimelineChoice> Timelines
+    {
+        get
+        {
+            var now = _session.Project.Timelines.OrderBy(t => t.TreePath, StringComparer.OrdinalIgnoreCase).Select(t => new TimelineChoice(t.Id, t.TreePath)).ToList();
+            if (!now.SequenceEqual(_timelines)) _timelines = now;
+            return _timelines;
+        }
+    }
+
+    IReadOnlyList<TimelineChoice> _timelines = [];
+
+    /// <summary>A timeline changed: the actions' pickers look again (getting a new list only if the timelines differ).</summary>
+    void RefreshTimelines()
+    {
+        OnPropertyChanged(nameof(Timelines));
+        foreach (var button in Buttons)
+            foreach (var action in button.Actions) action.Refresh();
+    }
 
     /// <summary>A new or opened show: its buttons.</summary>
     public void Reload()
     {
+        LearningKeyFor = null;
         Buttons.Clear();
         foreach (var button in _session.Project.Buttons) Buttons.Add(new ShowButtonViewModel(button, this));
         Selected = null;
@@ -128,7 +143,7 @@ public sealed partial class ButtonsViewModel : ObservableObject
             switch (action)
             {
                 case RunTimelineAction run:
-                    if (Find(run.TimelineId) is { } timeline) _playback.Launch(timeline, run.PlayOnceOnly);
+                    if (Find(run.TimelineId) is { } timeline) _playback.Launch(timeline);
                     else problems.Add("a timeline it runs is gone");
                     break;
                 case StopTimelineAction stop:
@@ -150,9 +165,54 @@ public sealed partial class ButtonsViewModel : ObservableObject
     /// <summary>A key pressed anywhere (not while typing): presses the button with that key. Returns whether one had it.</summary>
     public bool PressKey(string key)
     {
-        if (Buttons.FirstOrDefault(b => b.Button.Key == key) is not { } button) return false;
+        if (ButtonWithKey(key) is not { } button) return false;
         Press(button);
         return true;
+    }
+
+    public bool HasKey(string key) => ButtonWithKey(key) is not null;
+
+    ShowButtonViewModel? ButtonWithKey(string key) => Buttons.FirstOrDefault(b => b.HasKey(key));
+
+    // ---- learning a key: the next key pressed becomes a trigger of the button ----
+
+    /// <summary>The button waiting for a key to be pressed; null when none is.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsLearningKey))]
+    public partial ShowButtonViewModel? LearningKeyFor { get; private set; }
+
+    partial void OnLearningKeyForChanged(ShowButtonViewModel? oldValue, ShowButtonViewModel? newValue)
+    {
+        oldValue?.IsLearningKey = false;
+        newValue?.IsLearningKey = true;
+        newValue?.KeyProblem = "";
+    }
+
+    public bool IsLearningKey => LearningKeyFor is not null;
+
+    /// <summary>Starts waiting for a key for this button, or stops if it already was.</summary>
+    internal void ToggleLearningKey(ShowButtonViewModel button) => LearningKeyFor = LearningKeyFor == button ? null : button;
+
+    public void CancelLearningKey() => LearningKeyFor = null;
+
+    /// <summary>
+    /// The key pressed while waiting, whatever has focus. A key that can't be used says why and keeps waiting, so the next
+    /// try needs no extra click. Keys are used on their own, so that Ctrl and the like stay with GhostShow's own shortcuts.
+    /// A click elsewhere stops the waiting (MainWindow), so the keyboard is never held by a wait that's been forgotten.
+    /// </summary>
+    public void LearnKey(string key, bool withModifier)
+    {
+        if (LearningKeyFor is not { } button || TriggerKeys.IsModifier(key)) return;
+        string label = TriggerKeys.Label(key);
+        if (key == "Escape") LearningKeyFor = null;
+        else if (withModifier) button.KeyProblem = "Press the key on its own, without Ctrl, Shift or Alt.";
+        else if (!TriggerKeys.CanUse(key)) button.KeyProblem = $"GhostShow uses {label} itself: try a letter, a number or an F key.";
+        else if (ButtonWithKey(key) is { } other) button.KeyProblem = $"{label} is already on {other.Name}.";
+        else
+        {
+            LearningKeyFor = null;
+            button.AddKey(key);
+        }
     }
 
     /// <summary>From the UI's refresh timer: which buttons are lit (a timeline they run is playing).</summary>
@@ -178,9 +238,23 @@ public sealed partial class ButtonsViewModel : ObservableObject
     {
         var button = new ShowButton { Name = $"Button {Buttons.Count + 1}", Color = Palette[(Buttons.Count + 1) % Palette.Count] };
         Edit("Add button", () => _session.Project.Buttons.Add(button), null, Only(_session.Project));
+        // Straight on to its trigger: press a key now, or click anywhere else to skip that (see LearnKey).
+        StartLearningKey(Buttons.First(r => r.Button == button));
+    }
+
+    /// <summary>Right-clicking a button, Edit: the editor opens on it. Clicks select until Edit mode is turned off.</summary>
+    internal void OpenEditor(ShowButtonViewModel button)
+    {
         IsOpen = true;
         IsEditing = true;
-        Selected = Buttons.First(r => r.Button == button);
+        Selected = button;
+    }
+
+    /// <summary>The editor opens on it, waiting for a key.</summary>
+    internal void StartLearningKey(ShowButtonViewModel button)
+    {
+        OpenEditor(button);
+        LearningKeyFor = button;   // after selecting, which stops any waiting
     }
 
     internal void Remove(ShowButtonViewModel button)
@@ -211,22 +285,11 @@ public sealed partial class ButtonsViewModel : ObservableObject
         }, null, Only(_session.Project));
     }
 
-    /// <summary>The keys this button could take: its own and those no other button has.</summary>
-    internal IReadOnlyList<KeyChoice> KeysFor(ShowButtonViewModel button) =>
-        AllKeys.Where(k => k.Key is null || k.Key == button.Button.Key || Buttons.All(b => b == button || b.Button.Key != k.Key)).ToList();
-
     internal void Changed()
     {
         OnPropertyChanged(nameof(HasButtons));
-        foreach (var button in Buttons) button.RefreshKeys();
         _markDirty();
     }
-}
-
-/// <summary>A key a button can have: its name (as Avalonia names it, e.g. "D1"), or null for none, and how it's shown.</summary>
-public sealed record KeyChoice(string? Key, string Label)
-{
-    public override string ToString() => Label;
 }
 
 public sealed record TimelineChoice(Guid Id, string Path)
@@ -234,7 +297,7 @@ public sealed record TimelineChoice(Guid Id, string Path)
     public override string ToString() => Path;
 }
 
-/// <summary>One button: what it shows, and (in edit mode) its name, colour, key and actions.</summary>
+/// <summary>One button: what it shows, and (in edit mode) its name, colour, triggers and actions.</summary>
 public sealed partial class ShowButtonViewModel : ObservableObject
 {
     readonly ButtonsViewModel _owner;
@@ -244,6 +307,7 @@ public sealed partial class ShowButtonViewModel : ObservableObject
         Button = button;
         _owner = owner;
         foreach (var action in button.Actions) Actions.Add(new ButtonActionViewModel(action, this, owner));
+        foreach (var trigger in button.Triggers) Triggers.Add(new ButtonTriggerViewModel(trigger, this));
     }
 
     /// <summary>After a change to the show: its actions' rows match its actions, and every field shows the model.</summary>
@@ -255,9 +319,14 @@ public sealed partial class ShowButtonViewModel : ObservableObject
             Actions.Clear();
             foreach (var row in rows) Actions.Add(row);
         }
+        if (!Triggers.Select(t => t.Trigger).SequenceEqual(Button.Triggers))
+        {
+            var rows = Button.Triggers.Select(t => Triggers.FirstOrDefault(r => r.Trigger == t) ?? new ButtonTriggerViewModel(t, this)).ToList();
+            Triggers.Clear();
+            foreach (var row in rows) Triggers.Add(row);
+        }
         OnPropertyChanged(nameof(Name));
         OnPropertyChanged(nameof(Color));
-        OnPropertyChanged(nameof(SelectedKey));
         OnPropertyChanged(nameof(KeyLabel));
         foreach (var action in Actions) action.Refresh();
     }
@@ -287,22 +356,45 @@ public sealed partial class ShowButtonViewModel : ObservableObject
         }
     }
 
-    public IReadOnlyList<KeyChoice> KeyChoices => _owner.KeysFor(this);
+    // ---- triggers ----
 
-    public KeyChoice SelectedKey
+    public ObservableCollection<ButtonTriggerViewModel> Triggers { get; } = new();
+
+    IEnumerable<string> Keys => Button.Triggers.Where(t => t.Source == ButtonTrigger.Keyboard).Select(t => t.Address);
+
+    internal bool HasKey(string key) => Keys.Contains(key);
+
+    /// <summary>Its keys, shown in the button's corner ("F5", "1 · Q"); empty for none.</summary>
+    public string KeyLabel => string.Join(" · ", Keys.Select(TriggerKeys.Label));
+
+    /// <summary>Waiting for a key to be pressed, to add it as a trigger.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(LearnKeyLabel))]
+    public partial bool IsLearningKey { get; set; }
+
+    public string LearnKeyLabel => IsLearningKey ? "Press a key… (Esc cancels)" : "Add key";
+
+    /// <summary>Why the key just pressed couldn't be added; empty when there's nothing to say.</summary>
+    [ObservableProperty]
+    public partial string KeyProblem { get; set; } = "";
+
+    [RelayCommand]
+    void LearnKey() => _owner.ToggleLearningKey(this);
+
+    [RelayCommand]
+    void OpenEditor() => _owner.OpenEditor(this);
+
+    [RelayCommand]
+    void AddKeyFromMenu() => _owner.StartLearningKey(this);
+
+    internal void AddKey(string key)
     {
-        get => ButtonsViewModel.AllKeys.First(k => k.Key == Button.Key);
-        set
-        {
-            if (value is null || value.Key == Button.Key) return;
-            Edit("Change button key", () => Button.Key = value.Key);
-        }
+        var trigger = new ButtonTrigger { Address = key };
+        Edit("Add key", () => Button.Triggers.Add(trigger));
     }
 
-    /// <summary>The key, shown in the button's corner ("F5", "1"); empty for none.</summary>
-    public string KeyLabel => Button.Key is null ? "" : SelectedKey.Label;
-
-    internal void RefreshKeys() => OnPropertyChanged(nameof(KeyChoices));
+    internal void RemoveTrigger(ButtonTriggerViewModel trigger) =>
+        Edit("Remove key", () => Button.Triggers.Remove(trigger.Trigger));
 
     public ObservableCollection<ButtonActionViewModel> Actions { get; } = new();
 
@@ -367,6 +459,17 @@ public sealed partial class ShowButtonViewModel : ObservableObject
         _owner.Edit(description, change, null, ButtonsViewModel.Only(action));
 }
 
+/// <summary>One trigger of a button, in the editor.</summary>
+public sealed partial class ButtonTriggerViewModel(ButtonTrigger trigger, ShowButtonViewModel button) : ObservableObject
+{
+    public ButtonTrigger Trigger { get; } = trigger;
+
+    public string Label => $"Key {TriggerKeys.Label(Trigger.Address)}";
+
+    [RelayCommand]
+    void Remove() => button.RemoveTrigger(this);
+}
+
 /// <summary>One action of a button, in the editor.</summary>
 public sealed partial class ButtonActionViewModel(ButtonAction action, ShowButtonViewModel button, ButtonsViewModel owner) : ObservableObject
 {
@@ -382,7 +485,6 @@ public sealed partial class ButtonActionViewModel(ButtonAction action, ShowButto
     };
 
     public bool HasTimeline => Action is RunTimelineAction or StopTimelineAction;
-    public bool IsRun => Action is RunTimelineAction;
 
     public IReadOnlyList<TimelineChoice> Timelines => owner.Timelines;
 
@@ -408,17 +510,6 @@ public sealed partial class ButtonActionViewModel(ButtonAction action, ShowButto
     }
 
     public bool IsMissing => HasTimeline && owner.Find(TimelineId) is null;
-
-    /// <summary>Run timeline: do nothing while it's still running (otherwise each press plays another copy).</summary>
-    public bool PlayOnceOnly
-    {
-        get => Action is RunTimelineAction { PlayOnceOnly: true };
-        set
-        {
-            if (Action is not RunTimelineAction run || run.PlayOnceOnly == value) return;
-            button.EditAction(Action, value ? "Play once only" : "Play every time", () => run.PlayOnceOnly = value);
-        }
-    }
 
     /// <summary>After a change to the show: every field shows the model.</summary>
     internal void Refresh() => OnPropertyChanged(string.Empty);

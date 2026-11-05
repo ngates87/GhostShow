@@ -400,12 +400,6 @@ public class PlaybackManagerTests : IDisposable
         Events = [.. events.Select(e => new TimelineCommandEvent { Start = S(e.At), TimelineId = e.Timeline, Command = e.Command })],
     };
 
-    static TimelineTrack OnceOnly(TimelineTrack track)
-    {
-        foreach (var e in track.Events.OfType<TimelineCommandEvent>()) e.PlayOnceOnly = true;
-        return track;
-    }
-
     [Fact]
     public void An_event_track_runs_and_stops_other_timelines_when_its_playhead_gets_there()
     {
@@ -425,11 +419,10 @@ public class PlaybackManagerTests : IDisposable
     }
 
     [Fact]
-    public void Events_at_the_start_fire_on_play_and_again_on_every_loop_as_new_copies_unless_play_once_only()
+    public void Events_at_the_start_fire_on_play_and_again_on_every_loop_as_new_copies_unless_one_at_a_time()
     {
         Load(Ambient, Show("Loop", length: 3, loop: true, tracks: Events((0, Scare, TimelineCommand.Run))));
         Load(Scare, Show("Scream", length: 60, tracks: Lights(Raw(0, 5, to: 200))));
-        Load(Other, Show("Once", length: 3, loop: true, tracks: OnceOnly(Events((0, Scare, TimelineCommand.Run)))));
 
         _manager.Play(Ambient);
         After(0.1);
@@ -440,11 +433,17 @@ public class PlaybackManagerTests : IDisposable
 
         _manager.StopAll();
         After(0.1);
-        _manager.Play(Other);
+        Load(Scare, Show("Scream", new TimelinePlayback(OneAtATime: true), length: 60, tracks: Lights(Raw(0, 5, to: 200))));
+        _manager.Play(Ambient);
         After(0.1);
         After(3);
         After(0.1);
-        Assert.Single(_manager.Running, r => r.TimelineId == Scare);   // play once only: not again while it runs
+        Assert.Single(_manager.Running, r => r.TimelineId == Scare);   // one at a time: not again while it runs
+        Assert.Null(_manager.Launch(Scare));                            // nor from a button
+
+        _manager.StopTimeline(Scare);
+        After(0.1);
+        Assert.NotNull(_manager.Launch(Scare));                         // once it's stopped, it starts again
     }
 
     [Fact]

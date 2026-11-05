@@ -387,9 +387,8 @@ public sealed class RemoteServerTests : IAsyncLifetime
         Assert.Equal(TransportState.Stopped, _host.Playback.StatusOf(_main.Id).State);
         Assert.Empty(_host.Commands.Calls);   // none of it went to the desktop's own transport
 
-        await CommandAsync(socket, new { action = "run", timeline = main, playOnceOnly = true });
-        await CommandAsync(socket, new { action = "run", timeline = main, playOnceOnly = true });
-        Assert.Single(_host.Playback.Running);   // once only
+        await CommandAsync(socket, new { action = "run", timeline = main });
+        Assert.Equal([$"run {_main.Id}"], _host.Commands.Calls);   // run goes through the desktop, as a show button does
     }
 
     [Fact]

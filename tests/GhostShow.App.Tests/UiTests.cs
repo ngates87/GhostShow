@@ -3,6 +3,7 @@ using Avalonia;
 using Avalonia.Headless;
 using Avalonia.Input;
 using Avalonia.Input.Platform;
+using Avalonia.LogicalTree;
 using Avalonia.VisualTree;
 using GhostShow.App.ViewModels;
 using GhostShow.Core.Fixtures;
@@ -308,7 +309,10 @@ public class UiTests
         var button = rig.ViewModel.Buttons.Buttons.Single();
         button.AddActionCommand.Execute("run");
         button.Actions[0].Timeline = rig.ViewModel.Buttons.Timelines.Single(t => t.Id == scare.Id);
-        button.SelectedKey = ViewModels.ButtonsViewModel.AllKeys.Single(k => k.Key == "F5");
+        Assert.True(button.IsLearningKey);   // a new button goes straight on to its key
+        rig.Key(Key.F5);   // the key is learned: this press doesn't run anything
+        Assert.Equal("F5", button.KeyLabel);
+        Assert.False(rig.Manager.IsRunning(scare.Id));
         rig.ViewModel.Buttons.IsEditing = false;
         WindowRig.Pump();
 
@@ -334,6 +338,129 @@ public class UiTests
         name.Focus();
         rig.Key(Key.F5);   // typing in a field: not a button press
         Assert.False(rig.Manager.IsRunning(scare.Id));
+    });
+
+    [Fact]
+    public Task Right_clicking_a_button_offers_its_editor_and_a_key_without_pressing_it() => Ui.Run(() =>
+    {
+        using var rig = new WindowRig();
+        var buttons = rig.ViewModel.Buttons;
+        var scare = new ShowTimeline { Name = "Scare", Length = S(10) };
+        rig.Session.Project.Timelines.Add(scare);
+        buttons.AddCommand.Execute(null);
+        var button = buttons.Buttons.Single();
+        button.AddActionCommand.Execute("run");
+        button.Actions[0].Timeline = buttons.Timelines.Single(t => t.Id == scare.Id);
+        buttons.CancelLearningKey();
+        buttons.IsEditing = false;
+        WindowRig.Pump();
+        var tile = rig.Window.GetVisualDescendants().OfType<Button>().Single(b => b.Classes.Contains("showButton"));
+
+        rig.Click(rig.CenterOf(tile), MouseButton.Right);
+
+        var menu = tile.ContextMenu!;
+        Assert.True(menu.IsOpen);
+        Assert.False(rig.Manager.IsRunning(scare.Id));
+        var items = menu.Items.OfType<MenuItem>().ToDictionary(i => (string)i.Header!);
+
+        items["Edit"].Command!.Execute(null);
+        menu.Close();
+        WindowRig.Pump();
+        Assert.True(buttons.IsEditing);
+        Assert.Same(button, buttons.Selected);
+        Assert.False(button.IsLearningKey);
+
+        // The name's field has focus, as it would after renaming: the key still goes to the button.
+        var name = rig.Window.GetVisualDescendants().OfType<TextBox>().First(t => t.Text == button.Name);
+        name.Focus();
+        items["Add key…"].Command!.Execute(null);
+        rig.Key(Key.F5);
+        Assert.Equal("F5", button.KeyLabel);
+        Assert.False(rig.Manager.IsRunning(scare.Id));
+    });
+
+    [Fact]
+    public Task Clicking_into_a_field_or_elsewhere_stops_a_button_waiting_for_a_key() => Ui.Run(() =>
+    {
+        using var rig = new WindowRig();
+        var buttons = rig.ViewModel.Buttons;
+        buttons.AddCommand.Execute(null);
+        var button = buttons.Buttons.Single();
+        WindowRig.Pump();
+        var tile = rig.Window.GetVisualDescendants().OfType<Button>().Single(b => b.Classes.Contains("showButton"));
+
+        rig.Click(rig.CenterOf(tile));   // the panel: still waiting
+        Assert.True(button.IsLearningKey);
+
+        var name = rig.Window.GetVisualDescendants().OfType<TextBox>().First(t => t.Text == button.Name);
+        rig.Click(rig.CenterOf(name));
+        Assert.False(button.IsLearningKey);
+        rig.Key(Key.F5);   // typing: goes to the field
+        Assert.Equal("", button.KeyLabel);
+
+        button.LearnKeyCommand.Execute(null);
+        rig.Click(rig.CenterOf(rig.Find<Controls.TimelineCanvas>()));
+        Assert.False(button.IsLearningKey);
+    });
+
+    [Fact]
+    public Task Choosing_an_action_s_timeline_in_its_list_sets_it_and_stays_shown() => Ui.Run(() =>
+    {
+        using var rig = new WindowRig();
+        var buttons = rig.ViewModel.Buttons;
+        var scare = new ShowTimeline { Name = "Scare", Length = S(10) };
+        rig.Session.Project.Timelines.Add(scare);
+        buttons.AddCommand.Execute(null);
+        buttons.CancelLearningKey();
+        var button = buttons.Buttons.Single();
+        button.AddActionCommand.Execute("run");
+        WindowRig.Pump();
+        var action = (Core.Model.RunTimelineAction)button.Button.Actions.Single();
+        var list = rig.Window.GetVisualDescendants().OfType<ComboBox>().Single(c => c.DataContext is ViewModels.ButtonActionViewModel);
+        Assert.Equal("Main", list.SelectedItem?.ToString());
+
+        // As a person does: open it, and click the item.
+        rig.Click(rig.CenterOf(list));
+        Assert.True(list.IsDropDownOpen);
+        var item = list.GetLogicalDescendants().OfType<ComboBoxItem>().Concat(list.GetVisualDescendants().OfType<ComboBoxItem>())
+                       .Distinct().Single(i => i.Content?.ToString() == "Scare");
+        rig.Click(rig.CenterOf(item));
+        WindowRig.Pump();
+
+        Assert.Equal(scare.Id, action.TimelineId);
+        Assert.False(list.IsDropDownOpen);
+        Assert.Equal("Scare", list.SelectedItem?.ToString());
+
+        // A timeline made afterwards is in the list too.
+        rig.Editor.Tree.NewTimelineCommand.Execute(null);
+        WindowRig.Pump();
+        Assert.Equal(3, button.Actions[0].Timelines.Count);
+        Assert.Equal("Scare", list.SelectedItem?.ToString());
+    });
+
+    [Fact]
+    public Task Holding_a_button_s_key_presses_it_once() => Ui.Run(() =>
+    {
+        using var rig = new WindowRig();
+        var scare = new ShowTimeline { Name = "Scare", Length = S(10) };
+        rig.Session.Project.Timelines.Add(scare);
+        rig.ViewModel.Buttons.AddCommand.Execute(null);
+        var button = rig.ViewModel.Buttons.Buttons.Single();
+        button.AddActionCommand.Execute("run");
+        button.Actions[0].Timeline = rig.ViewModel.Buttons.Timelines.Single(t => t.Id == scare.Id);
+        rig.Key(Key.F5);
+        rig.ViewModel.Buttons.IsEditing = false;
+        WindowRig.Pump();
+        int Playing() => rig.Manager.Running.Count(r => r.TimelineId == scare.Id);
+
+        rig.KeyDown(Key.F5);
+        rig.KeyDown(Key.F5);   // the key repeating
+        rig.KeyDown(Key.F5);
+        Assert.Equal(1, Playing());
+
+        rig.Window.KeyRelease(Key.F5, RawInputModifiers.None, PhysicalKey.None, null);
+        rig.Key(Key.F5);   // let go, and pressed again
+        Assert.Equal(2, Playing());
     });
 
     [Fact]

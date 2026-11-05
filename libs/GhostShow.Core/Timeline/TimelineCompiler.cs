@@ -86,7 +86,7 @@ public static class TimelineCompiler
                             issues.Add(Error(e, $"'{Describe(e)}': the timeline it {(command.Command == TimelineCommand.Run ? "runs" : "stops")} isn't in the show."));
                             break;
                         }
-                        cues.Add(new TimelineCue(command.Id, command.Start.Ticks, command.TimelineId, command.Command, command.PlayOnceOnly));
+                        cues.Add(new TimelineCue(command.Id, command.Start.Ticks, command.TimelineId, command.Command));
                         contentEnd = Math.Max(contentEnd, command.Start.Ticks);
                         break;
                     case LightingClip clip:

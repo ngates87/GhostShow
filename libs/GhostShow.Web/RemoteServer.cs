@@ -418,7 +418,7 @@ public sealed partial class RemoteServer : IAsyncDisposable
             "edit" => ApplyEdit(connection, message),
             "undo" => UndoOrRedo(connection, message, undo: true),
             "redo" => UndoOrRedo(connection, message, undo: false),
-            "run" => Run(Id("timeline"), playOnceOnly: message["playOnceOnly"]?.GetValue<bool>() == true),
+            "run" => control.Run(Id("timeline")),
             "stopTimeline" => control.StopTimeline(Id("timeline")),
             "stopRunning" => control.StopRunning(Id("running")),
             "stopAll" => control.StopAll(),
@@ -429,18 +429,6 @@ public sealed partial class RemoteServer : IAsyncDisposable
             "testSound" => control.TestSound(message["device"]?.GetValue<string>(), Enum.Parse<AudioSide>(message["side"]?.GetValue<string>() ?? nameof(AudioSide.Stereo))),
             _ => "This version of GhostShow doesn't know that command.",
         };
-    }
-
-    /// <summary>
-    /// Runs a timeline from its start, as a show button does: another copy if it's running, or (play once only)
-    /// nothing while it runs.
-    /// </summary>
-    string? Run(Guid timeline, bool playOnceOnly)
-    {
-        if (!playOnceOnly) return _host.Control.Run(timeline);
-        if (_host.Session.Project.Timelines.All(t => t.Id != timeline)) return "That timeline isn't in the show any more.";
-        _host.Playback.Launch(timeline, playOnceOnly: true);   // false (not started) is fine: it's already running
-        return null;
     }
 
     /// <summary>A device shows this timeline: it's loaded (so it can play), and the device gets its problems and status.</summary>
