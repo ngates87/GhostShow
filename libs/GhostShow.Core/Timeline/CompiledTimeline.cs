@@ -26,9 +26,14 @@ public sealed record TimelineCue(Guid EventId, long Time, Guid Timeline, Timelin
 
 /// <param name="End">When the cue stops; null when it plays until the file ends on its own (length unknown).</param>
 /// <param name="Device">The output device to play on (its track's); null for the default output.</param>
+/// <param name="Side">The side of that device it plays on (its track's).</param>
 public sealed record AudioCue(Guid EventId, string Name, string Path, long Start, long? End, long Offset,
-                              double Volume, long FadeIn, long FadeOut, bool Loop, string? Device = null)
+                              double Volume, long FadeIn, long FadeOut, bool Loop, string? Device = null, AudioSide Side = AudioSide.Stereo)
 {
+    /// <summary>Whether two sounds come out of the same speakers. Stereo uses both sides.</summary>
+    public bool SharesOutputWith(AudioCue other) =>
+        Device == other.Device && (Side == AudioSide.Stereo || other.Side == AudioSide.Stereo || Side == other.Side);
+
     /// <summary>Volume at timeline position t from the event volume and its fade-in/out (evaluated from time, not stepped).</summary>
     public double VolumeAt(long t)
     {
@@ -124,6 +129,23 @@ public sealed class CompiledTimeline
 
     /// <summary>Every channel the timeline sets at some point, as (universe, address): what it can override.</summary>
     public IReadOnlySet<(int Universe, int Address)> Channels { get; }
+
+    /// <summary>Whether this has a sound on the same speakers as a cue of another timeline.</summary>
+    public bool SharesOutputWith(AudioCue cue)
+    {
+        foreach (var own in AudioCues)
+            if (own.SharesOutputWith(cue)) return true;
+        return false;
+    }
+
+    /// <summary>Whether two timelines use any of the same outputs: a DMX channel, or the same speakers.</summary>
+    public bool OverlapsWith(CompiledTimeline other)
+    {
+        if (Channels.Overlaps(other.Channels)) return true;
+        foreach (var cue in other.AudioCues)
+            if (SharesOutputWith(cue)) return true;
+        return false;
+    }
 
     public int LevelStepCount => _steps.Length;
 

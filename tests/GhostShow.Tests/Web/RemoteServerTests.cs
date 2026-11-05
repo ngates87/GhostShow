@@ -44,7 +44,7 @@ public sealed class RemoteServerTests : IAsyncLifetime
         public string? Blackout() => Did("blackout");
         public string? PressButton(Guid buttonId) => Did($"press {buttonId}");
         public string? Open(Guid timelineId) => Did($"open {timelineId}");
-        public string? TestSound(string? device) => Did($"testSound {device}");
+        public string? TestSound(string? device, AudioSide side) => Did($"testSound {device}");
         public Task<string?> SaveAsync() => Task.FromResult(Did("save"));
         public IReadOnlyList<string> SavedShows() => ["Haunt 2026", "Test show"];
         public Task<string?> NewShowAsync(bool discardUnsaved) => Task.FromResult(Did($"new {discardUnsaved}"));

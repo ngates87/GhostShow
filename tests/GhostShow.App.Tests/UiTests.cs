@@ -27,6 +27,59 @@ public class UiTests
     }
 
     [Fact]
+    public Task A_track_with_more_channels_than_fit_scrolls_its_list_and_then_the_tracks() => Ui.Run(() =>
+    {
+        using var rig = new WindowRig();
+        for (int i = 0; i < 6; i++) rig.Editor.AddTrackCommand.Execute(TrackKind.Lighting);   // more than fit: the track list has to scroll too
+        var row = rig.Editor.Tracks.First(t => t.IsLighting);
+        rig.Editor.EditChannels(row);
+        var picker = rig.Editor.ChannelPicker!;
+        picker.RawFrom = 100;
+        picker.RawTo = 119;
+        picker.AddRawCommand.Execute(null);
+        picker.OkCommand.Execute(null);
+        if (!row.IsExpanded) row.ToggleExpandedCommand.Execute(null);   // it already had a channel, so it stays as it was
+        WindowRig.Pump(200);
+
+        var headers = rig.Find<ListBox>(l => l.Name == "TrackHeaders");
+        var tracksScroll = headers.FindAncestorOfType<ScrollViewer>()!;
+        var channelList = headers.GetVisualDescendants().OfType<ScrollViewer>().Single(s => s.Content is ItemsControl && s.DataContext == row);
+        Assert.True(channelList.Extent.Height > channelList.Viewport.Height);
+
+        var over = rig.CenterOf(channelList);
+        double tracksBefore = tracksScroll.Offset.Y;   // selecting a track may already have scrolled it into view
+        rig.Window.MouseWheel(over, new Vector(0, -1));
+        WindowRig.Pump(100);
+        Assert.True(channelList.Offset.Y > 0);
+        Assert.Equal(tracksBefore, tracksScroll.Offset.Y);   // the list takes the wheel while it can still move
+
+        // At the end of the list, the wheel moves on to the track list rather than getting stuck.
+        channelList.Offset = new Vector(0, channelList.Extent.Height);
+        WindowRig.Pump(100);
+        rig.Window.MouseWheel(over, new Vector(0, -1));
+        WindowRig.Pump(100);
+        Assert.True(tracksScroll.Offset.Y > tracksBefore);
+    });
+
+    [Fact]
+    public Task The_channel_picker_opens_with_fixtures_showing_and_raw_channels_closed() => Ui.Run(() =>
+    {
+        using var rig = new WindowRig();
+        rig.Editor.EditChannels(rig.Editor.Tracks.First(t => t.IsLighting));
+        WindowRig.Pump(200);
+
+        var fixtures = rig.Find<Expander>(e => e.Header as string == "Fixtures");
+        var raw = rig.Find<Expander>(e => e.Header as string == "Raw DMX channels");
+        Assert.True(fixtures.IsExpanded);
+        Assert.False(raw.IsExpanded);
+        Assert.True(rig.Find<CheckBox>(c => c.DataContext is FixtureChoiceViewModel).IsEffectivelyVisible);
+
+        rig.Editor.ChannelPicker!.IsRawExpanded = true;
+        WindowRig.Pump(100);
+        Assert.True(raw.IsExpanded);   // the section follows the view model both ways
+    });
+
+    [Fact]
     public Task A_show_made_on_a_device_can_be_named_renamed_and_opened_again() => Ui.Run(() =>
     {
         using var rig = new WindowRig();
@@ -895,6 +948,38 @@ public class UiTests
         rig.Key(Key.Space);
 
         Assert.Equal(Core.Playback.TransportState.Playing, rig.Status.State);
+    });
+
+    [Fact]
+    public void The_timeline_properties_panel_slides_out_from_its_strip_and_folds_back() => Ui.Run(() =>
+    {
+        using var rig = new WindowRig();
+        var strip = rig.Find<Button>(b => b.Name == "TimelinePropertiesStrip");
+        var panel = rig.Find<Border>(b => b.Name == "TimelinePropertiesPanel");
+        Assert.True(strip.IsVisible);
+        Assert.False(panel.IsEnabled);   // closed: nothing in it can take focus
+
+        rig.Click(rig.CenterOf(strip));
+        WindowRig.Pump(300);   // the slide takes 150 ms
+
+        Assert.True(rig.Editor.IsTimelinePropertiesOpen);
+        Assert.False(strip.IsVisible);
+        Assert.True(panel.IsEnabled);
+        Assert.Equal(300, panel.GetVisualParent<Border>()!.Bounds.Width);
+
+        // The settings in it reach the timeline.
+        var scare = panel.GetVisualDescendants().OfType<Button>().Single(b => b.Content as string == "Make it a scare");
+        rig.Click(rig.CenterOf(scare));
+        WindowRig.Pump();
+        Assert.Equal(10, rig.Editor.SelectedTimeline!.Playback.Priority);
+
+        var fold = panel.GetVisualDescendants().OfType<Button>().Single(b => b.Content as string == "»");
+        rig.Click(rig.CenterOf(fold));
+        WindowRig.Pump(300);
+
+        Assert.False(rig.Editor.IsTimelinePropertiesOpen);
+        Assert.True(strip.IsVisible);
+        Assert.Equal(0, panel.GetVisualParent<Border>()!.Bounds.Width);
     });
 
     [Fact]

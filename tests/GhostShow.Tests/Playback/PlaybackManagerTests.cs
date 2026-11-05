@@ -192,12 +192,94 @@ public class PlaybackManagerTests : IDisposable
         Assert.Equal(80, Output(2));
     }
 
+    static TimelineTrack Sound(string name, string? device, AudioSide side) =>
+        new() { Kind = TrackKind.Audio, AudioDevice = device, AudioSide = side, Events = [new AudioEvent { Name = name, File = "scream.wav", Length = S(30) }] };
+
+    [Theory]
+    [InlineData(null, AudioSide.Left, AudioSide.Left, true)]
+    [InlineData(null, AudioSide.Left, AudioSide.Stereo, true)]
+    [InlineData(null, AudioSide.Left, AudioSide.Right, false)]
+    [InlineData("Other card", AudioSide.Left, AudioSide.Left, false)]
+    public void A_scare_only_turns_down_sound_on_its_own_speakers(string? scareDevice, AudioSide ambientSide, AudioSide scareSide, bool turnedDown)
+    {
+        var ambient = Show("Ambient", loop: true, length: 30, tracks: Sound("wind", null, ambientSide));
+        Load(Ambient, ambient);
+        Load(Scare, Show("Scare", new TimelinePlayback(Priority: 10, DuckOthers: 0.25), length: 30, tracks: Sound("scream", scareDevice, scareSide)));
+        _manager.Play(Ambient);
+        _manager.Play(Scare);
+        After(0.1);
+        After(0.1);
+
+        Assert.Equal(turnedDown ? 0.25 : 1, _audio.Volumes[ambient.Tracks[0].Events[0].Id], precision: 3);
+    }
+
+    [Theory]
+    [InlineData(AudioSide.Left, TransportState.Paused)]
+    [InlineData(AudioSide.Right, TransportState.Playing)]
+    public void A_pausing_scare_pauses_a_timeline_sharing_only_its_speakers(AudioSide scareSide, TransportState expected)
+    {
+        Load(Ambient, Show("Ambient", loop: true, length: 30, tracks: Sound("wind", null, AudioSide.Left)));
+        Load(Scare, Show("Scare", new TimelinePlayback(Priority: 10, PauseOverridden: true), length: 30, tracks: Sound("scream", null, scareSide)));
+        _manager.Play(Ambient);
+        After(0.1);
+        _manager.Play(Scare);
+        After(0.1);
+
+        Assert.Equal(expected, _manager.StatusOf(Ambient).State);
+    }
+
+    [Fact]
+    public void A_scare_pauses_an_ambient_started_by_a_cascade_and_stop_all_stops_everything()
+    {
+        var startShow = Guid.NewGuid();
+        Load(startShow, Show("Start Show", length: 10, tracks: Events((0, Ambient, TimelineCommand.Run))));
+        Load(Ambient, AmbientLoop());
+        Load(Scare, Show("Scare", new TimelinePlayback(Priority: 10, PauseOverridden: true, ReleaseAtEnd: true), length: 2, tracks: Lights(Raw(0, 1, to: 255))));
+        _manager.Launch(startShow);
+        After(0.1);
+        After(0.1);
+        Assert.Equal(TransportState.Playing, _manager.StatusOf(Ambient).State);
+
+        _manager.Launch(Scare);
+        After(0.1);
+        Assert.Equal(TransportState.Paused, _manager.StatusOf(Ambient).State);
+        Assert.Equal(255, Output(1));
+
+        After(3);   // the scare ends by itself
+        Assert.Equal(TransportState.Playing, _manager.StatusOf(Ambient).State);
+
+        _manager.StopAll();
+        After(0.1);
+        Assert.Empty(_manager.Running);
+    }
+
+    [Fact]
+    public void A_paused_ambient_waits_for_every_scare_that_paused_it()
+    {
+        Load(Ambient, AmbientLoop());
+        Load(Scare, Show("Scare", new TimelinePlayback(Priority: 10, PauseOverridden: true), length: 30, tracks: Lights(Raw(0, 1, to: 255))));
+        Load(Other, Show("Other", new TimelinePlayback(Priority: 10, PauseOverridden: true), length: 30, tracks: Lights(Raw(0, 2, to: 255))));
+        _manager.Play(Ambient);
+        After(0.1);
+        _manager.Play(Scare);
+        _manager.Play(Other);
+        After(0.1);
+
+        _manager.Stop(Scare);
+        After(0.1);
+        Assert.Equal(TransportState.Paused, _manager.StatusOf(Ambient).State);
+
+        _manager.Stop(Other);
+        After(0.1);
+        Assert.Equal(TransportState.Playing, _manager.StatusOf(Ambient).State);
+    }
+
     [Fact]
     public void A_ducking_override_turns_lower_timelines_sounds_down_while_it_plays()
     {
         var ambient = Show("Ambient", loop: true, length: 30, tracks: new TimelineTrack { Kind = TrackKind.Audio, Events = [new AudioEvent { Name = "wind", File = "scream.wav", Length = S(30) }] });
         Load(Ambient, ambient);
-        Load(Scare, Show("Scare", new TimelinePlayback(Priority: 10, DuckOthers: 0.25), length: 5, tracks: Lights(Raw(0, 1, to: 255))));
+        Load(Scare, Show("Scare", new TimelinePlayback(Priority: 10, DuckOthers: 0.25), length: 5, tracks: new TimelineTrack { Kind = TrackKind.Audio, Events = [new AudioEvent { Name = "scream", File = "scream.wav", Length = S(5) }] }));
         _manager.Play(Ambient);
         After(0.1);
         var wind = ambient.Tracks[0].Events[0].Id;

@@ -1,3 +1,4 @@
+using GhostShow.Core.Timeline;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
@@ -425,7 +426,7 @@ public sealed partial class RemoteServer : IAsyncDisposable
             "press" => control.PressButton(Id("button")),
             "open" => control.Open(Id("timeline")),
             "audio" => SendAudioFile(connection, message["file"]?.GetValue<string>() ?? throw new FormatException("No file.")),
-            "testSound" => control.TestSound(message["device"]?.GetValue<string>()),
+            "testSound" => control.TestSound(message["device"]?.GetValue<string>(), Enum.Parse<AudioSide>(message["side"]?.GetValue<string>() ?? nameof(AudioSide.Stereo))),
             _ => "This version of GhostShow doesn't know that command.",
         };
     }

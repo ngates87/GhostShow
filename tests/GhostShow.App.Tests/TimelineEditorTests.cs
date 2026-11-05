@@ -336,6 +336,23 @@ public class TimelineEditorTests : IDisposable
     }
 
     [Fact]
+    public void The_pickers_raw_section_starts_closed_unless_the_track_already_has_raw_channels()
+    {
+        var row = _rig.Track(TrackKind.Lighting);
+        Editor.EditChannels(row);
+        var picker = Editor.ChannelPicker!;
+        Assert.False(picker.IsRawExpanded);
+
+        picker.RawFrom = 100;
+        picker.RawTo = 100;
+        picker.AddRawCommand.Execute(null);
+        picker.OkCommand.Execute(null);
+
+        Editor.EditChannels(row);
+        Assert.True(Editor.ChannelPicker!.IsRawExpanded);   // not hidden: they're on the track
+    }
+
+    [Fact]
     public void Ticking_a_fixture_picks_all_its_channels_and_ok_gives_the_track_a_lane_each_as_one_undo_step()
     {
         var row = _rig.Track(TrackKind.Lighting);
@@ -1415,18 +1432,33 @@ public class TimelineEditorTests : IDisposable
     }
 
     [Fact]
-    public void Playback_settings_are_undoable_edits_summarised_on_the_button()
+    public void The_override_modes_and_scare_preset_set_the_playback_settings()
+    {
+        Editor.OverrideMode = TimelineEditorViewModel.Suppress;
+        Assert.Equal(0, Editor.SelectedTimeline!.Playback.DuckOthers);
+        Assert.True(Editor.IsSuppressing);
+        Editor.OverrideMode = TimelineEditorViewModel.RunAlongside;
+        Assert.Equal(1, Editor.SelectedTimeline.Playback.DuckOthers);
+
+        Editor.MakeScareCommand.Execute(null);
+
+        Assert.Equal(new TimelinePlayback(10, true, S(1), 1, true), Editor.SelectedTimeline.Playback);
+        Assert.Equal(TimelineEditorViewModel.Pause, Editor.OverrideMode);
+    }
+
+    [Fact]
+    public void Playback_settings_are_undoable_edits_with_a_summary()
     {
         Assert.Equal("Normal", Editor.PlaybackSummary);
 
         Editor.Priority = 10;
-        Editor.PauseOverridden = true;
+        Editor.OverrideMode = TimelineEditorViewModel.Suppress;
         Editor.ReleaseFadeSeconds = 2;
         Editor.DuckPercent = 25;
         Editor.ReleaseAtEnd = true;
 
-        Assert.Equal(new TimelinePlayback(10, true, S(2), 0.25, true), Editor.SelectedTimeline!.Playback);
-        Assert.Equal("Priority 10 · pauses others · ducks to 25% · releases at end · 2 s release", Editor.PlaybackSummary);
+        Assert.Equal(new TimelinePlayback(10, false, S(2), 0.25, true), Editor.SelectedTimeline!.Playback);
+        Assert.Equal("Priority 10 · others' sound at 25% · releases at end · 2 s release", Editor.PlaybackSummary);
         Assert.Equal(10, _rig.Compiled.Playback.Priority);   // the player has it straight away
 
         Editor.UndoCommand.Execute(null);

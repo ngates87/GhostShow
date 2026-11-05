@@ -1,3 +1,4 @@
+using GhostShow.Core.Timeline;
 using System.Text.Json.Nodes;
 using GhostShow.Browser.Remote;
 
@@ -22,9 +23,9 @@ public sealed class AudioDeviceList
     public Task RefreshAsync() => Task.CompletedTask;
 
     /// <summary>Asks the show computer for a test tone on a device (null: its default output).</summary>
-    public bool PlayTestSound(string? device)
+    public bool PlayTestSound(string? device, AudioSide side = AudioSide.Stereo)
     {
-        _link.Send("testSound", ("device", device));
+        _link.Send("testSound", ("device", device), ("side", side.ToString()));
         return true;
     }
 

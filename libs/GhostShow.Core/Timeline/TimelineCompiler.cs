@@ -306,7 +306,7 @@ public static class TimelineCompiler
                   : null;
         return new AudioCue(e.Id, Describe(e), path, e.Start.Ticks, end, e.Offset.Ticks,
                             Math.Clamp(e.Volume, 0, 1) * Math.Clamp(track.Volume, 0, 1), e.FadeIn.Ticks, e.FadeOut.Ticks, e.Loop,
-                            string.IsNullOrWhiteSpace(track.AudioDevice) ? null : track.AudioDevice);
+                            string.IsNullOrWhiteSpace(track.AudioDevice) ? null : track.AudioDevice, track.AudioSide);
     }
 
     static void CheckIds(ShowTimeline timeline, List<TimelineIssue> issues)

@@ -46,6 +46,7 @@ public sealed class PlaybackManager
     LevelsFrame? _merged;
     string _mergedKey = "";
     int[][] _winnerPriority = [];
+    Slot[] _ticking = [];
     long[][] _winnerStarted = [];
     bool _layerSet;
 
@@ -59,6 +60,7 @@ public sealed class PlaybackManager
         public Guid TimelineId { get; } = timelineId;
         public bool IsCopy => Id != TimelineId;
         public long Launched { get; } = launched;
+        public Func<AudioCue, double>? VolumeScale { get; set; }
         public ShowPlayer Player { get; } = player;
         public string Name { get; set; } = "";
         public CompiledTimeline Timeline { get; set; } = CompiledTimeline.Empty;
@@ -241,15 +243,9 @@ public sealed class PlaybackManager
         long now = _clock.Now;
         if (skipReleases) _releases.Clear();
 
-        // Ducking, from what's playing now: each sound volume scaled by every playing higher-priority ducker.
-        foreach (var slot in slots)
-        {
-            double scale = 1;
-            foreach (var other in slots)
-                if (other != slot && other.LastState == TransportState.Playing && other.Timeline.Playback.Priority > slot.Timeline.Playback.Priority)
-                    scale *= Math.Clamp(other.Timeline.Playback.DuckOthers, 0, 1);
-            slot.Player.VolumeScale = scale;
-        }
+        // Made once per timeline rather than every update: this runs 100 times a second.
+        _ticking = slots;
+        foreach (var slot in slots) slot.Player.VolumeScale = slot.VolumeScale ??= cue => VolumeScale(slot, cue, _ticking);
 
         foreach (var slot in slots) slot.Player.Tick();
 
@@ -280,6 +276,20 @@ public sealed class PlaybackManager
     }
 
     /// <summary>
+    /// A sound's volume is scaled by every playing higher-priority timeline that turns others down and has a sound on
+    /// the same speakers, so a scare only affects its own room's sound.
+    /// </summary>
+    static double VolumeScale(Slot slot, AudioCue cue, Slot[] slots)
+    {
+        double scale = 1;
+        foreach (var other in slots)
+            if (other != slot && other.LastState == TransportState.Playing && other.Timeline.Playback.Priority > slot.Timeline.Playback.Priority
+                && other.Timeline.SharesOutputWith(cue))
+                scale *= Math.Clamp(other.Timeline.Playback.DuckOthers, 0, 1);
+        return scale;
+    }
+
+    /// <summary>
     /// Raised (on the playback thread) when an event track runs a timeline that isn't loaded, so nothing happens. The
     /// app loads every timeline that event tracks run before playing (see PlaybackViewModel), so this means a bug or
     /// a timeline removed meanwhile.
@@ -300,7 +310,7 @@ public sealed class PlaybackManager
         }
     }
 
-    /// <summary>An override that pauses: pause every playing lower-priority timeline sharing a channel with it.</summary>
+    /// <summary>An override that pauses: pause every playing lower-priority timeline sharing an output with it.</summary>
     void OnStarted(Slot started, Slot[] slots)
     {
         var settings = started.Timeline.Playback;
@@ -309,7 +319,7 @@ public sealed class PlaybackManager
         {
             if (other == started || other.Timeline.Playback.Priority >= settings.Priority) continue;
             if (other.Player.Status.State != TransportState.Playing && other.PausedBy.Count == 0) continue;
-            if (!other.Timeline.Channels.Overlaps(started.Timeline.Channels)) continue;
+            if (!other.Timeline.OverlapsWith(started.Timeline)) continue;
             if (other.PausedBy.Count == 0) other.Player.Pause();
             other.PausedBy.Add(started.Id);
             started.Paused.Add(other.Id);

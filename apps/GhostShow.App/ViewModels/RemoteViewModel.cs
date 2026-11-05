@@ -128,8 +128,8 @@ sealed class AppShowControl(MainViewModel app) : IShowControl
     public Task<string?> SaveShowAsAsync(string name) => app.SaveShowAsForDeviceAsync(name);
     public Task<string?> RenameShowAsync(string name) => app.RenameShowForDeviceAsync(name);
 
-    public string? TestSound(string? device) =>
-        app.AudioDevices.PlayTestSound(device) ? null : $"Couldn't play on {device ?? "the default output"}: it isn't connected (or is still opening).";
+    public string? TestSound(string? device, AudioSide side) =>
+        app.AudioDevices.PlayTestSound(device, side) ? null : $"Couldn't play on {device ?? "the default output"}: it isn't connected (or is still opening).";
 }
 
 /// <summary>

@@ -70,7 +70,7 @@ public sealed class ShowPlayer
     public LevelsFrame? Frame { get; private set; }
 
     /// <summary>Scales every sound's volume, e.g. while a higher-priority timeline ducks this one. Set by the playback thread.</summary>
-    public double VolumeScale { get; set; } = 1;
+    public Func<AudioCue, double> VolumeScale { get; set; } = _ => 1;
 
     /// <summary>Clock time it last started playing from stopped (see <see cref="IPlaybackClock"/>).</summary>
     public long StartedAt
@@ -307,11 +307,11 @@ public sealed class ShowPlayer
         foreach (var cue in timeline.AudioCues)
         {
             if (!_dueAudio.Contains(cue.EventId) || _failedAudio.Contains(cue.EventId)) continue;
-            double volume = cue.VolumeAt(position) * VolumeScale;
+            double volume = cue.VolumeAt(position) * VolumeScale(cue);
             long? fileLength = _audio.GetLength(cue.Path)?.Ticks;
             var offset = TimeSpan.FromTicks(cue.FileOffsetAt(position, fileLength));
 
-            if (!_activeAudio.TryGetValue(cue.EventId, out var active) || active.Path != cue.Path || active.Loop != cue.Loop || active.Device != cue.Device)
+            if (!_activeAudio.TryGetValue(cue.EventId, out var active) || active.Path != cue.Path || active.Loop != cue.Loop || active.Device != cue.Device || active.Side != cue.Side)
             {
                 _audio.Start(cue, offset, volume);
                 _activeAudio[cue.EventId] = cue;

@@ -52,7 +52,7 @@ public sealed class ShowTimeline
         Name = name, Folder = Folder, Length = Length, Loop = Loop, Playback = Playback,
         Tracks = Tracks.Select(t => new TimelineTrack
         {
-            Name = t.Name, Kind = t.Kind, Enabled = t.Enabled, Color = t.Color, DrawLevelsBetweenClips = t.DrawLevelsBetweenClips, Volume = t.Volume, AudioDevice = t.AudioDevice,
+            Name = t.Name, Kind = t.Kind, Enabled = t.Enabled, Color = t.Color, DrawLevelsBetweenClips = t.DrawLevelsBetweenClips, Volume = t.Volume, AudioDevice = t.AudioDevice, AudioSide = t.AudioSide,
             Events = t.Events.Select(e => e.Clone()).ToList(),
             Channels = t.Channels.Select(c => c.Clone()).ToList(),
         }).ToList(),
@@ -75,6 +75,9 @@ public sealed class ShowTimeline
 /// what an override usually wants, so the ambient comes back by itself.</param>
 public sealed record TimelinePlayback(int Priority = 0, bool PauseOverridden = false, TimeSpan ReleaseFade = default,
                                       double DuckOthers = 1, bool ReleaseAtEnd = false);
+
+/// <summary>Which side of a stereo output a track plays on.</summary>
+public enum AudioSide { Stereo, Left, Right }
 
 /// <summary>
 /// Timeline and folder names are file and folder names on disk, so they follow the strictest rules of the supported
@@ -168,6 +171,9 @@ public sealed class TimelineTrack
     /// doesn't have plays on the default output instead, with a warning, until it's plugged in.
     /// </summary>
     public string? AudioDevice { get; set; }
+
+    /// <summary>Audio tracks: which side of the device it plays on. Left and right often feed different rooms.</summary>
+    public AudioSide AudioSide { get; set; }
 
     /// <summary>The track's clips: audio events, or (lighting) <see cref="LightingClip"/>s.</summary>
     public List<TimelineEvent> Events { get; set; } = [];

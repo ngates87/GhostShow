@@ -35,7 +35,7 @@ public sealed class AudioDeviceList(AudioService audio)
     }
 
     /// <summary>A short tone on a track's output (null: the default output). False if that device isn't open.</summary>
-    public bool PlayTestSound(string? device) => audio.PlayTestSound(device);
+    public bool PlayTestSound(string? device, AudioSide side = AudioSide.Stereo) => audio.PlayTestSound(device, side);
 
     /// <summary>
     /// The choices for an audio track's output: the default output, every device, and the track's own device marked

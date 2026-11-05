@@ -187,19 +187,22 @@ anything. The **Playing** list (under the timeline tree) shows everything playin
 and **Stop all**; Playback → Stop All Timelines does the same. Blackout, New, Open and closing stop everything at
 once.
 
-Each timeline's **⚙ Playback** settings (next to Loop and Length) say how it plays alongside others:
+Each timeline's **Timeline properties** say how it plays alongside others. They slide out from the strip at the right edge
+of the timeline, and folded, the strip shows a summary of them:
 
 | Setting | Effect |
 |---|---|
 | Priority | On a channel two timelines set, the higher priority wins; on equal priority, the one started most recently. 0 for ordinary timelines; e.g. 10 for scares, 100 for an emergency look. A timeline overrides lower ones only on the channels it uses |
-| What it overrides: Keeps running / Pauses | Keeps running: lower-priority timelines carry on underneath, out of sight, and are wherever they've got to when this one ends. Pauses: when this starts, lower-priority timelines that share a channel with it pause, and resume from where they were when it ends (timelines on other channels aren't touched) |
+| What it overrides | For lower-priority timelines using the same outputs (a DMX channel, or the same audio device and side; stereo uses both sides). **Pause:** they stop, and resume where they were when this ends, including their sound. **Suppress:** they keep advancing underneath, this takes their shared lights, and their sounds on the same speakers are turned down to a set volume. A scare with no sound leaves their sound alone. **Run alongside:** the same, with their sound untouched |
 | Release fade | When it stops (or releases at its end), its channels fade from where it left them to whatever is underneath: a lower timeline, or the manual level. 0 snaps back |
-| Other sounds while it plays | Lower-priority timelines' sounds play at this volume (100% = untouched) |
 | At the end: Holds / Releases | Holds: a non-looping timeline keeps its final look. Releases: it lets go at its end, so what's underneath comes back by itself (what an override usually wants) |
 
-A typical haunt room: the ambient loop at priority 0, looping; each scare at priority 10, set to pause what it
-overrides (or keep it running), to release at its end with a 1–2 s release fade, and to duck the ambient's sounds.
-Trigger the scare and the room's ambient comes back on its own when it's done.
+**Make it a scare** sets the usual values: priority 10, Pause, and letting go at its end with a 1 s release fade. Trigger
+the scare and the room's ambient comes back on its own when it's done. Pause stops a whole timeline, so give each room
+its own ambient, started together by a "Start Show" timeline.
+
+An audio track also chooses a **side**: stereo, left or right. Left or right mixes both of the file's channels into that
+side, since the two sides often feed different rooms.
 
 ### Editing while playing
 
@@ -253,10 +256,12 @@ same files. The Audio screen lists every sound the show uses and whether it was 
   shows that track. Closed (×), it stays closed. The channel picker closes instead, since its choices aren't applied
   until OK.
 - **Lighting tracks:** right-click the track's name (or ⚙) → **Channels…** opens a picker in the right-hand panel, with the
-  universe's patch map at the top (picked channels outlined in gold; click a fixture on the map to tick all of it):
-  tick a fixture for all its channels, or expand it to tick single ones (shown by function: Intensity, Red, …); add
-  raw DMX channels (universe, from–to) for anything unpatched. OK applies it as one undoable change; channels that
-  stay keep their envelopes, and a channel taken off the track takes its envelope out of every clip.
+  universe's patch map at the top (picked channels outlined in gold; click a fixture on the map to tick all of it)
+  and two collapsible sections. **Fixtures** (open): tick a fixture for all its channels, or expand it to tick single
+  ones (shown by function: Intensity, Red, …). **Raw DMX channels**: add channels (universe, from–to) for anything
+  unpatched; it starts closed unless the track already has some listed there or no fixtures are patched. OK applies
+  it as one undoable change; channels that stay keep their envelopes, and a channel taken off the track takes its
+  envelope out of every clip.
   - **Collapsed**, the track is a row of clips, each showing a preview of its envelopes (lines only), with each
     channel's held level drawn between them (turn off with "Draw levels between clips" in the track's properties). Double-click an empty part of the row (or **+ Level
     Control**) to add a clip there; it holds every channel where it is, so it changes nothing until edited. Drag a
@@ -264,7 +269,7 @@ same files. The Audio screen lists every sound the show uses and whether it was 
     place); copy, paste, duplicate and delete it like any clip. **▸** expands the track; **double-click a clip** (or
     right-click → Envelope Editor…, or **Envelopes…** on the toolbar) opens the Envelope Editor.
   - **Expanded**, the track is tall and each clip draws its envelopes inside itself, every channel in its colour
-    (the header lists which colour is which), with the held levels drawn as lines between clips. **Right-click a
+    (the header lists which colour is which, and scrolls when there are more channels than fit), with the held levels drawn as lines between clips. **Right-click a
     clip → Add Envelope Handle ▸** a channel to add a handle there, at the envelope's level (nothing changes until
     you drag it); or **double-click an envelope's line** to add one there (double-clicking elsewhere on the clip
     opens the Envelope Editor). Click a handle to select it (Ctrl+click adds); drag to move the selected handles in time (not past

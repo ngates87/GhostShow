@@ -216,7 +216,7 @@ public sealed class AudioService : IAudioOutput, IAudioFiles, IDisposable
             try
             {
                 stream = File.OpenRead(cue.Path);
-                _instances[cue.EventId] = Play(device, stream, volume, cue.Loop ? TimeSpan.FromTicks(cue.Offset) : null, fileOffset, fallback);
+                _instances[cue.EventId] = Play(device, stream, volume, cue.Loop ? TimeSpan.FromTicks(cue.Offset) : null, fileOffset, fallback, cue.Side);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException
                                            or InvalidDataException or InvalidOperationException or ArgumentException)
@@ -329,7 +329,7 @@ public sealed class AudioService : IAudioOutput, IAudioFiles, IDisposable
     /// Plays a short tone (A440, half a second) at the master volume, so an operator can check the right speakers are
     /// connected: on the default output, or on a routed device by name. Returns false if that device isn't open.
     /// </summary>
-    public bool PlayTestSound(string? deviceName = null)
+    public bool PlayTestSound(string? deviceName = null, AudioSide side = AudioSide.Stereo)
     {
         lock (_lock)
         {
@@ -337,7 +337,7 @@ public sealed class AudioService : IAudioOutput, IAudioFiles, IDisposable
             var device = deviceName is null || IsDefaultOutput(deviceName) ? _device
                        : _routed.GetValueOrDefault(deviceName);
             if (device is null) return false;
-            _instances[TestSoundId] = Play(device, TestTone(), 0.5, loopFrom: null, TimeSpan.Zero, fallback: null);
+            _instances[TestSoundId] = Play(device, TestTone(), 0.5, loopFrom: null, TimeSpan.Zero, fallback: null, side);
             return true;
         }
     }
@@ -345,7 +345,7 @@ public sealed class AudioService : IAudioOutput, IAudioFiles, IDisposable
     static readonly Guid TestSoundId = new("7e57501d-0000-4000-8000-000000000001");
 
     /// <summary>Starts a player for a stream on a device (caller holds the lock). Throws if the stream can't be decoded.</summary>
-    Instance Play(AudioPlaybackDevice device, Stream stream, double volume, TimeSpan? loopFrom, TimeSpan fileOffset, string? fallback)
+    Instance Play(AudioPlaybackDevice device, Stream stream, double volume, TimeSpan? loopFrom, TimeSpan fileOffset, string? fallback, AudioSide side)
     {
         // The format overload makes miniaudio convert to the device's rate and channels while decoding. The
         // other constructor doesn't: a 44.1 kHz or mono file then plays at the wrong speed (measured).
@@ -353,6 +353,7 @@ public sealed class AudioService : IAudioOutput, IAudioFiles, IDisposable
         try
         {
             var player = new SoundPlayer(_engine, _format, provider) { Volume = (float)volume, IsLooping = loopFrom is not null };
+            if (side != AudioSide.Stereo) player.AddModifier(new AudioSideModifier(side));
             if (loopFrom is { } loopStart) player.SetLoopPoints(loopStart, null);
             var instance = new Instance(player, provider, stream, device, fallback);
             player.PlaybackEnded += (_, _) => { if (loopFrom is null) instance.Finished = true; };

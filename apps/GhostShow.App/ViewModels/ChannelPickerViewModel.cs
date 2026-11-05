@@ -119,6 +119,7 @@ public sealed partial class ChannelPickerViewModel : ObservableObject
             Others.Add(new OtherChannelViewModel(target.IsRaw ? editor.LaneLabel(target) : $"{editor.LaneLabel(target)} (not patched)", target));
         RawUniverse = session.Project.Universes.FirstOrDefault()?.Number ?? 1;
         MapUniverses = session.Project.Universes.Select(u => u.Number).Order().ToList();
+        IsRawExpanded = Others.Count > 0 || Fixtures.Count == 0;
         Others.CollectionChanged += (_, _) => UpdateMap();
         // Open on the universe of the first channel the track already has, else the first.
         var picked = PickedAddresses().FirstOrDefault();
@@ -209,6 +210,13 @@ public sealed partial class ChannelPickerViewModel : ObservableObject
     public ObservableCollection<OtherChannelViewModel> Others { get; } = new();
 
     public bool HasFixtures => Fixtures.Count > 0;
+
+    /// <summary>
+    /// Whether the raw section is open. It starts closed, unless the track already has channels listed there (they
+    /// shouldn't be hidden) or there are no fixtures to pick (raw channels are then all there is).
+    /// </summary>
+    [ObservableProperty]
+    public partial bool IsRawExpanded { get; set; }
 
     [ObservableProperty]
     public partial decimal RawUniverse { get; set; }

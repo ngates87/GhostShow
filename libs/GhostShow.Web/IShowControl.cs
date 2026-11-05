@@ -1,3 +1,5 @@
+using GhostShow.Core.Timeline;
+
 namespace GhostShow.Web;
 
 /// <summary>The editor's transport, as a device works it.</summary>
@@ -54,5 +56,5 @@ public interface IShowControl
     Task<string?> RenameShowAsync(string name);
 
     /// <summary>Plays a short test tone on an audio output (null: the default), to check which speakers it is.</summary>
-    string? TestSound(string? device);
+    string? TestSound(string? device, AudioSide side);
 }

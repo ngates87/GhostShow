@@ -156,6 +156,15 @@ public sealed partial class TrackRowViewModel : ObservableObject
         }
     }
 
+    public static IReadOnlyList<AudioSide> Sides { get; } = [AudioSide.Stereo, AudioSide.Left, AudioSide.Right];
+
+    /// <summary>Audio: which side of the device it plays on.</summary>
+    public AudioSide SelectedSide
+    {
+        get => Track.AudioSide;
+        set => editor.SetTrackAudioSide(Track, value);
+    }
+
     public string OutputTip => $"Output: {Track.AudioDevice ?? "this computer's default output (see Audio)"}";
 
     /// <summary>Lists the devices again, e.g. when the dropdown opens (a USB interface may have been plugged in).</summary>
@@ -174,6 +183,7 @@ public sealed partial class TrackRowViewModel : ObservableObject
             foreach (var choice in choices) Outputs.Add(choice);
         }
         OnPropertyChanged(nameof(SelectedOutput));
+        OnPropertyChanged(nameof(SelectedSide));
         OnPropertyChanged(nameof(OutputTip));
     }
 
@@ -364,8 +374,15 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
 
     // ---- playing alongside other timelines (see TimelinePlayback) ----
 
+    /// <summary>Whether the Timeline properties panel is slid out. It stays as left when switching timelines; it isn't saved.</summary>
+    [ObservableProperty]
+    public partial bool IsTimelinePropertiesOpen { get; set; }
+
+    [RelayCommand]
+    void ToggleTimelineProperties() => IsTimelinePropertiesOpen = !IsTimelinePropertiesOpen;
+
     static readonly string[] PlaybackProperties =
-        [nameof(Priority), nameof(PauseOverridden), nameof(ReleaseFadeSeconds), nameof(DuckPercent), nameof(ReleaseAtEnd), nameof(PlaybackSummary)];
+        [nameof(Priority), nameof(OverrideMode), nameof(IsSuppressing), nameof(ReleaseFadeSeconds), nameof(DuckPercent), nameof(ReleaseAtEnd), nameof(PlaybackSummary)];
 
     void SetPlayback(string description, string field, Func<TimelinePlayback, TimelinePlayback> change)
     {
@@ -382,12 +399,37 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
         set => SetPlayback("Change priority", "priority", p => p with { Priority = (int)value });
     }
 
-    /// <summary>While this plays, lower-priority timelines sharing a channel pause (otherwise they keep running underneath).</summary>
-    public bool PauseOverridden
+    public const string Pause = "Pause", Suppress = "Suppress", RunAlongside = "Run alongside";
+    public static IReadOnlyList<string> OverrideModes { get; } = [Pause, Suppress, RunAlongside];
+
+    /// <summary>
+    /// What happens to lower-priority timelines using the same outputs. Pause: they stop, and resume where they were.
+    /// Suppress: they keep advancing, this takes their shared lights, and their sound on the same speakers is turned
+    /// down. Run alongside: the same, with their sound untouched. Saved as PauseOverridden and DuckOthers.
+    /// </summary>
+    public string OverrideMode
     {
-        get => SelectedTimeline?.Playback.PauseOverridden ?? false;
-        set => SetPlayback(value ? "Pause what it overrides" : "Keep what it overrides running", "pause", p => p with { PauseOverridden = value });
+        get => SelectedTimeline?.Playback is not { } p ? RunAlongside : p.PauseOverridden ? Pause : p.DuckOthers < 1 ? Suppress : RunAlongside;
+        set => SetPlayback($"{value} what it overrides", "override", p => value switch
+        {
+            Pause => p with { PauseOverridden = true, DuckOthers = 1 },
+            Suppress => p with { PauseOverridden = false, DuckOthers = p.DuckOthers < 1 ? p.DuckOthers : 0 },
+            _ => p with { PauseOverridden = false, DuckOthers = 1 },
+        });
     }
+
+    public bool IsSuppressing => OverrideMode == Suppress;
+
+    /// <summary>The usual settings for a scare: over the ambient, which comes back by itself when it ends.</summary>
+    [RelayCommand]
+    void MakeScare() => SetPlayback("Make it a scare", "preset", p => p with
+    {
+        Priority = Math.Max(p.Priority, 10),
+        PauseOverridden = true,
+        DuckOthers = 1,
+        ReleaseAtEnd = true,
+        ReleaseFade = p.ReleaseFade > TimeSpan.Zero ? p.ReleaseFade : TimeSpan.FromSeconds(1),
+    });
 
     public decimal ReleaseFadeSeconds
     {
@@ -408,7 +450,7 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
         set => SetPlayback(value ? "Release at the end" : "Hold at the end", "end", p => p with { ReleaseAtEnd = value });
     }
 
-    /// <summary>On the settings button: "Normal", or "Priority 10 · pauses others · releases at end".</summary>
+    /// <summary>On the folded Timeline properties strip: "Normal", or "Priority 10 · pauses others · releases at end".</summary>
     public string PlaybackSummary
     {
         get
@@ -417,7 +459,7 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
             var parts = new List<string>();
             if (p.Priority != 0) parts.Add($"Priority {p.Priority}");
             if (p.PauseOverridden) parts.Add("pauses others");
-            if (p.DuckOthers < 1) parts.Add($"ducks to {p.DuckOthers:P0}");
+            else if (p.DuckOthers < 1) parts.Add($"others' sound at {p.DuckOthers:P0}");
             if (p.ReleaseAtEnd) parts.Add("releases at end");
             if (p.ReleaseFade > TimeSpan.Zero) parts.Add($"{p.ReleaseFade.TotalSeconds:0.#} s release");
             return string.Join(" · ", parts);
@@ -882,11 +924,17 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
         Edit("Change track output", () => track.AudioDevice = device, roots: Only(track));
     }
 
+    public void SetTrackAudioSide(TimelineTrack track, AudioSide side)
+    {
+        if (track.AudioSide == side) return;
+        Edit("Change track side", () => track.AudioSide = side, roots: Only(track));
+    }
+
     /// <summary>A short tone on the track's output, to check which speakers it is.</summary>
     public void TestTrackOutput(TrackRowViewModel row)
     {
         string name = row.Track.AudioDevice ?? "the default output";
-        bool played = AudioDevices?.PlayTestSound(row.Track.AudioDevice) ?? false;
+        bool played = AudioDevices?.PlayTestSound(row.Track.AudioDevice, row.Track.AudioSide) ?? false;
         Notice?.Invoke(played ? $"Playing a test tone on {name}." : $"Couldn't play on {name}: it isn't connected (or is still opening).");
     }
 
