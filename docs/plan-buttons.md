@@ -20,12 +20,16 @@ unclear, it follows VenueMagic 3/4. Decided 2026-10-28.
   grid of coloured tiles with their keys; a tile lights (gold) while a timeline it runs is playing. **Edit** mode:
   click a tile to change its name, colour, triggers and actions (add, reorder, remove), move, duplicate or delete it.
   It folds to a strip at the edge (it starts folded in a show without buttons).
+- **Editing:** the editor sits right under the tiles, headed "Editing (name)" with a **Done** button; the **Edit** button
+  reads **Done** while editing, and Esc finishes too. A line above the tiles says a click chooses a button to edit.
 - **Right-clicking a tile:** Edit opens the editor on it, and Add key… also waits for a key.
 - **A new button** (+) opens its editor waiting for a key: press one, or click into a field or outside the panel to skip it.
 - **Keys:** **Add key**, then press the key (Esc cancels). A button can have several. Letters, digits, the numeric keypad,
   F keys except F2, Page Up and Down, Insert and Pause work, without modifiers; one button per key. GhostShow keeps the rest
-  for itself (Space plays and pauses, F2 renames, and so on). They work on every screen while GhostShow has focus, except
-  while typing in a field. Holding a key down is one press.
+  for itself (Space plays and pauses, F2 renames, and so on). They work on every screen while GhostShow has focus.
+  While typing in a field, keys that type (letters, digits, the keypad) go to the field, but F keys, Page Up and Down,
+  Insert and Pause still press their buttons, so a field left with the cursor in it can't silently stop a show. Enter,
+  Esc, or a click anywhere else takes the cursor out of a field. Holding a key down is one press.
 - Button edits mark the show unsaved and are undoable (on the show's history, with the timeline tree's).
 
 ## Later

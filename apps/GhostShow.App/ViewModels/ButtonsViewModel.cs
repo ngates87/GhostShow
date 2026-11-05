@@ -89,7 +89,11 @@ public sealed partial class ButtonsViewModel : ObservableObject
     {
         if (!value) Selected = null;
         else Selected ??= Buttons.FirstOrDefault();
+        OnPropertyChanged(nameof(EditLabel));
     }
+
+    /// <summary>The Edit button's text: "Done" while editing, so it's clear how to finish.</summary>
+    public string EditLabel => IsEditing ? "Done" : "Edit";
 
     /// <summary>What the last press did (or why it couldn't), for the panel's footer.</summary>
     [ObservableProperty]
@@ -383,6 +387,10 @@ public sealed partial class ShowButtonViewModel : ObservableObject
 
     [RelayCommand]
     void OpenEditor() => _owner.OpenEditor(this);
+
+    /// <summary>The editor's Done: leaves edit mode, so clicks press buttons again.</summary>
+    [RelayCommand]
+    void Done() => _owner.IsEditing = false;
 
     [RelayCommand]
     void AddKeyFromMenu() => _owner.StartLearningKey(this);

@@ -105,6 +105,26 @@ public class ButtonsTests : IDisposable
     }
 
     [Fact]
+    public void Done_finishes_editing_and_the_edit_button_says_so_while_editing()
+    {
+        var button = AddButton();
+        Assert.Equal("Done", _buttons.EditLabel);
+
+        button.DoneCommand.Execute(null);
+
+        Assert.False(_buttons.IsEditing);
+        Assert.Null(_buttons.Selected);
+        Assert.Equal("Edit", _buttons.EditLabel);
+    }
+
+    [Fact]
+    public void Keys_that_type_go_to_a_field_and_the_rest_still_press_buttons()
+    {
+        Assert.All(["Q", "D5", "NumPad5", "Add"], key => Assert.True(TriggerKeys.TypesText(key)));
+        Assert.All(["F5", "F13", "PageUp", "Insert", "Pause"], key => Assert.False(TriggerKeys.TypesText(key)));
+    }
+
+    [Fact]
     public void A_new_button_opens_its_editor_waiting_for_a_key()
     {
         var button = AddButton();

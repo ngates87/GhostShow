@@ -89,9 +89,8 @@ shared channels. A paused timeline resumes only once everything that paused it h
 - How did VenueMagic treat a trigger fired while its timeline runs, and does it have other options worth matching? No
   documentation was found online, so this relies on memory and the user's show files.
 - Stream Deck: talk to it directly, or through Elgato's software?
-- **Keys while a field has focus:** keys don't press buttons while typing in a field, and a field keeps focus after you
-  change a setting there, such as Priority in Timeline properties. A show could be left where its keys silently do nothing.
-  To settle with the focus warning: warn, drop focus when a click lands elsewhere, or let keys like F5 always work.
+- **Keys while a field has focus (settled):** F keys and other keys that type nothing always press their buttons;
+  letters and digits go to a field with the cursor in it; Enter, Esc, or a click elsewhere takes the cursor out.
 - **The browser** shows and presses buttons but has no button editor, so it can't set triggers yet.
 - **Rooms (parked, not decided):** a folder in the timeline tree could own outputs (per channel, so one dimmer pack can split
   between rooms, plus audio device and side), so a scare can take its whole room, not only the channels it sets. To settle:

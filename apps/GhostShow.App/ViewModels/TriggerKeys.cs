@@ -34,6 +34,19 @@ public static class TriggerKeys
         _ => OtherKeys.ContainsKey(key),
     };
 
+    /// <summary>
+    /// Keys that type into a field: letters, digits and the numeric keypad. While a field has the cursor these go to
+    /// the field; the rest (F keys, Page Up and Down, Insert, Pause) type nothing, so they press their buttons anyway.
+    /// </summary>
+    public static bool TypesText(string key) => key switch
+    {
+        [>= 'A' and <= 'Z'] => true,
+        ['D', >= '0' and <= '9'] => true,
+        ['N', 'u', 'm', 'P', 'a', 'd', >= '0' and <= '9'] => true,
+        "Multiply" or "Add" or "Subtract" or "Divide" or "Decimal" => true,
+        _ => false,
+    };
+
     /// <summary>How a key is shown: "D1" as "1", "NumPad1" as "Num 1", "F5" as itself.</summary>
     public static string Label(string key) => key switch
     {

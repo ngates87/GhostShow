@@ -336,8 +336,48 @@ public class UiTests
         WindowRig.Pump();
         var name = rig.Window.GetVisualDescendants().OfType<TextBox>().First(t => t.Text == button.Name);
         name.Focus();
-        rig.Key(Key.F5);   // typing in a field: not a button press
+        rig.Key(Key.F5);   // typing in a field: an F key types nothing, so it still presses the button
+        Assert.True(rig.Manager.IsRunning(scare.Id));
+    });
+
+    [Fact]
+    public Task A_field_keeps_letter_keys_until_enter_esc_or_a_click_elsewhere_takes_the_cursor_out() => Ui.Run(() =>
+    {
+        using var rig = new WindowRig();
+        var scare = new ShowTimeline { Name = "Scare", Length = S(10) };
+        rig.Session.Project.Timelines.Add(scare);
+        var buttons = rig.ViewModel.Buttons;
+        buttons.AddCommand.Execute(null);
+        var button = buttons.Buttons.Single();
+        rig.Key(Key.Q);   // a new button waits for its key
+        button.AddActionCommand.Execute("run");
+        button.Actions[0].Timeline = buttons.Timelines.Single(t => t.Id == scare.Id);
+        WindowRig.Pump();
+        bool Typing() => rig.Window.FocusManager?.GetFocusedElement() is TextBox;
+        void StopIt() { rig.Manager.StopTimeline(scare.Id); rig.Manager.Tick(); }
+
+        var name = rig.Window.GetVisualDescendants().OfType<TextBox>().First(t => t.Text == button.Name);
+        name.Focus();
+        rig.Key(Key.Q);   // typing: the letter goes to the field
         Assert.False(rig.Manager.IsRunning(scare.Id));
+
+        rig.Key(Key.Enter);   // done with the field
+        Assert.False(Typing());
+        rig.Key(Key.Q);
+        Assert.True(rig.Manager.IsRunning(scare.Id));
+        StopIt();
+
+        name.Focus();
+        rig.Key(Key.Escape);   // first Esc leaves the field, and editing goes on
+        Assert.False(Typing());
+        Assert.True(buttons.IsEditing);
+
+        name.Focus();
+        rig.Click(rig.CenterOf(rig.Find<Controls.TimelineCanvas>()));   // a click on the lanes
+        Assert.False(Typing());
+
+        rig.Key(Key.Escape);   // not in a field: Esc finishes editing
+        Assert.False(buttons.IsEditing);
     });
 
     [Fact]
