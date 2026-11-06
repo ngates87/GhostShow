@@ -31,6 +31,13 @@
     <Style Selector="ScrollViewer.tiles.editing">
       <Setter Property="MaxHeight" Value="230" />
     </Style>
+    <Style Selector="ToggleButton.arming">
+      <Setter Property="Background" Value="#B71C1C" />
+      <Setter Property="Foreground" Value="White" />
+    </Style>
+    <Style Selector="ToggleButton.arming:checked /template/ ContentPresenter">
+      <Setter Property="Background" Value="#1B5E20" />
+    </Style>
     <Style Selector="Button.small">
       <Setter Property="Padding" Value="6,1" />
       <Setter Property="MinHeight" Value="0" />
@@ -58,6 +65,10 @@
                         ToolTip.Tip="Edit mode (or right-click a button): click a button to change its name, colour, triggers and actions (instead of pressing it). Done, or Esc, finishes." />
           <TextBlock Text="Buttons" FontWeight="SemiBold" VerticalAlignment="Center" />
         </DockPanel>
+        <!-- Arming: on when a show opens; off while working on it. Red when off, so it isn't forgotten. -->
+        <ToggleButton DockPanel.Dock="Top" Classes="arming" IsChecked="{Binding TriggersArmed}" Content="{Binding ArmedLabel}"
+                      HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Margin="0,0,0,6" Padding="6,2" MinHeight="0"
+                      ToolTip.Tip="Off: keys and other triggers don't press buttons (clicking still does), for working on the show. Not saved: a show always opens armed." />
         <TextBlock DockPanel.Dock="Top" Text="Editing: click a button to choose it. Done or Esc when finished." FontSize="12" Opacity="0.75"
                    TextWrapping="Wrap" Margin="0,0,0,6" IsVisible="{Binding IsEditing}" />
 
@@ -136,10 +147,29 @@
                     <ItemsControl.ItemTemplate>
                       <DataTemplate x:DataType="vm:ButtonTriggerViewModel">
                         <Border Background="#22FFFFFF" CornerRadius="4" Padding="6,3" Margin="0,0,0,4">
-                          <DockPanel>
-                            <Button DockPanel.Dock="Right" Classes="small" Content="×" Command="{Binding RemoveCommand}" ToolTip.Tip="Remove this trigger" />
-                            <TextBlock Text="{Binding Label}" VerticalAlignment="Center" />
-                          </DockPanel>
+                          <StackPanel Spacing="2">
+                            <DockPanel>
+                              <Button DockPanel.Dock="Right" Classes="small" Content="×" Command="{Binding RemoveCommand}" ToolTip.Tip="Remove this trigger" />
+                              <CheckBox DockPanel.Dock="Right" Content="On" IsChecked="{Binding IsOn}" MinHeight="0" Margin="0,0,6,0"
+                                        ToolTip.Tip="Off: this trigger does nothing until it's turned back on or the show is reopened (not saved). For a sensor that misbehaves mid-show." />
+                              <TextBlock Text="{Binding Label}" VerticalAlignment="Center" />
+                            </DockPanel>
+                            <TextBlock Text="{Binding State}" FontSize="11" Opacity="0.7" TextWrapping="Wrap" />
+                            <Expander HorizontalAlignment="Stretch" Padding="4" MinHeight="0" FontSize="12">
+                              <Expander.Header>
+                                <TextBlock Text="{Binding RearmSummary}" TextWrapping="Wrap" />
+                              </Expander.Header>
+                              <StackPanel Spacing="4">
+                                <DockPanel>
+                                  <NumericUpDown DockPanel.Dock="Right" Width="110" Value="{Binding RearmSeconds}" Minimum="0" Increment="0.5" FormatString="0.##"
+                                                 ToolTip.Tip="After firing it does nothing for this long, so a flickering sensor or a passing crowd doesn't fire it again and again. 0: as soon as it's let go." />
+                                  <TextBlock Text="Re-arm time (s)" VerticalAlignment="Center" />
+                                </DockPanel>
+                                <CheckBox Content="Count from when its timelines finish" IsChecked="{Binding RearmAfterTimelines}"
+                                          ToolTip.Tip="On: it waits until the timelines this button started have finished (release fade included), then the re-arm time. Off: the re-arm time counts from when it fires." />
+                              </StackPanel>
+                            </Expander>
+                          </StackPanel>
                         </Border>
                       </DataTemplate>
                     </ItemsControl.ItemTemplate>

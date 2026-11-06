@@ -22,13 +22,16 @@ public sealed partial class ButtonsViewModel : ObservableObject
     readonly PlaybackViewModel _playback;
     readonly Action _blackout;
     readonly Action _markDirty;
+    readonly TimeProvider _time;
 
-    public ButtonsViewModel(ShowSession session, PlaybackViewModel playback, Action blackout, Action markDirty)
+    /// <param name="time">The clock for re-arm times and "last fired"; tests pass their own.</param>
+    public ButtonsViewModel(ShowSession session, PlaybackViewModel playback, Action blackout, Action markDirty, TimeProvider? time = null)
     {
         _session = session;
         _playback = playback;
         _blackout = blackout;
         _markDirty = markDirty;
+        _time = time ?? TimeProvider.System;
         Reload();
         // Button edits made here, undone, or made on another device: the panel follows.
         session.Document.Changed += change =>
@@ -128,6 +131,7 @@ public sealed partial class ButtonsViewModel : ObservableObject
     public void Reload()
     {
         LearningKeyFor = null;
+        TriggersArmed = true;   // a show opens armed, so its Start Show key simply works
         Buttons.Clear();
         foreach (var button in _session.Project.Buttons) Buttons.Add(new ShowButtonViewModel(button, this));
         Selected = null;
@@ -166,15 +170,31 @@ public sealed partial class ButtonsViewModel : ObservableObject
         Tick();
     }
 
-    /// <summary>A key pressed anywhere (not while typing): presses the button with that key. Returns whether one had it.</summary>
+    /// <summary>
+    /// A key pressed anywhere: presses the button with that key, if its trigger is live (armed and on) and ready (not
+    /// still re-arming). Returns whether it pressed it. A click on the button always works, whatever its triggers.
+    /// </summary>
     public bool PressKey(string key)
     {
-        if (ButtonWithKey(key) is not { } button) return false;
-        Press(button);
+        if (LiveKeyTrigger(key) is not { } live || !live.Trigger.IsReady(_time.GetLocalNow())) return false;
+        live.Trigger.Fired(_time.GetLocalNow());
+        Press(live.Button);
         return true;
     }
 
-    public bool HasKey(string key) => ButtonWithKey(key) is not null;
+    /// <summary>Whether a live trigger uses this key: then the key is the button's, even while it's re-arming.</summary>
+    public bool HasKey(string key) => LiveKeyTrigger(key) is not null;
+
+    (ShowButtonViewModel Button, ButtonTriggerViewModel Trigger)? LiveKeyTrigger(string key)
+    {
+        if (!TriggersArmed) return null;
+        foreach (var button in Buttons)
+            foreach (var trigger in button.Triggers)
+                if (trigger.IsOn && trigger.IsKey(key)) return (button, trigger);
+        return null;
+    }
+
+    /// <summary>Whether a button has this key at all (for learning keys: one key, one button).</summary>
 
     ShowButtonViewModel? ButtonWithKey(string key) => Buttons.FirstOrDefault(b => b.HasKey(key));
 
@@ -219,12 +239,39 @@ public sealed partial class ButtonsViewModel : ObservableObject
         }
     }
 
-    /// <summary>From the UI's refresh timer: which buttons are lit (a timeline they run is playing).</summary>
+    /// <summary>From the UI's refresh timer: which buttons are lit (a timeline they run is playing), and how their triggers stand.</summary>
     public void Tick()
     {
+        var now = _time.GetLocalNow();
         foreach (var button in Buttons)
+        {
             button.IsLit = button.Button.Actions.OfType<RunTimelineAction>().Any(r => _playback.IsRunning(r.TimelineId));
+            foreach (var trigger in button.Triggers) trigger.Tick(now, timelinesPlaying: button.IsLit);
+        }
     }
+
+    // ---- arming: triggers can be turned off while working on the show ----
+
+    /// <summary>
+    /// Whether triggers press buttons. On when a show opens; off while working on the show, so a key or sensor doesn't
+    /// start a scare. Not saved with the show. Clicking a button always works.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ArmedLabel), nameof(ShowFocusWarning))]
+    public partial bool TriggersArmed { get; set; } = true;
+
+    public string ArmedLabel => TriggersArmed ? "Triggers armed" : "Triggers off: click to arm";
+
+    [RelayCommand]
+    void ToggleArmed() => TriggersArmed = !TriggersArmed;
+
+    /// <summary>Whether GhostShow is the active window (the window says): its keys only reach it then.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowFocusWarning))]
+    public partial bool IsAppFocused { get; set; } = true;
+
+    /// <summary>Armed key triggers that can't work because another window has the keyboard: worth a loud warning.</summary>
+    public bool ShowFocusWarning => TriggersArmed && !IsAppFocused && Buttons.Any(b => b.Triggers.Count > 0);
 
     internal ShowTimeline? Find(Guid id) => _session.Project.Timelines.FirstOrDefault(t => t.Id == id);
 
@@ -292,6 +339,7 @@ public sealed partial class ButtonsViewModel : ObservableObject
     internal void Changed()
     {
         OnPropertyChanged(nameof(HasButtons));
+        OnPropertyChanged(nameof(ShowFocusWarning));
         _markDirty();
     }
 }
@@ -329,6 +377,7 @@ public sealed partial class ShowButtonViewModel : ObservableObject
             Triggers.Clear();
             foreach (var row in rows) Triggers.Add(row);
         }
+        foreach (var trigger in Triggers) trigger.Refresh();
         OnPropertyChanged(nameof(Name));
         OnPropertyChanged(nameof(Color));
         OnPropertyChanged(nameof(KeyLabel));
@@ -404,6 +453,10 @@ public sealed partial class ShowButtonViewModel : ObservableObject
     internal void RemoveTrigger(ButtonTriggerViewModel trigger) =>
         Edit("Remove key", () => Button.Triggers.Remove(trigger.Trigger));
 
+    /// <summary>A change to one of its triggers' settings (only that trigger is compared).</summary>
+    internal void EditTrigger(ButtonTrigger trigger, string description, Action change) =>
+        _owner.Edit(description, change, null, ButtonsViewModel.Only(trigger));
+
     public ObservableCollection<ButtonActionViewModel> Actions { get; } = new();
 
     /// <summary>A timeline it runs is playing.</summary>
@@ -467,15 +520,99 @@ public sealed partial class ShowButtonViewModel : ObservableObject
         _owner.Edit(description, change, null, ButtonsViewModel.Only(action));
 }
 
-/// <summary>One trigger of a button, in the editor.</summary>
+/// <summary>
+/// One trigger of a button: its settings (saved with the show), and while the show runs, whether it's on, re-arming, and
+/// when it last fired (not saved).
+/// </summary>
 public sealed partial class ButtonTriggerViewModel(ButtonTrigger trigger, ShowButtonViewModel button) : ObservableObject
 {
     public ButtonTrigger Trigger { get; } = trigger;
 
     public string Label => $"Key {TriggerKeys.Label(Trigger.Address)}";
 
+    internal bool IsKey(string key) => Trigger.Source == ButtonTrigger.Keyboard && Trigger.Address == key;
+
     [RelayCommand]
     void Remove() => button.RemoveTrigger(this);
+
+    // ---- settings ----
+
+    public decimal RearmSeconds
+    {
+        get => (decimal)Trigger.RearmSeconds;
+        set
+        {
+            double seconds = Math.Max(0, (double)value);
+            if (seconds == Trigger.RearmSeconds) return;
+            button.EditTrigger(Trigger, "Change re-arm time", () => Trigger.RearmSeconds = seconds);
+        }
+    }
+
+    public bool RearmAfterTimelines
+    {
+        get => Trigger.RearmAfterTimelines;
+        set
+        {
+            if (value == Trigger.RearmAfterTimelines) return;
+            button.EditTrigger(Trigger, value ? "Re-arm after its timelines" : "Re-arm from firing", () => Trigger.RearmAfterTimelines = value);
+        }
+    }
+
+    /// <summary>The re-arm settings in a few words, for the folded settings: "Re-arms at once", "Re-arms 3 s after its timelines".</summary>
+    public string RearmSummary => (Trigger.RearmSeconds, Trigger.RearmAfterTimelines) switch
+    {
+        (0, false) => "Re-arms at once",
+        (0, true) => "Re-arms when its timelines finish",
+        (var s, false) => $"Re-arms {s:0.##} s after firing",
+        (var s, true) => $"Re-arms {s:0.##} s after its timelines finish",
+    };
+
+    /// <summary>After a change to the show: every setting shows the model.</summary>
+    internal void Refresh()
+    {
+        OnPropertyChanged(nameof(RearmSeconds));
+        OnPropertyChanged(nameof(RearmAfterTimelines));
+        OnPropertyChanged(nameof(RearmSummary));
+    }
+
+    // ---- while the show runs (none of this is saved) ----
+
+    /// <summary>Off: does nothing until turned back on or the show is reopened. For a sensor that misbehaves mid-show.</summary>
+    [ObservableProperty]
+    public partial bool IsOn { get; set; } = true;
+
+    DateTimeOffset? _lastFired;
+    DateTimeOffset? _readyAt;     // re-arming until then
+    bool _waitingForTimelines;    // re-arming until the button's timelines have finished (then the re-arm time)
+
+    internal bool IsReady(DateTimeOffset now) => !_waitingForTimelines && (_readyAt is null || now >= _readyAt);
+
+    internal void Fired(DateTimeOffset now)
+    {
+        _lastFired = now;
+        _waitingForTimelines = Trigger.RearmAfterTimelines;
+        _readyAt = _waitingForTimelines ? null : now.AddSeconds(Trigger.RearmSeconds);
+        Tick(now, timelinesPlaying: true);
+    }
+
+    /// <summary>From the panel's refresh: the re-arm time starts once its timelines have finished, if it waits for them.</summary>
+    internal void Tick(DateTimeOffset now, bool timelinesPlaying)
+    {
+        if (_waitingForTimelines && !timelinesPlaying)
+        {
+            _waitingForTimelines = false;
+            _readyAt = now.AddSeconds(Trigger.RearmSeconds);
+        }
+        string state = !IsOn ? "Off"
+            : _waitingForTimelines ? "Waiting for its timelines to finish"
+            : _readyAt is { } ready && now < ready ? $"Re-arms in {(ready - now).TotalSeconds:0.0} s"
+            : "Ready";
+        State = _lastFired is { } fired ? $"{state} · last fired {fired:HH:mm:ss}" : state;
+    }
+
+    /// <summary>"Ready", "Re-arms in 2.5 s", "Off", with when it last fired.</summary>
+    [ObservableProperty]
+    public partial string State { get; private set; } = "Ready";
 }
 
 /// <summary>One action of a button, in the editor.</summary>

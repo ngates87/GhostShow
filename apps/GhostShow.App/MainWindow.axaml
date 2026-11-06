@@ -49,6 +49,12 @@
             </Flyout>
           </Button.Flyout>
         </Button>
+        <!-- Triggers are off: easy to forget after working on the show, so it shows on every screen. -->
+        <Panel IsVisible="{Binding IsShowOpen}">
+          <Button x:Name="TriggersOffButton" Content="Triggers off" Command="{Binding Buttons.ToggleArmedCommand}" IsVisible="{Binding !Buttons.TriggersArmed}"
+                  Background="#B71C1C" Foreground="White" Padding="10,3"
+                  ToolTip.Tip="Keys and other triggers don't press buttons. Click to arm them." />
+        </Panel>
         <Button Content="Blackout" Command="{Binding BlackoutCommand}"
                 ToolTip.Tip="Stop playback and set every channel of every universe to 0 (Ctrl+B)"
                 Background="DarkRed" Foreground="White" FontWeight="SemiBold" Padding="16,3" />
@@ -119,6 +125,12 @@
       </MenuItem>
     </Menu>
     </DockPanel>
+
+    <!-- Armed key triggers, but another window has the keyboard: they can't work, so say so loudly. -->
+    <Border DockPanel.Dock="Top" Background="#B71C1C" Padding="12,6" IsVisible="{Binding Buttons.ShowFocusWarning}">
+      <TextBlock Foreground="White" FontWeight="SemiBold" TextWrapping="Wrap"
+                 Text="GhostShow isn't the active window, so its trigger keys won't work. Click anywhere in GhostShow to bring them back." />
+    </Border>
 
     <!-- Status bar -->
     <Border DockPanel.Dock="Bottom" Padding="8,4" BorderThickness="0,1,0,0"

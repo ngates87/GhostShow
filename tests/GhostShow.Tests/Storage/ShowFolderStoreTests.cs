@@ -82,7 +82,7 @@ public class ShowFolderStoreTests : IDisposable
         project.AddFolder("Empty for now");
         project.Buttons =
         [
-            new ShowButton { Name = "Scare 1", Color = "#C62828", Triggers = [new ButtonTrigger { Address = "F5" }, new ButtonTrigger { Address = "NumPad1" }], Actions = [new StopTimelineAction { TimelineId = lightning.Id }, new RunTimelineAction { TimelineId = lightning.Id }] },
+            new ShowButton { Name = "Scare 1", Color = "#C62828", Triggers = [new ButtonTrigger { Address = "F5", RearmSeconds = 2.5, RearmAfterTimelines = true }, new ButtonTrigger { Address = "NumPad1" }], Actions = [new StopTimelineAction { TimelineId = lightning.Id }, new RunTimelineAction { TimelineId = lightning.Id }] },
             new ShowButton { Name = "Panic", Actions = [new StopAllAction(), new BlackoutAction()] },
         ];
 
@@ -100,6 +100,8 @@ public class ShowFolderStoreTests : IDisposable
         Assert.Equal([("Scare 1", "#C62828", "F5,NumPad1"), ("Panic", null, "")],
                      loaded.Buttons.Select(b => (b.Name, b.Color, string.Join(",", b.Triggers.Select(t => t.Address)))));
         Assert.Equal(ButtonTrigger.Keyboard, loaded.Buttons[0].Triggers[0].Source);
+        Assert.Equal((2.5, true), (loaded.Buttons[0].Triggers[0].RearmSeconds, loaded.Buttons[0].Triggers[0].RearmAfterTimelines));
+        Assert.Equal((0.0, false), (loaded.Buttons[0].Triggers[1].RearmSeconds, loaded.Buttons[0].Triggers[1].RearmAfterTimelines));
         var run = Assert.IsType<RunTimelineAction>(loaded.Buttons[0].Actions[1]);
         Assert.Equal(lightning.Id, run.TimelineId);
         Assert.IsType<StopTimelineAction>(loaded.Buttons[0].Actions[0]);

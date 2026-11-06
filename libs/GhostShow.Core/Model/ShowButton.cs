@@ -40,6 +40,17 @@ public sealed class ButtonTrigger
 
     /// <summary>Which input of that source. Keyboard: the key's name ("F5", "D1" for the 1 key, "Q").</summary>
     public string Address { get; set; } = "";
+
+    /// <summary>
+    /// After firing, it does nothing for this many seconds, so a flickering sensor or a crowd walking past doesn't fire
+    /// it over and over. 0: it can fire again as soon as it's let go (a held key or closed contact fires once).
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public double RearmSeconds { get; set; }
+
+    /// <summary>The re-arm time starts once the timelines the button started have finished (release fade included), not when it fires.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool RearmAfterTimelines { get; set; }
 }
 
 /// <summary>Something a show button does when pressed.</summary>

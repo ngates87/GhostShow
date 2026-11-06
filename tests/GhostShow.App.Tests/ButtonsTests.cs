@@ -11,13 +11,23 @@ public class ButtonsTests : IDisposable
     readonly TimelineRig _rig = new();
     readonly ButtonsViewModel _buttons;
     readonly ShowTimeline _scare;
+    readonly FakeTime _time = new();
     int _blackouts, _edits;
+
+    /// <summary>A clock the test moves by hand, for re-arm times and "last fired".</summary>
+    sealed class FakeTime : TimeProvider
+    {
+        DateTimeOffset _now = new(2026, 11, 5, 20, 0, 0, TimeSpan.Zero);
+        public override DateTimeOffset GetUtcNow() => _now;
+        public override TimeZoneInfo LocalTimeZone => TimeZoneInfo.Utc;
+        public void Advance(double seconds) => _now = _now.AddSeconds(seconds);
+    }
 
     public ButtonsTests()
     {
         _scare = new ShowTimeline { Name = "Scare", Folder = "Rooms", Length = TimeSpan.FromSeconds(10), Tracks = [] };
         _rig.Session.Project.Timelines.Add(_scare);
-        _buttons = new ButtonsViewModel(_rig.Session, _rig.Playback, () => _blackouts++, () => _edits++);
+        _buttons = new ButtonsViewModel(_rig.Session, _rig.Playback, () => _blackouts++, () => _edits++, _time);
     }
 
     public void Dispose() => _rig.Dispose();
@@ -102,6 +112,116 @@ public class ButtonsTests : IDisposable
     {
         if (!button.IsLearningKey) button.LearnKeyCommand.Execute(null);
         _buttons.LearnKey(key, withModifier);
+    }
+
+    /// <summary>A button that runs the scare, with this key.</summary>
+    ShowButtonViewModel ScareOnKey(string key)
+    {
+        var button = Button("Scare", new RunTimelineAction { TimelineId = _scare.Id });
+        Learn(button, key);
+        return button;
+    }
+
+    void StopScare()
+    {
+        _rig.Manager.StopTimeline(_scare.Id);
+        _rig.Manager.Tick();
+        _buttons.Tick();
+    }
+
+    [Fact]
+    public void Turned_off_triggers_do_nothing_but_a_click_still_presses_and_reopening_arms_them()
+    {
+        var button = ScareOnKey("F5");
+
+        _buttons.ToggleArmedCommand.Execute(null);
+        Assert.Equal("Triggers off: click to arm", _buttons.ArmedLabel);
+        Assert.False(_buttons.HasKey("F5"));   // the key isn't taken, so it does what it would otherwise
+        Assert.False(_buttons.PressKey("F5"));
+        Assert.Equal(0, Copies);
+        _buttons.Press(button);   // a click
+        Assert.Equal(1, Copies);
+
+        _buttons.Reload();   // the show opened again: armed, not saved as off
+        Assert.True(_buttons.TriggersArmed);
+
+        var trigger = _buttons.Buttons.Single().Triggers.Single();
+        trigger.IsOn = false;   // just this one
+        Assert.False(_buttons.PressKey("F5"));
+        _buttons.Tick();
+        Assert.Equal("Off", trigger.State);
+        trigger.IsOn = true;
+        Assert.True(_buttons.PressKey("F5"));
+    }
+
+    [Fact]
+    public void A_re_arm_time_stops_a_trigger_firing_again_until_it_has_passed()
+    {
+        var trigger = ScareOnKey("F5").Triggers.Single();
+        trigger.RearmSeconds = 5;
+        Assert.Equal("Re-arms 5 s after firing", trigger.RearmSummary);
+
+        Assert.True(_buttons.PressKey("F5"));
+        _time.Advance(2);
+        Assert.False(_buttons.PressKey("F5"));
+        Assert.True(_buttons.HasKey("F5"));   // still the button's key: it's taken, and does nothing yet
+        _buttons.Tick();
+        Assert.Equal("Re-arms in 3.0 s · last fired 20:00:00", trigger.State);
+
+        _time.Advance(3);
+        Assert.True(_buttons.PressKey("F5"));
+        Assert.Equal(2, Copies);
+    }
+
+    [Fact]
+    public void A_trigger_can_wait_for_its_timelines_to_finish_before_re_arming()
+    {
+        var trigger = ScareOnKey("F5").Triggers.Single();
+        trigger.RearmAfterTimelines = true;
+        trigger.RearmSeconds = 1;
+        Assert.Equal("Re-arms 1 s after its timelines finish", trigger.RearmSummary);
+
+        Assert.True(_buttons.PressKey("F5"));
+        _time.Advance(30);
+        _buttons.Tick();
+        Assert.False(_buttons.PressKey("F5"));   // the scare is still playing
+        Assert.StartsWith("Waiting for its timelines to finish", trigger.State);
+
+        StopScare();   // finished: now the re-arm time
+        Assert.False(_buttons.PressKey("F5"));
+        _time.Advance(1);
+        Assert.True(_buttons.PressKey("F5"));
+        Assert.Equal(1, Copies);   // the first one was stopped
+    }
+
+    [Fact]
+    public void Re_arm_settings_are_undoable_edits_of_the_show()
+    {
+        var trigger = ScareOnKey("F5").Triggers.Single();
+
+        trigger.RearmSeconds = 2.5m;
+        trigger.RearmAfterTimelines = true;
+
+        Assert.Equal((2.5, true), (trigger.Trigger.RearmSeconds, trigger.Trigger.RearmAfterTimelines));
+        _rig.Session.Document.UndoLatest(null);
+        Assert.False(trigger.RearmAfterTimelines);
+        Assert.Equal(2.5m, trigger.RearmSeconds);
+    }
+
+    [Fact]
+    public void The_focus_warning_shows_only_for_armed_key_triggers_when_another_window_has_the_keyboard()
+    {
+        _buttons.IsAppFocused = false;
+        Assert.False(_buttons.ShowFocusWarning);   // no triggers: nothing to miss
+
+        ScareOnKey("F5");
+        Assert.True(_buttons.ShowFocusWarning);
+
+        _buttons.TriggersArmed = false;
+        Assert.False(_buttons.ShowFocusWarning);
+        _buttons.TriggersArmed = true;
+        _buttons.IsAppFocused = true;
+        Assert.False(_buttons.ShowFocusWarning);
     }
 
     [Fact]

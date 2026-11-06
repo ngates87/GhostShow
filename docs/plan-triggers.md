@@ -74,8 +74,9 @@ shared channels. A paused timeline resumes only once everything that paused it h
 
 1. **Behaviour, with a key:** left, right and stereo; overlap by output; the three override options and the scare preset
    (built). Trying an ambient and a scare on a button, on real lights and speakers, is still to do.
-2. **Triggers on buttons:** the list of triggers, with keyboard keys learned by pressing them (built, desktop only). Still
-   to do: re-arm settings, arming and its indicator, the focus warning, and when each last fired.
+2. **Triggers on buttons (built, desktop only):** the list of triggers, keyboard keys learned by pressing them, re-arm
+   settings, arming with its indicator, a per-trigger on/off, the focus warning, and each trigger's state and last
+   fired time. The browser gets these with the shared main view (see the web-remote plan).
 3. **Input monitor:** every event, used or not, and which button it pressed. Learn: press it, trip the input, and the
    input is filled in.
 4. **Serial input:** pick a port and baud rate, and see each line with a timestamp and what it was understood as. It only

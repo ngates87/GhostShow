@@ -26,7 +26,15 @@ public partial class MainWindow : Window
         AddHandler(PointerPressedEvent, OnPointerPressedAnywhere, Avalonia.Interactivity.RoutingStrategies.Tunnel);
         // Bubble, after the field itself (handled too: a number box takes Enter to commit its value).
         AddHandler(KeyDownEvent, OnKeyDownAfterControls, Avalonia.Interactivity.RoutingStrategies.Bubble, handledEventsToo: true);
-        Deactivated += (_, _) => _heldKeys.Clear();   // a key let go in another window never reports it here
+        Deactivated += (_, _) =>
+        {
+            _heldKeys.Clear();   // a key let go in another window never reports it here
+            if (DataContext is MainViewModel viewModel) viewModel.Buttons.IsAppFocused = false;
+        };
+        Activated += (_, _) =>
+        {
+            if (DataContext is MainViewModel viewModel) viewModel.Buttons.IsAppFocused = true;
+        };
         DataContextChanged += (_, _) =>
         {
             if (DataContext is MainViewModel viewModel) viewModel.ExitRequested += Close;

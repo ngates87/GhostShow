@@ -479,6 +479,32 @@ public class UiTests
     });
 
     [Fact]
+    public Task Turning_triggers_off_shows_on_every_screen_and_a_click_there_arms_them_again() => Ui.Run(() =>
+    {
+        using var rig = new WindowRig();
+        var buttons = rig.ViewModel.Buttons;
+        var off = rig.Find<Button>(b => b.Name == "TriggersOffButton");
+        Assert.False(off.IsEffectivelyVisible);
+
+        buttons.ToggleArmedCommand.Execute(null);
+        rig.ViewModel.CurrentPage = ViewModels.Page.Monitor;   // another screen
+        WindowRig.Pump();
+        Assert.True(off.IsEffectivelyVisible);
+
+        rig.Click(rig.CenterOf(off));
+        Assert.True(buttons.TriggersArmed);
+        Assert.False(off.IsEffectivelyVisible);
+
+        // The focus warning: armed key triggers while another window has the keyboard.
+        buttons.AddCommand.Execute(null);
+        rig.Key(Key.F5);
+        buttons.IsAppFocused = false;
+        WindowRig.Pump();
+        Assert.Contains(rig.Window.GetVisualDescendants().OfType<TextBlock>(),
+                        t => t.IsEffectivelyVisible && t.Text?.StartsWith("GhostShow isn't the active window") == true);
+    });
+
+    [Fact]
     public Task Holding_a_button_s_key_presses_it_once() => Ui.Run(() =>
     {
         using var rig = new WindowRig();
