@@ -3,6 +3,7 @@
 //     dotnet run dev.cs                      build what's out of date, then start the app
 //     dotnet run dev.cs -- --build-only      just build (VS Code's F5 uses this, then starts the app in its debugger)
 //     dotnet run dev.cs -- --skip-browser    leave the full app (/app/) as it is: rebuilding it takes about 5 minutes
+//     dotnet run dev.cs -- --browser-only    just the full app, if it's out of date (installer/build.cs uses this)
 //
 // "Everything" is:
 //   - the full app for browsers, served at /app/. It isn't part of the solution, because it needs the WebAssembly build
@@ -18,7 +19,8 @@ using System.Runtime.CompilerServices;
 string root = FolderOfThisFile();
 bool buildOnly = args.Contains("--build-only");
 bool skipBrowser = args.Contains("--skip-browser");
-var known = new[] { "--build-only", "--skip-browser" };
+bool browserOnly = args.Contains("--browser-only");
+var known = new[] { "--build-only", "--skip-browser", "--browser-only" };
 if (args.Except(known).FirstOrDefault() is { } unknown)
     return Stop($"I don't know \"{unknown}\". The options are: {string.Join(", ", known)}");
 
@@ -35,6 +37,8 @@ else
     int result = BuildBrowserApp();
     if (result != 0) return result;
 }
+
+if (browserOnly) return 0;
 
 Console.WriteLine("== The solution, in Debug");
 int build = Run("dotnet", root, "build", "GhostShow.slnx", "-c", "Debug");

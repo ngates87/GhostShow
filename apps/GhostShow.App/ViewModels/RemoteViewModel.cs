@@ -167,7 +167,7 @@ public sealed partial class RemoteViewModel : ObservableObject, IAsyncDisposable
     /// <summary>
     /// The browser build of the app (GhostShow.Browser, published), served at /app/: the folder in
     /// GHOSTSHOW_BROWSER_APP if that's set, the browser-app folder next to the program in an installed copy (see
-    /// installer/build.sh), or else the one published in this source tree
+    /// installer/build.cs), or else the one published in this source tree
     /// (apps/GhostShow.Browser/bin/Release/net10.0-browser/publish/wwwroot), found by looking up from where the app runs.
     /// Null if there's none: then only the simple remote page is served.
     /// </summary>

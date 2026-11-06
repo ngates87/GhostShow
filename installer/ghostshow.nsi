@@ -1,4 +1,4 @@
-; The Windows installer, written for NSIS (https://nsis.sourceforge.io). installer/build.sh builds it, and passes:
+; The Windows installer, written for NSIS (https://nsis.sourceforge.io). installer/build.cs builds it, and passes:
 ;   VERSION     three numbers, like 1.2.0
 ;   APP_DIR     the published app, with the browser app in its browser-app folder
 ;   VC_REDIST   Microsoft's Visual C++ runtime installer
@@ -35,8 +35,8 @@ VIAddVersionKey "FileVersion" "${VERSION}"
 VIAddVersionKey "FileDescription" "GhostShow installer"
 VIAddVersionKey "LegalCopyright" "The GhostShow authors"
 
-!define MUI_ICON "../apps/GhostShow.App/Assets/ghostshow.ico"
-!define MUI_UNICON "../apps/GhostShow.App/Assets/ghostshow.ico"
+!define MUI_ICON "..\apps\GhostShow.App\Assets\ghostshow.ico"
+!define MUI_UNICON "..\apps\GhostShow.App\Assets\ghostshow.ico"
 !define MUI_ABORTWARNING
 
 !insertmacro MUI_PAGE_COMPONENTS
@@ -112,7 +112,7 @@ Section "GhostShow" SectionApp
 
   RMDir /r "$INSTDIR\bin"
   SetOutPath "$INSTDIR\bin"
-  File /r "${APP_DIR}/*"
+  File /r "${APP_DIR}\*"
 
   SetOutPath "$INSTDIR"
   WriteUninstaller "$INSTDIR\uninstall.exe"

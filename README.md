@@ -37,7 +37,7 @@ Command line:
 
 Benchmarks: `dotnet run -c Release --project tests/GhostShow.Benchmarks -- --filter '*'`
 
-Windows installer: `installer/build.sh 1.2.0` writes `artifacts/GhostShow-Setup-1.2.0.exe`. See
+Windows installer: `dotnet run installer/build.cs -- 1.2.0` writes `artifacts/GhostShow-Setup-1.2.0.exe`. See
 [docs/windows-installer.md](docs/windows-installer.md).
 
 ## The app

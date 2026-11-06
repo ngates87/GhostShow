@@ -1,9 +1,15 @@
 # The Windows installer
 
-`installer/build.sh 1.2.0` writes `artifacts/GhostShow-Setup-1.2.0.exe`, one file to copy to the show computer. It's
-built on Linux, with NSIS (`sudo apt install nsis`), and the rest of what it needs is listed at the top of the script.
+`dotnet run installer/build.cs -- 1.2.0`, from the top of the repo, writes `artifacts/GhostShow-Setup-1.2.0.exe`: one
+file to copy to the show computer. Without a version it's 0.1.0. In VS Code it's also a build task (Terminal → Run Build
+Task → "build the Windows installer"), which asks for the version.
 
-The script builds from the working folder as it is, including anything not committed.
+It works the same on Windows and Linux. It needs NSIS, which makes the installer (Windows: `winget install NSIS.NSIS`;
+Linux: `sudo apt install nsis`), and what `dev.cs` needs for the full app for browsers. The rest is listed at the top of
+the script.
+
+The script builds from the working folder as it is, including anything not committed. It rebuilds the full app for
+browsers only when that's out of date (about 5 minutes), as `dev.cs` does.
 
 ## What it does on the show computer
 
