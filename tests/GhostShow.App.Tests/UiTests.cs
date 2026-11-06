@@ -1180,13 +1180,14 @@ public class UiTests
     });
 
     [Fact]
-    public Task The_track_properties_follow_the_highlighted_track_and_the_open_timeline() => Ui.Run(() =>
+    public Task The_panels_follow_the_open_timeline_and_the_highlighted_track() => Ui.Run(() =>
     {
         using var rig = new WindowRig();
         var main = rig.Editor.SelectedTimeline!;
         rig.Editor.Tree.NewTimelineCommand.Execute(null);
         WindowRig.Pump();
         var other = rig.Session.Project.Timelines.Single(t => t != main);
+        rig.Editor.Priority = 10;
         rig.Editor.OpenTimeline(main);
         WindowRig.Pump();
 
@@ -1202,14 +1203,17 @@ public class UiTests
         Assert.Same(audio, rig.Editor.SelectedTrack);
         Assert.Same(audio, rig.Editor.TrackProperties?.Row);
 
-        // Another timeline: its highlighted track's.
+        // Another timeline: its highlighted track's, and the timeline properties are that timeline's and say so.
+        var name = rig.Find<TextBlock>(t => t.Name == "TimelinePropertiesName");
         rig.Editor.OpenTimeline(other);
         WindowRig.Pump();
         Assert.NotNull(rig.Editor.SelectedTrack);
         Assert.Same(rig.Editor.SelectedTrack, rig.Editor.TrackProperties?.Row);
         Assert.Contains(rig.Editor.TrackProperties!.Track, other.Tracks);
+        Assert.Equal((other.Name, 10m), (name.Text, rig.Editor.Priority));
         rig.Editor.OpenTimeline(main);
         WindowRig.Pump();
+        Assert.Equal((main.Name, 0m), (name.Text, rig.Editor.Priority));
         Assert.Contains(rig.Editor.TrackProperties!.Track, main.Tracks);
 
         // Closed, they stay closed.

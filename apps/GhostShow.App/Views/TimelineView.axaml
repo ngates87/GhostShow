@@ -193,7 +193,11 @@
             <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
               <Button DockPanel.Dock="Right" Content="»" Padding="6,1" MinHeight="0" Command="{Binding ToggleTimelinePropertiesCommand}"
                       ToolTip.Tip="Fold the timeline properties away" />
-              <TextBlock Text="Timeline properties" FontWeight="SemiBold" VerticalAlignment="Center" />
+              <StackPanel VerticalAlignment="Center">
+                <TextBlock Text="Timeline properties" FontWeight="SemiBold" />
+                <!-- Which timeline these are for: the open tab's. -->
+                <TextBlock x:Name="TimelinePropertiesName" Text="{Binding TimelineName}" Opacity="0.75" FontSize="12" TextTrimming="CharacterEllipsis" />
+              </StackPanel>
             </DockPanel>
             <ScrollViewer>
               <StackPanel Spacing="8">

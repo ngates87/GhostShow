@@ -188,7 +188,7 @@ and **Stop all**; Playback → Stop All Timelines does the same. Blackout, New, 
 once.
 
 Each timeline's **Timeline properties** slide out from the strip at the right edge of the timeline; folded, the strip
-shows a summary of them. **Loop** (the same as the loop button under the timeline) starts it again at its end until it's
+shows a summary of them. They're always the open tab's, and name the timeline under their heading. **Loop** (the same as the loop button under the timeline) starts it again at its end until it's
 stopped. **Play one at a time**: starting it while it's playing (a button, a key, another timeline's event) does
 nothing; otherwise each start plays another copy, as in VenueMagic. VenueMagic sets "play one only" on each button and
 event instead; GhostShow sets it once, on the timeline, so a scare can't stack whatever starts it. The rest say how it
