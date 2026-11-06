@@ -926,4 +926,49 @@ public class UiTests
         Assert.Equal(["Level Control", "Lightning"], rig.Lighting.Events.Select(e => e.Name));
         Assert.Equal([null, EffectKind.Lightning], rig.Lighting.Events.Cast<LightingClip>().Select(c => c.Effect?.Kind));
     });
+
+    [Fact]
+    public Task The_track_properties_follow_the_highlighted_track_and_the_open_timeline() => Ui.Run(() =>
+    {
+        using var rig = new WindowRig();
+        var main = rig.Editor.SelectedTimeline!;
+        rig.Editor.Tree.NewTimelineCommand.Execute(null);
+        WindowRig.Pump();
+        var other = rig.Session.Project.Timelines.Single(t => t != main);
+        rig.Editor.OpenTimeline(main);
+        WindowRig.Pump();
+
+        // Clicking another track's name while a track's properties are open: they're that track's.
+        var headers = rig.Find<ListBox>(l => l.Name == "TrackHeaders");
+        void ClickName(TrackRowViewModel row) =>
+            rig.Click(headers.ContainerFromItem(row)!.TranslatePoint(new Point(20, 10), rig.Window)!.Value);
+        var lighting = rig.Editor.Tracks.First(t => t.IsLighting);
+        var audio = rig.Editor.Tracks.First(t => t.IsAudio);
+        rig.Editor.EditTrackProperties(lighting);
+        WindowRig.Pump();
+        ClickName(audio);
+        Assert.Same(audio, rig.Editor.SelectedTrack);
+        Assert.Same(audio, rig.Editor.TrackProperties?.Row);
+
+        // Another timeline: its highlighted track's.
+        rig.Editor.OpenTimeline(other);
+        WindowRig.Pump();
+        Assert.NotNull(rig.Editor.SelectedTrack);
+        Assert.Same(rig.Editor.SelectedTrack, rig.Editor.TrackProperties?.Row);
+        Assert.Contains(rig.Editor.TrackProperties!.Track, other.Tracks);
+        rig.Editor.OpenTimeline(main);
+        WindowRig.Pump();
+        Assert.Contains(rig.Editor.TrackProperties!.Track, main.Tracks);
+
+        // Closed, they stay closed.
+        rig.Editor.TrackProperties.CloseCommand.Execute(null);
+        ClickName(rig.Editor.Tracks.First(t => t.IsLighting));
+        Assert.Null(rig.Editor.TrackProperties);
+
+        // The channel picker holds choices for its own track, so another track closes it.
+        rig.Editor.EditChannels(rig.Editor.Tracks.First(t => t.IsLighting));
+        WindowRig.Pump();
+        ClickName(rig.Editor.Tracks.First(t => t.IsAudio));
+        Assert.Null(rig.Editor.ChannelPicker);
+    });
 }

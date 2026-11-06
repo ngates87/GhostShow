@@ -249,6 +249,9 @@ same files. The Audio screen lists every sound the show uses and whether it was 
 - **Track headers:** double-click a name (or F2) to rename it. Right-click for Channels… (lighting), expand,
   Properties…, rename, mute, move up/down and remove. ⚙ on a lighting track opens its channels. **Properties…**
   shows the track in the right-hand panel: its name, "Draw levels between clips", and each channel's starting level.
+  While it's open it goes with the highlighted track: click another track's name, or open another timeline, and it
+  shows that track. Closed (×), it stays closed. The channel picker closes instead, since its choices aren't applied
+  until OK.
 - **Lighting tracks:** right-click the track's name (or ⚙) → **Channels…** opens a picker in the right-hand panel, with the
   universe's patch map at the top (picked channels outlined in gold; click a fixture on the map to tick all of it):
   tick a fixture for all its channels, or expand it to tick single ones (shown by function: Intensity, Red, …); add

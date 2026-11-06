@@ -726,7 +726,21 @@ public sealed partial class TimelineEditorViewModel
         SelectedTrack = row;
         ChannelPicker = null;
         ClearSelection();   // the panel shows one thing: now the track
-        TrackProperties = new TrackPropertiesViewModel(row, this, () => TrackProperties = null);
+        TrackProperties = NewTrackProperties(row);
+    }
+
+    TrackPropertiesViewModel NewTrackProperties(TrackRowViewModel row) => new(row, this, () => TrackProperties = null);
+
+    /// <summary>
+    /// The panel goes with the highlighted track: while a track's properties are open, highlighting another track, or
+    /// opening another timeline, shows that track's instead. The channel picker holds choices not applied yet, for its
+    /// own track, so another track closes it.
+    /// </summary>
+    void PanelsFollowSelectedTrack()
+    {
+        if (TrackProperties is not null && TrackProperties.Row != SelectedTrack)
+            TrackProperties = SelectedTrack is { } row ? NewTrackProperties(row) : null;
+        if (ChannelPicker is not null && ChannelPicker.Track != SelectedTrack?.Track) ChannelPicker = null;
     }
 
     /// <summary>

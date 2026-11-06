@@ -462,6 +462,7 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
     {
         if (oldValue is not null) oldValue.IsSelected = false;
         if (newValue is not null) newValue.IsSelected = true;
+        if (!_rebuildingTracks) PanelsFollowSelectedTrack();
         OnPropertyChanged(nameof(AddLabel));
         OnPropertyChanged(nameof(IsAudioTrackSelected));
         OnPropertyChanged(nameof(IsAddButtonShown));
@@ -954,12 +955,25 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
             Properties?.Refresh();
     }
 
+    // True while the track rows are being replaced. The list is empty for a moment then, and the track list on screen
+    // sets SelectedTrack to null: the panels mustn't follow that and close.
+    bool _rebuildingTracks;
+
     void RebuildTracks()
     {
         var selectedTrack = SelectedTrack?.Track;
-        Tracks.Clear();
-        foreach (var track in SelectedTimeline?.Tracks ?? []) Tracks.Add(new TrackRowViewModel(track, this));
-        SelectedTrack = Tracks.FirstOrDefault(t => t.Track == selectedTrack) ?? Tracks.FirstOrDefault();
+        _rebuildingTracks = true;
+        try
+        {
+            Tracks.Clear();
+            foreach (var track in SelectedTimeline?.Tracks ?? []) Tracks.Add(new TrackRowViewModel(track, this));
+            SelectedTrack = Tracks.FirstOrDefault(t => t.Track == selectedTrack) ?? Tracks.FirstOrDefault();
+        }
+        finally
+        {
+            _rebuildingTracks = false;
+        }
+        PanelsFollowSelectedTrack();
         Relayout();
     }
 

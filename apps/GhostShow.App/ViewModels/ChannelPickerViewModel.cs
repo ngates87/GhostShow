@@ -93,6 +93,9 @@ public sealed partial class ChannelPickerViewModel : ObservableObject
     readonly Action<IReadOnlyList<LaneTarget>> _apply;
     readonly Action _cancel;
 
+    /// <summary>The track it picks channels for.</summary>
+    public TimelineTrack Track => _track;
+
     public ChannelPickerViewModel(TimelineTrack track, ShowSession session, TimelineEditorViewModel editor, Action? showFixtures,
                                   Action<IReadOnlyList<LaneTarget>> apply, Action cancel)
     {
