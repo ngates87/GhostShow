@@ -134,6 +134,24 @@ public partial class MainWindow : Window
         e.Handled = true;
     }
 
+    /// <summary>The window's state before it was minimized, so bringing it back keeps it maximized if it was.</summary>
+    WindowState _stateBeforeMinimized = WindowState.Normal;
+
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+        if (change.Property == WindowStateProperty && change.GetOldValue<WindowState>() is var old && old != WindowState.Minimized)
+            _stateBeforeMinimized = old;
+    }
+
+    /// <summary>Shows the window in front of the others (another copy of GhostShow was started).</summary>
+    public void BringToFront()
+    {
+        if (WindowState == WindowState.Minimized) WindowState = _stateBeforeMinimized;
+        Show();
+        Activate();
+    }
+
     async void OnAbout(object? sender, RoutedEventArgs e) => await new AboutDialog().ShowDialog(this);
 
     Views.RemoteWindow? _remote;

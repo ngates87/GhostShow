@@ -23,6 +23,9 @@ public partial class App : Application
     ILoggerFactory? _loggerFactory;
     UiResponsivenessProbe? _probe;
 
+    /// <summary>This copy's hold on being the only GhostShow running (null in tests and previews).</summary>
+    public SingleInstance? SingleInstance { get; init; }
+
     public override void Initialize() => AvaloniaXamlLoader.Load(this);
 
     public override void OnFrameworkInitializationCompleted()
@@ -31,6 +34,9 @@ public partial class App : Application
         {
             var window = new MainWindow();
             desktop.MainWindow = window;
+            // Another copy was started: it quits, and this window comes forward instead.
+            if (SingleInstance is { } instance)
+                instance.ShowRequested += () => Avalonia.Threading.Dispatcher.UIThread.Post(window.BringToFront);
             desktop.Exit += (_, _) => { _probe?.Dispose(); _loggerFactory?.Dispose(); };
             StartAsync(window);
         }

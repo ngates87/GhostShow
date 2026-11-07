@@ -185,6 +185,7 @@ version of these calls goes over the network to the show computer's `ShowPlaybac
 
 | Situation | What GhostShow does |
 |---|---|
+| GhostShow started a second time | Only one copy runs per user (two would fight over the DMX interfaces and sound cards). The second start brings the running window to the front and quits (`SingleInstance`). The lock goes when the process ends, even after a crash |
 | Device missing or busy at start | Output status Faulted, logged once, retried every 2 s; the rest of the app works normally |
 | Device unplugged mid-show | Next send fails → Faulted, logged, device closed, reconnect every 2 s. USB adapters are found again by serial number, even on a different USB socket |
 | Device comes back | Reconnects, logs it, output resumes with current values |
