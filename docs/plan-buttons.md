@@ -33,9 +33,10 @@ unclear, it follows VenueMagic 3/4. Decided 2026-10-28.
   a click there arms them again. Not saved. Clicking a button always works.
 - **Focus warning:** with armed key triggers, a red bar says when another window has the keyboard (keys can't reach
   GhostShow then).
-- **Keys:** **Add key**, then press the key (Esc cancels). A button can have several. Letters, digits, the numeric keypad,
-  F keys except F2, Page Up and Down, Insert and Pause work, without modifiers; one button per key. GhostShow keeps the rest
-  for itself (Space plays and pauses, F2 renames, and so on). They work on every screen while GhostShow has focus.
+- **Keys:** **Add key**, then press the key (Esc cancels). With a serial device listening it's **Add key or command**,
+  and a serial command sent while it waits is learned the same way (see plan-triggers.md). A button can have several.
+  Letters, digits, the numeric keypad, F keys except F2, Page Up and Down, Insert and Pause work, without modifiers;
+  one button per key. GhostShow keeps the rest for itself (Space plays and pauses, F2 renames, and so on). They work on every screen while GhostShow has focus.
   While typing in a field, keys that type (letters, digits, the keypad) go to the field, but F keys, Page Up and Down,
   Insert and Pause still press their buttons, so a field left with the cursor in it can't silently stop a show. Enter,
   Esc, or a click anywhere else takes the cursor out of a field. Holding a key down is one press.

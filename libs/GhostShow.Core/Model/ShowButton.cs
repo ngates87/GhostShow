@@ -36,9 +36,15 @@ public sealed class ButtonTrigger
 {
     public const string Keyboard = "keyboard";
 
+    /// <summary>A command (one line of text) from the serial device set up on the Inputs screen.</summary>
+    public const string Serial = "serial";
+
     public string Source { get; set; } = Keyboard;
 
-    /// <summary>Which input of that source. Keyboard: the key's name ("F5", "D1" for the 1 key, "Q").</summary>
+    /// <summary>
+    /// Which input of that source. Keyboard: the key's name ("F5", "D1" for the 1 key, "Q"). Serial: the whole command,
+    /// without its line ending ("channel 1 1").
+    /// </summary>
     public string Address { get; set; } = "";
 
     /// <summary>

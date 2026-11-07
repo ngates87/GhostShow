@@ -3,8 +3,8 @@
              xmlns:vm="using:GhostShow.App.ViewModels"
              x:Class="GhostShow.App.Views.InputsView"
              x:DataType="vm:InputMonitorViewModel">
-  <!-- Inputs: the input monitor for now. Serial and Stream Deck setup join it later (docs/plan-triggers.md). -->
-  <DockPanel Margin="0,12">
+  <!-- Inputs → Input monitor, under the serial input setup (SerialInputView). Stream Deck setup joins them later (docs/plan-triggers.md). -->
+  <DockPanel Margin="0,4,0,12">
     <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
       <Button DockPanel.Dock="Right" Content="Clear" Command="{Binding ClearCommand}" IsEnabled="{Binding !IsEmpty}" />
       <StackPanel Spacing="2">
@@ -18,7 +18,7 @@
       <TextBlock Grid.Column="3" Text="" /><TextBlock Grid.Column="4" Text="What it did" />
     </Grid>
     <Panel>
-      <TextBlock Text="Nothing yet: press a button's key, and it shows here." Opacity="0.6" Margin="12,8" IsVisible="{Binding IsEmpty}" />
+      <TextBlock Text="Nothing yet: press a button's key, or send a serial command, and it shows here." Opacity="0.6" Margin="12,8" IsVisible="{Binding IsEmpty}" />
       <ListBox x:Name="InputRows" ItemsSource="{Binding Rows}">
         <ListBox.ItemTemplate>
           <DataTemplate x:DataType="vm:InputMonitorRow">

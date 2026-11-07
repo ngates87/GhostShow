@@ -489,4 +489,53 @@ public class ButtonsTests : IDisposable
             new Core.Editing.SetOp(Core.Editing.ShowPath.Button(back.Button.Id).Then("name"), "From the iPad")), origin: "iPad");
         Assert.Equal("From the iPad", back.Name);
     }
+
+    [Fact]
+    public void A_serial_command_is_learned_while_a_button_waits_then_presses_it()
+    {
+        var monitor = new InputMonitorViewModel(_buttons);
+        var scare = Button("Scare", new RunTimelineAction { TimelineId = _scare.Id });
+        var other = Button("Other");
+        scare = _buttons.Buttons[0];
+        void Serial(string command) => _buttons.Input(ButtonTrigger.Serial, command, isPressed: true);
+
+        Assert.Equal("Add key", scare.LearnKeyLabel);
+        _buttons.IsSerialListening = true;   // the Inputs screen says a serial device is being listened to
+        Assert.Equal("Add key or command", scare.LearnKeyLabel);
+        scare.LearnKeyCommand.Execute(null);
+        Assert.Equal("Press a key or send a command… (Esc cancels)", scare.LearnKeyLabel);
+
+        Serial("channel 1 1");
+        Assert.False(_buttons.IsLearningKey);
+        Assert.Equal("Serial “channel 1 1”", Assert.Single(scare.Triggers).Label);
+        Assert.Equal(0, Copies);   // learning it doesn't press it
+
+        Serial("channel 1 1");
+        Serial("channel 2 1");
+        Assert.Equal(1, Copies);
+
+        // One command, one button.
+        other.LearnKeyCommand.Execute(null);
+        Serial("channel 1 1");
+        Assert.True(other.IsLearningKey);
+        Assert.Equal("Serial “channel 1 1” is already on Scare.", other.KeyProblem);
+        Assert.Empty(other.Triggers);
+
+        Assert.Equal(
+        [
+            ("Serial", "channel 1 1", "received", "Learned by Scare"),
+            ("Serial", "channel 1 1", "received", "Pressed Scare"),
+            ("Serial", "channel 2 1", "received", "No button uses it"),
+            ("Serial", "channel 1 1", "received", "Not learned: it's already on Scare"),
+        ], monitor.Rows.Reverse().Select(r => (r.Source, r.Address, r.Change, r.Outcome)));
+    }
+
+    [Fact]
+    public void Serial_commands_show_their_control_characters()
+    {
+        var monitor = new InputMonitorViewModel(_buttons);
+        _buttons.Input(ButtonTrigger.Serial, "GO\u001b1", isPressed: true);
+        Assert.Equal("GO[1B]1", monitor.Rows.Single().Address);
+        Assert.Equal("Serial “GO[1B]1”", ButtonTriggerViewModel.Describe(ButtonTrigger.Serial, "GO\u001b1"));
+    }
 }

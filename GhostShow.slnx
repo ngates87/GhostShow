@@ -7,6 +7,7 @@
     <Project Path="libs/GhostShow.Audio/GhostShow.Audio.csproj" />
     <Project Path="libs/GhostShow.Core/GhostShow.Core.csproj" />
     <Project Path="libs/GhostShow.Dmx/GhostShow.Dmx.csproj" />
+    <Project Path="libs/GhostShow.Inputs/GhostShow.Inputs.csproj" />
     <Project Path="libs/GhostShow.Web/GhostShow.Web.csproj" />
   </Folder>
   <Folder Name="/tests/">

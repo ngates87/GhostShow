@@ -180,13 +180,43 @@ public sealed partial class ButtonsViewModel : ObservableObject
     /// An input event from any source. A press presses the button with a live trigger (armed and on) for that input, if
     /// the trigger is ready (not still re-arming); a release does nothing yet. Returns the button it pressed, or null. A
     /// click on the button always works, whatever its triggers.
+    ///
+    /// While a button waits for a key, a serial command is learned instead: it becomes that button's trigger. (Keys
+    /// being learned never get here: the window hands them to <see cref="LearnKey"/>.)
     /// </summary>
     public ShowButtonViewModel? Input(string source, string address, bool isPressed)
     {
         var input = new InputEvent(source, address, isPressed, _time.GetLocalNow());
-        var (pressed, outcome) = isPressed ? PressFor(input) : (null, "");
+        var (pressed, outcome) = !isPressed ? (null, "")
+                               : LearningKeyFor is { } learning && source != ButtonTrigger.Keyboard ? (null, Learn(learning, source, address))
+                               : PressFor(input);
         InputReceived?.Invoke(input, outcome);
         return pressed;
+    }
+
+    /// <summary>A serial command (or later input) arriving while a button waits for its trigger. Returns what came of it.</summary>
+    string Learn(ShowButtonViewModel button, string source, string address)
+    {
+        string label = ButtonTriggerViewModel.Describe(source, address);
+        if (ButtonWith(source, address) is { } other)
+        {
+            button.KeyProblem = $"{label} is already on {other.Name}.";
+            return $"Not learned: it's already on {other.Name}";
+        }
+        LearningKeyFor = null;
+        button.AddTrigger(source, address);
+        return $"Learned by {button.Name}";
+    }
+
+    /// <summary>
+    /// Whether a serial device is being listened to, so a button waiting for its trigger says a command will do too.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool IsSerialListening { get; set; }
+
+    partial void OnIsSerialListeningChanged(bool value)
+    {
+        foreach (var button in Buttons) button.RefreshLearnLabel();
     }
 
     /// <summary>A key pressed anywhere (see <see cref="Input"/>). Returns whether it pressed a button.</summary>
@@ -218,9 +248,9 @@ public sealed partial class ButtonsViewModel : ObservableObject
         return null;
     }
 
-    /// <summary>Whether a button has this key at all (for learning keys: one key, one button).</summary>
-
-    ShowButtonViewModel? ButtonWithKey(string key) => Buttons.FirstOrDefault(b => b.HasKey(key));
+    /// <summary>The button with this input as a trigger, on or off (for learning: one input, one button).</summary>
+    ShowButtonViewModel? ButtonWith(string source, string address) =>
+        Buttons.FirstOrDefault(b => b.Triggers.Any(t => t.Matches(source, address)));
 
     // ---- learning a key: the next key pressed becomes a trigger of the button ----
 
@@ -255,11 +285,11 @@ public sealed partial class ButtonsViewModel : ObservableObject
         if (key == "Escape") LearningKeyFor = null;
         else if (withModifier) button.KeyProblem = "Press the key on its own, without Ctrl, Shift or Alt.";
         else if (!TriggerKeys.CanUse(key)) button.KeyProblem = $"GhostShow uses {label} itself: try a letter, a number or an F key.";
-        else if (ButtonWithKey(key) is { } other) button.KeyProblem = $"{label} is already on {other.Name}.";
+        else if (ButtonWith(ButtonTrigger.Keyboard, key) is { } other) button.KeyProblem = $"{label} is already on {other.Name}.";
         else
         {
             LearningKeyFor = null;
-            button.AddKey(key);
+            button.AddTrigger(ButtonTrigger.Keyboard, key);
         }
     }
 
@@ -449,7 +479,11 @@ public sealed partial class ShowButtonViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(LearnKeyLabel))]
     public partial bool IsLearningKey { get; set; }
 
-    public string LearnKeyLabel => IsLearningKey ? "Press a key… (Esc cancels)" : "Add key";
+    public string LearnKeyLabel => !IsLearningKey ? (_owner.IsSerialListening ? "Add key or command" : "Add key")
+                                 : _owner.IsSerialListening ? "Press a key or send a command… (Esc cancels)"
+                                 : "Press a key… (Esc cancels)";
+
+    internal void RefreshLearnLabel() => OnPropertyChanged(nameof(LearnKeyLabel));
 
     /// <summary>Why the key just pressed couldn't be added; empty when there's nothing to say.</summary>
     [ObservableProperty]
@@ -468,14 +502,14 @@ public sealed partial class ShowButtonViewModel : ObservableObject
     [RelayCommand]
     void AddKeyFromMenu() => _owner.StartLearningKey(this);
 
-    internal void AddKey(string key)
+    internal void AddTrigger(string source, string address)
     {
-        var trigger = new ButtonTrigger { Address = key };
-        Edit("Add key", () => Button.Triggers.Add(trigger));
+        var trigger = new ButtonTrigger { Source = source, Address = address };
+        Edit(source == ButtonTrigger.Keyboard ? "Add key" : "Add trigger", () => Button.Triggers.Add(trigger));
     }
 
     internal void RemoveTrigger(ButtonTriggerViewModel trigger) =>
-        Edit("Remove key", () => Button.Triggers.Remove(trigger.Trigger));
+        Edit(trigger.Trigger.Source == ButtonTrigger.Keyboard ? "Remove key" : "Remove trigger", () => Button.Triggers.Remove(trigger.Trigger));
 
     /// <summary>A change to one of its triggers' settings (only that trigger is compared).</summary>
     internal void EditTrigger(ButtonTrigger trigger, string description, Action change) =>
@@ -552,7 +586,15 @@ public sealed partial class ButtonTriggerViewModel(ButtonTrigger trigger, ShowBu
 {
     public ButtonTrigger Trigger { get; } = trigger;
 
-    public string Label => $"Key {TriggerKeys.Label(Trigger.Address)}";
+    public string Label => Describe(Trigger.Source, Trigger.Address);
+
+    /// <summary>An input in words: "Key F5", "Serial “channel 1 1”".</summary>
+    public static string Describe(string source, string address) => source switch
+    {
+        ButtonTrigger.Keyboard => $"Key {TriggerKeys.Label(address)}",
+        ButtonTrigger.Serial => $"Serial “{InputText.Visible(address)}”",
+        _ => $"{source} {address}",
+    };
 
     internal bool Matches(string source, string address) => Trigger.Source == source && Trigger.Address == address;
 

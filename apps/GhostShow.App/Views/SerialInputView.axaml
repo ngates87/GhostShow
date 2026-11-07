@@ -1,0 +1,25 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:GhostShow.App.ViewModels"
+             x:Class="GhostShow.App.Views.SerialInputView"
+             x:DataType="vm:SerialInputViewModel">
+  <!-- Inputs → Serial input: the port a sensor box or prop controller sends commands on (this computer's setting). -->
+  <StackPanel Spacing="6" Margin="0,12,0,8">
+    <TextBlock Text="Serial input" Classes="heading" />
+    <TextBlock Opacity="0.7" TextWrapping="Wrap"
+               Text="A sensor box or prop controller on a serial port sends commands, one per line. A button with that command as a trigger is pressed by it: add it like a key, by sending the command while the button waits. This computer's setting, not the show's." />
+    <WrapPanel Orientation="Horizontal">
+      <TextBlock Text="Port" VerticalAlignment="Center" Margin="0,0,8,0" />
+      <ComboBox x:Name="SerialPort" ItemsSource="{Binding Ports}" SelectedItem="{Binding SelectedPort}" MinWidth="200" />
+      <Button Content="Refresh" Command="{Binding RefreshPortsCommand}" Margin="6,0,20,0"
+              ToolTip.Tip="List the ports again, after plugging in a USB-serial cable." />
+      <TextBlock Text="Speed" VerticalAlignment="Center" Margin="0,0,8,0" />
+      <ComboBox x:Name="SerialBaud" ItemsSource="{x:Static vm:SerialInputViewModel.BaudRates}" SelectedItem="{Binding BaudRate}" MinWidth="110"
+                ToolTip.Tip="The device's manual gives it; 9600 is the most common. Always 8 data bits, no parity, 1 stop bit." />
+      <TextBlock Text="baud" VerticalAlignment="Center" Margin="6,0,20,0" />
+      <CheckBox Content="Listen" IsChecked="{Binding IsEnabled}"
+                ToolTip.Tip="Off keeps the port picked but closed, e.g. to let another program use it." />
+    </WrapPanel>
+    <TextBlock x:Name="SerialStatus" Text="{Binding StatusLabel}" TextWrapping="Wrap" Classes.fault="{Binding IsFaulted}" />
+  </StackPanel>
+</UserControl>

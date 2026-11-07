@@ -12,10 +12,11 @@ Phase 2 added timelines, show playback and audio. Timelines, playback and audio 
 | `GhostShow.Core` | Engine state and commands, universe model, fixture profiles/patching/validation, storage, diagnostics primitives, timeline model and compiler, players (one per timeline), the playback manager that merges them, and the playback loop | `Microsoft.Extensions.Logging.Abstractions` only |
 | `GhostShow.Dmx` | Output service, device interface, simulator, Open DMX / USB Pro / Art-Net drivers, adapter discovery | Core, `System.IO.Ports` |
 | `GhostShow.Audio` | Audio output (`AudioService`, implementing Core's `IAudioOutput`): devices, streaming WAV/MP3, mixing, device-loss recovery | Core, SoundFlow (MIT) |
-| `GhostShow.App` | Avalonia desktop UI | Core, Dmx, Audio, Web (Dmx and Audio are used at startup and on their setup screens) |
+| `GhostShow.Inputs` | Inputs that press show buttons: the serial input (`SerialInputService`: one port, one command per line, retried while missing); Stream Deck, OSC and MIDI later | `System.IO.Ports` |
+| `GhostShow.App` | Avalonia desktop UI | Core, Dmx, Audio, Inputs, Web (Dmx, Audio and Inputs are used at startup and on their setup screens) |
 | `GhostShow.Web` | The web remote: an ASP.NET Core server inside the app, pairing, the live WebSocket, and the web app (`client/`: Svelte, built with Node and embedded); see [remote.md](remote.md) | Core, ASP.NET Core (shared framework) |
 | `GhostShow.Cli` | Running without a UI: timeline playback, soak tests | Core, Dmx, Audio |
-| `GhostShow.Tests` | xUnit v3 unit and integration tests for the engine, DMX output, fixtures, storage, timelines, playback and audio | Core, Dmx, Audio |
+| `GhostShow.Tests` | xUnit v3 unit and integration tests for the engine, DMX output, fixtures, storage, timelines, playback, audio and inputs | Core, Dmx, Audio, Inputs |
 | `GhostShow.App.Tests` | xUnit v3 tests for the app's view models (add-fixtures wizard, profile browser, paging, save guard, timeline editor, undo/redo); no UI is shown | App, Core |
 | `GhostShow.Benchmarks` | BenchmarkDotNet benchmarks for the frame path, patching, timeline evaluation and compiling, show save/load | Core, Dmx |
 
@@ -193,6 +194,7 @@ version of these calls goes over the network to the show computer's `ShowPlaybac
 | Controlled stop (closing the app, ending a CLI run, changing an output) | Sends all-zero frames for 0.5 s (blackout), disconnects, releases the device. The window waits for this before closing. `StopAsync` gives up after 3 s and logs it if a driver hangs |
 | Crash, power loss, unplugging | Nothing can be sent. Fixtures follow their own DMX-loss setting (see below) |
 | Audio device missing or unplugged | Reported on the Audio screen and in Diagnostics, retried every 3 s; when it's back, sounds that should be playing restart at the right place. A track's own output that's missing plays on the default output meanwhile (and is listed under the toolbar's ⚠). Lighting is unaffected |
+| Serial input device missing, in use or unplugged | Said on the Inputs screen and under the toolbar's ⚠, retried every 3 s; commands are read again as soon as it's back. A port a DMX adapter is on is never opened for input |
 | Missing sound file, unpatched fixture, other timeline problems | That event is skipped and listed on the Timeline screen; the rest of the show plays |
 | Playback update throws (a bug) | Logged once, counted in Diagnostics; playback carries on with the next update |
 

@@ -7,7 +7,9 @@ using Avalonia.LogicalTree;
 using Avalonia.VisualTree;
 using GhostShow.App.ViewModels;
 using GhostShow.Core.Fixtures;
+using GhostShow.Core.Storage;
 using GhostShow.Core.Timeline;
+using Microsoft.Extensions.Logging.Abstractions;
 using Page = GhostShow.App.ViewModels.Page;
 
 namespace GhostShow.App.Tests;
@@ -526,6 +528,57 @@ public class UiTests
         var list = rig.Find<ListBox>(l => l.Name == "InputRows");
         Assert.True(list.IsEffectivelyVisible);
         Assert.Equal(4, list.ItemCount);
+    });
+
+    /// <summary>A serial port the test sends commands through.</summary>
+    sealed class ScriptedSerialLink : GhostShow.Inputs.ISerialLink
+    {
+        readonly System.Collections.Concurrent.BlockingCollection<byte[]> _chunks = new();
+        public void Send(string text) => _chunks.Add(System.Text.Encoding.Latin1.GetBytes(text));
+
+        public int Read(byte[] buffer)
+        {
+            if (!_chunks.TryTake(out var chunk, 20)) return 0;
+            chunk.CopyTo(buffer, 0);
+            return chunk.Length;
+        }
+
+        public void Dispose() { }
+    }
+
+    [Fact]
+    public Task A_serial_command_shows_in_the_monitor_is_learned_by_a_waiting_button_then_presses_it() => Ui.Run(() =>
+    {
+        var link = new ScriptedSerialLink();
+        using var serial = new GhostShow.Inputs.SerialInputService(NullLogger.Instance, (_, _) => link);
+        using var rig = new WindowRig(serial, new MachineSettings { SerialInput = new SerialInputSettings("COM3") });
+        void PumpUntil(Func<bool> done)
+        {
+            for (int i = 0; i < 100 && !done(); i++) WindowRig.Pump(20);
+            Assert.True(done());
+        }
+
+        PumpUntil(() => rig.ViewModel.SerialInput.IsListening);
+        rig.Key(Key.D4, RawInputModifiers.Control);
+        WindowRig.Pump();
+        var status = rig.Find<TextBlock>(t => t.Name == "SerialStatus");
+        Assert.True(status.IsEffectivelyVisible);
+        Assert.Equal("Listening on COM3 at 9600 baud.", status.Text);
+
+        rig.ViewModel.Buttons.AddCommand.Execute(null);   // a new button waits for its trigger: a key or a command
+        var button = rig.ViewModel.Buttons.Buttons.Single();
+        Assert.Equal("Press a key or send a command… (Esc cancels)", button.LearnKeyLabel);
+        link.Send("channel 1 1\r");
+        PumpUntil(() => button.Triggers.Count == 1);
+        Assert.Equal("Serial “channel 1 1”", button.Triggers[0].Label);
+
+        link.Send("channel 1 1\r");
+        PumpUntil(() => rig.ViewModel.Inputs.Rows.Count == 2);
+        Assert.Equal(
+        [
+            ("Serial", "channel 1 1", "received", "Learned by Button 1"),
+            ("Serial", "channel 1 1", "received", "Pressed Button 1"),
+        ], rig.ViewModel.Inputs.Rows.Reverse().Select(r => (r.Source, r.Address, r.Change, r.Outcome)));
     });
 
     [Fact]

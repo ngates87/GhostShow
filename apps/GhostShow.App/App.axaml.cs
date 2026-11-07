@@ -71,7 +71,9 @@ public partial class App : Application
         var playbackLoop = new PlaybackLoop(player, _loggerFactory.CreateLogger<PlaybackLoop>());
         playbackLoop.Start();
 
-        var services = new AppServices(session, outputs, player, playbackLoop, audio, settings.Settings, paths, _recentEvents, _probe);
+        var serialInput = new GhostShow.Inputs.SerialInputService(_loggerFactory.CreateLogger<GhostShow.Inputs.SerialInputService>());
+        var services = new AppServices(session, outputs, player, playbackLoop, audio, settings.Settings, paths, _recentEvents, _probe,
+                                       SerialInput: serialInput);
         var viewModel = new MainViewModel(services, window.StorageProvider, new Dialogs.SaveChangesDialogPrompt(window),
                                           _loggerFactory.CreateLogger<MainViewModel>());
         window.DataContext = viewModel;

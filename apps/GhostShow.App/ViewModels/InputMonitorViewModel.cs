@@ -41,9 +41,17 @@ public sealed class InputMonitorRow(InputEvent input, string outcome)
 {
     public InputEvent Input { get; } = input;
     public string Time => Input.Time.ToString("HH:mm:ss.ff");
-    public string Source => Input.Source == ButtonTrigger.Keyboard ? "Keyboard" : Input.Source;
-    public string Address => Input.Source == ButtonTrigger.Keyboard ? TriggerKeys.Label(Input.Address) : Input.Address;
-    public string Change => Input.IsPressed ? "pressed" : "released";
+    public string Source => Input.Source switch
+    {
+        ButtonTrigger.Keyboard => "Keyboard",
+        ButtonTrigger.Serial => "Serial",
+        var other => other,
+    };
+
+    public string Address => Input.Source == ButtonTrigger.Keyboard ? TriggerKeys.Label(Input.Address) : InputText.Visible(Input.Address);
+
+    /// <summary>Keys are pressed and released; a serial command just arrives.</summary>
+    public string Change => Input.Source == ButtonTrigger.Serial ? "received" : Input.IsPressed ? "pressed" : "released";
 
     /// <summary>"Pressed Scare 1", or why nothing happened: "No button uses it", "Scare 1: re-arms in 2.0 s".</summary>
     public string Outcome { get; } = outcome;

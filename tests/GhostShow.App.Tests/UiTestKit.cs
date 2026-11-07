@@ -43,7 +43,9 @@ sealed class WindowRig : IDisposable
     readonly string _config = Path.Combine(Path.GetTempPath(), "ghostshow-ui-tests", Guid.NewGuid().ToString("N"));
     readonly UiResponsivenessProbe _probe = new();
 
-    public WindowRig()
+    /// <param name="serialInput">A serial input with a stand-in port, for tests of commands arriving.</param>
+    /// <param name="settings">This computer's settings to start with.</param>
+    public WindowRig(GhostShow.Inputs.SerialInputService? serialInput = null, MachineSettings? settings = null)
     {
         // Built-in profiles: starting the window loads the full library, which replaces whatever the session had.
         Session = new ShowSession(new ShowEngine(), new FixtureProfileLibrary(FixtureProfileLoader.LoadBuiltIn()), NullLogger<ShowSession>.Instance);
@@ -56,8 +58,8 @@ sealed class WindowRig : IDisposable
         Audio = new AudioService(NullLogger.Instance, useNullDevice: true);
         Manager = new PlaybackManager(Session.Engine, Audio, new StopwatchClock());
         var services = new AppServices(Session, new OutputManager(Session.Engine, NullLoggerFactory.Instance), Manager,
-                                       new PlaybackLoop(Manager, NullLogger.Instance), Audio, new MachineSettings(),
-                                       new AppPaths(_config), new RecentEventsLog(), _probe, new NoAdapters());
+                                       new PlaybackLoop(Manager, NullLogger.Instance), Audio, settings ?? new MachineSettings(),
+                                       new AppPaths(_config), new RecentEventsLog(), _probe, new NoAdapters(), serialInput);
         Window = new MainWindow { Width = 1400, Height = 820 };
         ViewModel = new MainViewModel(services, Window.StorageProvider, new Dialogs.SaveChangesDialogPrompt(Window), NullLogger<MainViewModel>.Instance);
         Window.DataContext = ViewModel;

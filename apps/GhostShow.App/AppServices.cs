@@ -5,6 +5,7 @@ using GhostShow.Core.Playback;
 using GhostShow.Core.Storage;
 using GhostShow.Dmx;
 using GhostShow.Dmx.Discovery;
+using GhostShow.Inputs;
 
 namespace GhostShow.App;
 
@@ -22,4 +23,5 @@ public sealed record AppServices(
     AppPaths Paths,
     RecentEventsLog Log,
     UiResponsivenessProbe Probe,
-    IDmxAdapterFinder? AdapterFinder = null);
+    IDmxAdapterFinder? AdapterFinder = null,
+    SerialInputService? SerialInput = null);

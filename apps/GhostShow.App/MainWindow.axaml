@@ -205,8 +205,10 @@
                              IsVisible="{Binding $parent[Window].((vm:MainViewModel)DataContext).CurrentPage, Converter={x:Static vm:Converters.PageIs}, ConverterParameter={x:Static vm:Page.Diagnostics}}" />
       <views:LightingView DataContext="{Binding Lighting}"
                           IsVisible="{Binding $parent[Window].((vm:MainViewModel)DataContext).SelectedSection, Converter={x:Static vm:Converters.SectionIs}, ConverterParameter={x:Static vm:Section.Lighting}}" />
-      <views:InputsView DataContext="{Binding Inputs}"
-                        IsVisible="{Binding $parent[Window].((vm:MainViewModel)DataContext).CurrentPage, Converter={x:Static vm:Converters.PageIs}, ConverterParameter={x:Static vm:Page.InputMonitor}}" />
+      <DockPanel IsVisible="{Binding $parent[Window].((vm:MainViewModel)DataContext).CurrentPage, Converter={x:Static vm:Converters.PageIs}, ConverterParameter={x:Static vm:Page.InputMonitor}}">
+        <views:SerialInputView DockPanel.Dock="Top" DataContext="{Binding SerialInput}" />
+        <views:InputsView DataContext="{Binding Inputs}" />
+      </DockPanel>
       <views:AudioView DataContext="{Binding Audio}"
                      IsVisible="{Binding $parent[Window].((vm:MainViewModel)DataContext).CurrentPage, Converter={x:Static vm:Converters.PageIs}, ConverterParameter={x:Static vm:Page.Audio}}" />
     </Panel>

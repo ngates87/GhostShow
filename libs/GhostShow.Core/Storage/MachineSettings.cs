@@ -25,6 +25,9 @@ public sealed class MachineSettings
     /// <summary>Audio output device and master volume for this computer.</summary>
     public AudioSettings Audio { get; set; } = new();
 
+    /// <summary>The serial port a sensor or prop controller sends commands on, if any (Inputs screen).</summary>
+    public SerialInputSettings SerialInput { get; set; } = new();
+
     /// <summary>The web remote: whether devices on the network may connect, and the paired devices.</summary>
     public RemoteSettings Remote { get; set; } = new();
 
@@ -98,3 +101,8 @@ public sealed record ArtNetDeviceConfig(string? Address, int ArtNetUniverse) : O
 /// <param name="DeviceName">The output device to use; null for the system default.</param>
 /// <param name="MasterVolume">0-1, applied on top of every audio event's own volume.</param>
 public sealed record AudioSettings(string? DeviceName = null, double MasterVolume = 1.0);
+
+/// <param name="Port">The port to listen on ("COM3", "/dev/ttyUSB1"); null for none.</param>
+/// <param name="BaudRate">Its speed; the device's manual gives it. Always 8 data bits, no parity, 1 stop bit.</param>
+/// <param name="Enabled">Off keeps the port picked but closed, e.g. to let another program use it.</param>
+public sealed record SerialInputSettings(string? Port = null, int BaudRate = 9600, bool Enabled = true);

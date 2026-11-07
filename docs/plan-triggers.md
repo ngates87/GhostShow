@@ -82,8 +82,13 @@ shared channels. A paused timeline resumes only once everything that paused it h
    re-arming). Keys arrive as the same events a sensor will (`InputEvent`: a source, an address, pressed or released),
    so later inputs only have to supply them. Learn exists for keys (Add key); each later kind of input gets it with
    it: press Learn, trip the input, and it's filled in.
-4. **Serial input:** pick a port and baud rate, and see each line with a timestamp and what it was understood as. It only
-   opens the port picked, and warns if DMX is using that port.
+4. **Serial input (built, desktop only):** Inputs → Serial input picks the port and speed (8 data bits, no parity, 1 stop
+   bit), saved in this computer's settings. Like VenueMagic, a command is a whole line ending in CR or LF (trimmed); a
+   line that never ends is taken once it goes quiet for 0.2 s, so an unknown device still shows something. Each command
+   is an input (`serial`, the command) in the input monitor, with control characters shown as `[1B]`. A button waiting
+   for a key also learns a command sent then (Add key or command). Only the port picked is opened; a port a DMX
+   adapter is on isn't, and it says so. A missing or unplugged device is retried every 3 s. One port for now; typing a
+   command in by hand, more ports, and VenueMagic's level commands (`command = level`) can follow if a device needs them.
 5. **Ethereal FX:** read its real messages in the monitor. `channel 1 1` and `channel 1 0` are from memory and unconfirmed.
 6. **Stream Deck:** its keys as inputs, then its screens showing names and what's playing.
 7. **Then, as wanted:** OSC, MIDI, DMX input, web endpoints.
