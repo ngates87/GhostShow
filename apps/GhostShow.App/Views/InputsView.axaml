@@ -1,0 +1,38 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:GhostShow.App.ViewModels"
+             x:Class="GhostShow.App.Views.InputsView"
+             x:DataType="vm:InputMonitorViewModel">
+  <!-- Inputs: the input monitor for now. Serial and Stream Deck setup join it later (docs/plan-triggers.md). -->
+  <DockPanel Margin="0,12">
+    <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+      <Button DockPanel.Dock="Right" Content="Clear" Command="{Binding ClearCommand}" IsEnabled="{Binding !IsEmpty}" />
+      <StackPanel Spacing="2">
+        <TextBlock Text="Input monitor" Classes="heading" />
+        <TextBlock Opacity="0.7" TextWrapping="Wrap"
+                   Text="Every input as it arrives, and what it did. It keeps listening on every screen, so trip a sensor in the room and look here after. Shortcuts (Ctrl+…) and letters typed into a field aren't inputs." />
+      </StackPanel>
+    </DockPanel>
+    <Grid DockPanel.Dock="Top" ColumnDefinitions="100,90,90,80,*" Opacity="0.7" Margin="12,0,0,4">
+      <TextBlock Text="Time" /><TextBlock Grid.Column="1" Text="Source" /><TextBlock Grid.Column="2" Text="Input" />
+      <TextBlock Grid.Column="3" Text="" /><TextBlock Grid.Column="4" Text="What it did" />
+    </Grid>
+    <Panel>
+      <TextBlock Text="Nothing yet: press a button's key, and it shows here." Opacity="0.6" Margin="12,8" IsVisible="{Binding IsEmpty}" />
+      <ListBox x:Name="InputRows" ItemsSource="{Binding Rows}">
+        <ListBox.ItemTemplate>
+          <DataTemplate x:DataType="vm:InputMonitorRow">
+            <Grid ColumnDefinitions="100,90,90,80,*">
+              <TextBlock Text="{Binding Time}" Opacity="0.7" />
+              <TextBlock Grid.Column="1" Text="{Binding Source}" />
+              <TextBlock Grid.Column="2" Text="{Binding Address}" FontWeight="SemiBold" />
+              <TextBlock Grid.Column="3" Text="{Binding Change}" Opacity="0.7" />
+              <TextBlock Grid.Column="4" Text="{Binding Outcome}" TextWrapping="Wrap"
+                         FontWeight="{Binding PressedAButton, Converter={x:Static vm:Converters.BoldWhen}}" />
+            </Grid>
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+    </Panel>
+  </DockPanel>
+</UserControl>

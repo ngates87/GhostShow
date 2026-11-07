@@ -5,6 +5,7 @@ using Avalonia.Interactivity;
 using Avalonia.VisualTree;
 using GhostShow.App.Dialogs;
 using GhostShow.App.ViewModels;
+using GhostShow.Core.Model;
 
 namespace GhostShow.App;
 
@@ -16,19 +17,23 @@ public partial class MainWindow : Window
     /// <summary>Keys held down. A held key repeats, but one press is one press: it mustn't start a scare over and over.</summary>
     readonly HashSet<Key> _heldKeys = [];
 
+    /// <summary>Keys held down whose press was an input, so their release is one too.</summary>
+    readonly HashSet<Key> _inputKeys = [];
+
     public MainWindow()
     {
         InitializeComponent();
         Closing += OnClosing;
         // Tunnel, so a focused button doesn't take Space as a click first.
         AddHandler(KeyDownEvent, OnKeyDown, Avalonia.Interactivity.RoutingStrategies.Tunnel);
-        AddHandler(KeyUpEvent, (_, e) => _heldKeys.Remove(e.Key), Avalonia.Interactivity.RoutingStrategies.Tunnel);
+        AddHandler(KeyUpEvent, OnKeyUp, Avalonia.Interactivity.RoutingStrategies.Tunnel);
         AddHandler(PointerPressedEvent, OnPointerPressedAnywhere, Avalonia.Interactivity.RoutingStrategies.Tunnel);
         // Bubble, after the field itself (handled too: a number box takes Enter to commit its value).
         AddHandler(KeyDownEvent, OnKeyDownAfterControls, Avalonia.Interactivity.RoutingStrategies.Bubble, handledEventsToo: true);
         Deactivated += (_, _) =>
         {
             _heldKeys.Clear();   // a key let go in another window never reports it here
+            _inputKeys.Clear();
             if (DataContext is MainViewModel viewModel) viewModel.Buttons.IsAppFocused = false;
         };
         Activated += (_, _) =>
@@ -42,10 +47,11 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Space plays and pauses on every screen (as on show consoles), and a show button's key presses it. While typing
-    /// in a field, keys that type (letters, digits) go to the field, but F keys and the like still press their
-    /// buttons: a field left with the cursor in it mustn't silently stop the show's keys. While a button is waiting
-    /// for a key, the key goes to that instead. Esc finishes editing the buttons.
+    /// Space plays and pauses on every screen (as on show consoles). Every other key on its own is an input: the input
+    /// monitor lists it, and it presses the show button with that key. While typing in a field, keys that type (letters,
+    /// digits) go to the field instead, but F keys and the like still press their buttons: a field left with the cursor in
+    /// it mustn't silently stop the show's keys. While a button is waiting for a key, the key goes to that instead. Esc
+    /// finishes editing the buttons.
     /// </summary>
     void OnKeyDown(object? sender, KeyEventArgs e)
     {
@@ -58,23 +64,37 @@ public partial class MainWindow : Window
             e.Handled = true;
             return;
         }
-        if (e.KeyModifiers != KeyModifiers.None) return;
-        bool typing = FocusManager?.GetFocusedElement() is TextBox;
         string key = e.Key.ToString();
+        if (e.KeyModifiers != KeyModifiers.None || TriggerKeys.IsModifier(key)) return;   // shortcuts aren't inputs
+        bool typing = FocusManager?.GetFocusedElement() is TextBox;
         if (e.Key == Key.Space && !typing)
         {
             if (!isRepeat) viewModel.Playback.PlayPauseCommand.Execute(null);
+            e.Handled = true;
+            return;
         }
-        else if (buttons.HasKey(key) && !(typing && TriggerKeys.TypesText(key)))
+        if (typing && TriggerKeys.TypesText(key)) return;   // it goes to the field
+
+        if (!isRepeat)
         {
-            if (!isRepeat) buttons.PressKey(key);
+            _inputKeys.Add(e.Key);
+            buttons.Input(ButtonTrigger.Keyboard, key, isPressed: true);
         }
+        if (buttons.HasKey(key)) e.Handled = true;   // the button's, even while it re-arms
         else if (e.Key == Key.Escape && buttons.IsEditing && !typing)
         {
             buttons.IsEditing = false;   // (while typing, Esc first leaves the field: see OnKeyDownAfterControls)
+            e.Handled = true;
         }
-        else return;   // not ours, so an unused key that repeats (the arrows) still repeats
-        e.Handled = true;
+        // Otherwise it isn't ours, so an unused key that repeats (the arrows) still repeats.
+    }
+
+    /// <summary>The release of a key whose press was an input: an input too (sensors report both).</summary>
+    void OnKeyUp(object? sender, KeyEventArgs e)
+    {
+        _heldKeys.Remove(e.Key);
+        if (_inputKeys.Remove(e.Key) && DataContext is MainViewModel viewModel)
+            viewModel.Buttons.Input(ButtonTrigger.Keyboard, e.Key.ToString(), isPressed: false);
     }
 
     /// <summary>

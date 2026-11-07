@@ -77,8 +77,11 @@ shared channels. A paused timeline resumes only once everything that paused it h
 2. **Triggers on buttons (built, desktop only):** the list of triggers, keyboard keys learned by pressing them, re-arm
    settings, arming with its indicator, a per-trigger on/off, the focus warning, and each trigger's state and last
    fired time. The browser gets these with the shared main view (see the web-remote plan).
-3. **Input monitor:** every event, used or not, and which button it pressed. Learn: press it, trip the input, and the
-   input is filled in.
+3. **Input monitor (built, desktop only):** Inputs → Input monitor lists every input event, used or not, newest first,
+   with what it did: the button it pressed, or why not (no button uses it, triggers off, the trigger turned off,
+   re-arming). Keys arrive as the same events a sensor will (`InputEvent`: a source, an address, pressed or released),
+   so later inputs only have to supply them. Learn exists for keys (Add key); each later kind of input gets it with
+   it: press Learn, trip the input, and it's filled in.
 4. **Serial input:** pick a port and baud rate, and see each line with a timestamp and what it was understood as. It only
    opens the port picked, and warns if DMX is using that port.
 5. **Ethereal FX:** read its real messages in the monitor. `channel 1 1` and `channel 1 0` are from memory and unconfirmed.

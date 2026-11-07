@@ -505,6 +505,30 @@ public class UiTests
     });
 
     [Fact]
+    public Task Keys_show_in_the_input_monitor_with_what_they_did_but_shortcuts_and_learning_do_not() => Ui.Run(() =>
+    {
+        using var rig = new WindowRig();
+        rig.ViewModel.Buttons.AddCommand.Execute(null);   // a new button waits for its key
+        rig.Key(Key.F5);                                   // learned, so not an input
+        rig.Key(Key.F5);
+        rig.Key(Key.Q);
+        rig.Key(Key.D4, RawInputModifiers.Control);        // Ctrl+4: the Inputs screen, and a shortcut isn't an input
+        WindowRig.Pump();
+
+        Assert.Equal(ViewModels.Page.InputMonitor, rig.ViewModel.CurrentPage);
+        Assert.Equal(
+        [
+            ("F5", "pressed", "Pressed Button 1"),
+            ("F5", "released", ""),
+            ("Q", "pressed", "No button uses it"),
+            ("Q", "released", ""),
+        ], rig.ViewModel.Inputs.Rows.Reverse().Select(r => (r.Address, r.Change, r.Outcome)));
+        var list = rig.Find<ListBox>(l => l.Name == "InputRows");
+        Assert.True(list.IsEffectivelyVisible);
+        Assert.Equal(4, list.ItemCount);
+    });
+
+    [Fact]
     public Task Holding_a_button_s_key_presses_it_once() => Ui.Run(() =>
     {
         using var rig = new WindowRig();

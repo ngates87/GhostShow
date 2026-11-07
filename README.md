@@ -55,6 +55,7 @@ View, and Playback; below it are the transport and Blackout. With a show open, t
 | | Channels | Raw faders, as many as fit the window, paged through all 512 channels |
 | | Monitor | All 512 channels as actually sent to the device; changes highlighted |
 | Audio | | Default output device and master volume for this computer, a test sound, the outputs audio tracks are routed to (each audio track picks its output device in its properties panel, as in VenueMagic), and every sound file the show uses |
+| Inputs | Input monitor | Every input as it arrives (keys now; sensors and Stream Decks later) and what it did: the button it pressed, or why not (no button uses it, triggers off, re-arming). It keeps listening on every screen |
 | Diagnostics | | Frame rate and timing per output, playback timing, audio status, UI responsiveness, memory, recent events |
 
 Problems that need attention (patch errors, an output that keeps failing) show as **⚠** on the toolbar.

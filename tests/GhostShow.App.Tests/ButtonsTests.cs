@@ -195,6 +195,59 @@ public class ButtonsTests : IDisposable
     }
 
     [Fact]
+    public void The_input_monitor_lists_every_input_newest_first_with_what_it_did()
+    {
+        var monitor = new InputMonitorViewModel(_buttons);
+        var trigger = ScareOnKey("F5").Triggers.Single();
+        trigger.RearmSeconds = 5;
+        void Key(string key, bool pressed = true) => _buttons.Input(ButtonTrigger.Keyboard, key, pressed);
+
+        Key("F5");
+        Key("F5", pressed: false);
+        _time.Advance(1);
+        Key("F5");
+        Key("Q");
+        trigger.IsOn = false;
+        Key("F5");
+        trigger.IsOn = true;
+        _buttons.ToggleArmedCommand.Execute(null);
+        Key("NumPad1");   // no button has it: that comes first
+        Key("F5");
+
+        Assert.Equal(
+        [
+            ("F5", "pressed", "Pressed Scare"),
+            ("F5", "released", ""),
+            ("F5", "pressed", "Scare: re-arms in 4.0 s"),
+            ("Q", "pressed", "No button uses it"),
+            ("F5", "pressed", "Scare: this trigger is turned off"),
+            ("Num 1", "pressed", "No button uses it"),
+            ("F5", "pressed", "Triggers are off"),
+        ], monitor.Rows.Reverse().Select(r => (r.Address, r.Change, r.Outcome)));
+        var first = monitor.Rows[^1];
+        Assert.Equal(("20:00:00.00", "Keyboard", true), (first.Time, first.Source, first.PressedAButton));
+        Assert.False(monitor.Rows[0].PressedAButton);
+        Assert.Equal(1, Copies);
+    }
+
+    [Fact]
+    public void The_input_monitor_waits_for_timelines_says_so_keeps_the_latest_and_clears()
+    {
+        var monitor = new InputMonitorViewModel(_buttons);
+        ScareOnKey("F5").Triggers.Single().RearmAfterTimelines = true;
+        _buttons.PressKey("F5");
+        _buttons.PressKey("F5");
+        Assert.Equal("Scare: waiting for its timelines to finish", monitor.Rows[0].Outcome);
+
+        for (int i = 0; i < InputMonitorViewModel.Capacity + 5; i++) _buttons.Input(ButtonTrigger.Keyboard, $"F{i % 12 + 1}", isPressed: false);
+        Assert.Equal(InputMonitorViewModel.Capacity, monitor.Rows.Count);
+        Assert.Equal("F1", monitor.Rows[0].Address);   // the newest: i = 204
+
+        monitor.ClearCommand.Execute(null);
+        Assert.True(monitor.IsEmpty);
+    }
+
+    [Fact]
     public void Re_arm_settings_are_undoable_edits_of_the_show()
     {
         var trigger = ScareOnKey("F5").Triggers.Single();

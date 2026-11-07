@@ -20,7 +20,8 @@
     <KeyBinding Gesture="Ctrl+D1" Command="{Binding GoToCommand}" CommandParameter="{x:Static vm:Page.Timeline}" />
     <KeyBinding Gesture="Ctrl+D2" Command="{Binding GoToCommand}" CommandParameter="{x:Static vm:Page.Fixtures}" />
     <KeyBinding Gesture="Ctrl+D3" Command="{Binding GoToCommand}" CommandParameter="{x:Static vm:Page.Audio}" />
-    <KeyBinding Gesture="Ctrl+D4" Command="{Binding GoToCommand}" CommandParameter="{x:Static vm:Page.Diagnostics}" />
+    <KeyBinding Gesture="Ctrl+D4" Command="{Binding GoToCommand}" CommandParameter="{x:Static vm:Page.InputMonitor}" />
+    <KeyBinding Gesture="Ctrl+D5" Command="{Binding GoToCommand}" CommandParameter="{x:Static vm:Page.Diagnostics}" />
   </Window.KeyBindings>
 
   <DockPanel>
@@ -106,7 +107,8 @@
           <MenuItem Header="_Monitor" Command="{Binding GoToCommand}" CommandParameter="{x:Static vm:Page.Monitor}" />
         </MenuItem>
         <MenuItem Header="_Audio" InputGesture="Ctrl+3" Command="{Binding GoToCommand}" CommandParameter="{x:Static vm:Page.Audio}" />
-        <MenuItem Header="D_iagnostics" InputGesture="Ctrl+4" Command="{Binding GoToCommand}" CommandParameter="{x:Static vm:Page.Diagnostics}" />
+        <MenuItem Header="I_nputs" InputGesture="Ctrl+4" Command="{Binding GoToCommand}" CommandParameter="{x:Static vm:Page.InputMonitor}" />
+        <MenuItem Header="D_iagnostics" InputGesture="Ctrl+5" Command="{Binding GoToCommand}" CommandParameter="{x:Static vm:Page.Diagnostics}" />
         <MenuItem Header="_Remote Access…" Click="OnRemote" />
         <Separator />
         <MenuItem Header="Zoom _In" Command="{Binding Timeline.ZoomInCommand}" />
@@ -150,13 +152,14 @@
       </DockPanel>
     </Border>
 
-    <!-- With a show open: Timeline, Lighting (its own row of screens, see LightingView), Audio, Diagnostics. The tab
+    <!-- With a show open: Timeline, Lighting (its own row of screens, see LightingView), Audio, Inputs, Diagnostics. The tab
          strip only chooses the page; every screen below stays built and is just shown or hidden, so switching is instant. -->
     <StackPanel DockPanel.Dock="Top" Margin="8,0,8,0" IsVisible="{Binding IsShowOpen}">
       <TabStrip Classes="sections" SelectedIndex="{Binding SelectedSection}">
         <TabStripItem Content="Timeline" />
         <TabStripItem Content="Lighting" />
         <TabStripItem Content="Audio" />
+        <TabStripItem Content="Inputs" />
         <TabStripItem Content="Diagnostics" />
       </TabStrip>
     </StackPanel>
@@ -202,6 +205,8 @@
                              IsVisible="{Binding $parent[Window].((vm:MainViewModel)DataContext).CurrentPage, Converter={x:Static vm:Converters.PageIs}, ConverterParameter={x:Static vm:Page.Diagnostics}}" />
       <views:LightingView DataContext="{Binding Lighting}"
                           IsVisible="{Binding $parent[Window].((vm:MainViewModel)DataContext).SelectedSection, Converter={x:Static vm:Converters.SectionIs}, ConverterParameter={x:Static vm:Section.Lighting}}" />
+      <views:InputsView DataContext="{Binding Inputs}"
+                        IsVisible="{Binding $parent[Window].((vm:MainViewModel)DataContext).CurrentPage, Converter={x:Static vm:Converters.PageIs}, ConverterParameter={x:Static vm:Page.InputMonitor}}" />
       <views:AudioView DataContext="{Binding Audio}"
                      IsVisible="{Binding $parent[Window].((vm:MainViewModel)DataContext).CurrentPage, Converter={x:Static vm:Converters.PageIs}, ConverterParameter={x:Static vm:Page.Audio}}" />
     </Panel>

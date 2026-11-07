@@ -77,6 +77,7 @@ public sealed partial class MainViewModel : ObservableObject
         AudioDevices = new AudioDeviceList(services.Audio);
         Timeline = new TimelineEditorViewModel(session, Playback, PickAudioFileAsync, MarkDirty, AudioDevices);
         Buttons = new ButtonsViewModel(session, Playback, Blackout, MarkDirty);
+        Inputs = new InputMonitorViewModel(Buttons);
         Remote = new RemoteViewModel(new AppRemoteHost(session, ShowPlayback, Playback, new AppShowControl(this), () => WarningsSnapshot, AudioDevices, () => IsDirty, () => _session.FilePath is null || _session.IsSingleFileShow, library, _outputSetup, levels),
                                      settings.Remote, SaveSettingsAsync, logger);
         Audio = new AudioViewModel(services.Audio, AudioDevices, session, settings, SaveSettingsAsync);
@@ -120,6 +121,7 @@ public sealed partial class MainViewModel : ObservableObject
     public OutputsViewModel Outputs => Lighting.Outputs;
     public FixtureSetupViewModel Fixtures => Lighting.Fixtures;
     public DiagnosticsViewModel Diagnostics { get; }
+    public InputMonitorViewModel Inputs { get; }
     public PerformanceMeterViewModel Performance { get; }
 
     public string Title => IsShowOpen ? $"GhostShow — {ShowName}{(IsDirty ? " *" : "")}" : "GhostShow";
@@ -153,6 +155,7 @@ public sealed partial class MainViewModel : ObservableObject
             Section.Timeline => Page.Timeline,
             Section.Lighting => Lighting.CurrentPage,
             Section.Audio => Page.Audio,
+            Section.Inputs => Page.InputMonitor,
             _ => Page.Diagnostics,
         };
         set
@@ -170,6 +173,9 @@ public sealed partial class MainViewModel : ObservableObject
                     break;
                 case Page.Audio:
                     SelectedSection = (int)Section.Audio;
+                    break;
+                case Page.InputMonitor:
+                    SelectedSection = (int)Section.Inputs;
                     break;
                 default:
                     SelectedSection = (int)Section.Diagnostics;

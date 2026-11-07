@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using GhostShow.Core.Editing;
 using GhostShow.Core.Engine;
+using GhostShow.Core.Inputs;
 using GhostShow.Core.Model;
 using GhostShow.Core.Timeline;
 
@@ -170,16 +171,39 @@ public sealed partial class ButtonsViewModel : ObservableObject
         Tick();
     }
 
+    // ---- inputs: keys now, sensors and Stream Deck keys later, all pressing buttons the same way ----
+
+    /// <summary>Every input event, with what came of it in a few words, for the input monitor.</summary>
+    public event Action<InputEvent, string>? InputReceived;
+
     /// <summary>
-    /// A key pressed anywhere: presses the button with that key, if its trigger is live (armed and on) and ready (not
-    /// still re-arming). Returns whether it pressed it. A click on the button always works, whatever its triggers.
+    /// An input event from any source. A press presses the button with a live trigger (armed and on) for that input, if
+    /// the trigger is ready (not still re-arming); a release does nothing yet. Returns the button it pressed, or null. A
+    /// click on the button always works, whatever its triggers.
     /// </summary>
-    public bool PressKey(string key)
+    public ShowButtonViewModel? Input(string source, string address, bool isPressed)
     {
-        if (LiveKeyTrigger(key) is not { } live || !live.Trigger.IsReady(_time.GetLocalNow())) return false;
-        live.Trigger.Fired(_time.GetLocalNow());
-        Press(live.Button);
-        return true;
+        var input = new InputEvent(source, address, isPressed, _time.GetLocalNow());
+        var (pressed, outcome) = isPressed ? PressFor(input) : (null, "");
+        InputReceived?.Invoke(input, outcome);
+        return pressed;
+    }
+
+    /// <summary>A key pressed anywhere (see <see cref="Input"/>). Returns whether it pressed a button.</summary>
+    public bool PressKey(string key) => Input(ButtonTrigger.Keyboard, key, isPressed: true) is not null;
+
+    (ShowButtonViewModel? Pressed, string Outcome) PressFor(InputEvent input)
+    {
+        var matches = Buttons.SelectMany(b => b.Triggers.Where(t => t.Matches(input.Source, input.Address)).Select(t => (Button: b, Trigger: t))).ToList();
+        if (matches.Count == 0) return (null, "No button uses it");
+        if (!TriggersArmed) return (null, "Triggers are off");
+        var live = matches.Where(m => m.Trigger.IsOn).ToList();
+        if (live.Count == 0) return (null, $"{matches[0].Button.Name}: this trigger is turned off");
+        var (button, trigger) = live[0];
+        if (!trigger.IsReady(input.Time)) return (null, $"{button.Name}: {trigger.WhyNotReady(input.Time)}");
+        trigger.Fired(input.Time);
+        Press(button);
+        return (button, $"Pressed {button.Name}");
     }
 
     /// <summary>Whether a live trigger uses this key: then the key is the button's, even while it's re-arming.</summary>
@@ -530,7 +554,9 @@ public sealed partial class ButtonTriggerViewModel(ButtonTrigger trigger, ShowBu
 
     public string Label => $"Key {TriggerKeys.Label(Trigger.Address)}";
 
-    internal bool IsKey(string key) => Trigger.Source == ButtonTrigger.Keyboard && Trigger.Address == key;
+    internal bool Matches(string source, string address) => Trigger.Source == source && Trigger.Address == address;
+
+    internal bool IsKey(string key) => Matches(ButtonTrigger.Keyboard, key);
 
     [RelayCommand]
     void Remove() => button.RemoveTrigger(this);
@@ -586,6 +612,10 @@ public sealed partial class ButtonTriggerViewModel(ButtonTrigger trigger, ShowBu
     bool _waitingForTimelines;    // re-arming until the button's timelines have finished (then the re-arm time)
 
     internal bool IsReady(DateTimeOffset now) => !_waitingForTimelines && (_readyAt is null || now >= _readyAt);
+
+    /// <summary>While it isn't ready, why: "re-arms in 2.5 s", "waiting for its timelines to finish".</summary>
+    internal string WhyNotReady(DateTimeOffset now) =>
+        _waitingForTimelines ? "waiting for its timelines to finish" : $"re-arms in {((_readyAt ?? now) - now).TotalSeconds:0.0} s";
 
     internal void Fired(DateTimeOffset now)
     {
