@@ -72,29 +72,44 @@ public sealed class SingleInstance : IDisposable
         }
     }
 
-    /// <summary>Answers later copies one at a time until disposed.</summary>
+    /// <summary>
+    /// Answers later copies until disposed. The next listener opens before the current one closes: on Linux and macOS
+    /// a copy started in that gap would otherwise connect, send its message, and have it dropped.
+    /// </summary>
     async Task ListenAsync()
     {
+        var next = NewListener();
         while (!_stop.IsCancellationRequested)
         {
+            var current = next;
             try
             {
-                await using var pipe = new NamedPipeServerStream(_pipeName, PipeDirection.In, 1, PipeTransmissionMode.Byte,
-                                                                 PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
-                await pipe.WaitForConnectionAsync(_stop.Token);
-                using var reader = new StreamReader(pipe);
+                await current.WaitForConnectionAsync(_stop.Token);
+                next = NewListener();
+                using var reader = new StreamReader(current);
                 if (await reader.ReadLineAsync(_stop.Token) == ShowMessage) ShowRequested?.Invoke();
             }
             catch (OperationCanceledException)
             {
-                return;
+                break;
             }
             catch (IOException)
             {
                 // A copy that gave up halfway (closed before writing): wait for the next one.
             }
+            finally
+            {
+                // Failed before the next listener opened: open it now, or the loop would wait on a closed one.
+                if (next == current && !_stop.IsCancellationRequested) next = NewListener();
+                await current.DisposeAsync();
+            }
         }
+        await next.DisposeAsync();
     }
+
+    NamedPipeServerStream NewListener() =>
+        new(_pipeName, PipeDirection.In, NamedPipeServerStream.MaxAllowedServerInstances, PipeTransmissionMode.Byte,
+            PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
 
     public void Dispose()
     {
