@@ -262,7 +262,8 @@ Small steps; each one leaves the app working.
    desktop app hosts it in-process at first. `GhostShow.Cli` already runs the engine, DMX and audio with no window.
 5. **The native Timeline over the connection.** The riskiest step, and it has never been tried. The existing UI tests
    will show whether the idea holds. If it goes badly, stop here: the current design still works.
-6. **Move the other screens, one at a time:**
+6. **Move the other screens, one at a time** (proposed 2026-11-07 to be done through one shared main view, ahead of
+   steps 4 and 5: [plan-shared-view.md](plan-shared-view.md)):
    - Audio, with its settings as commands to the show computer;
    - buttons, and the Diagnostics section;
    - the file menu, with a browser for the show computer's folders (choosing a sound, opening a show, uploading sounds

@@ -100,7 +100,8 @@ shared channels. A paused timeline resumes only once everything that paused it h
 - Stream Deck: talk to it directly, or through Elgato's software?
 - **Keys while a field has focus (settled):** F keys and other keys that type nothing always press their buttons;
   letters and digits go to a field with the cursor in it; Enter, Esc, or a click elsewhere takes the cursor out.
-- **The browser** shows and presses buttons but has no button editor, so it can't set triggers yet.
+- **The browser** shows and presses buttons but has no button editor, so it can't set triggers yet. Planned in
+  [plan-shared-view.md](plan-shared-view.md).
 - **Rooms (parked, not decided):** a folder in the timeline tree could own outputs (per channel, so one dimmer pack can split
   between rooms, plus audio device and side), so a scare can take its whole room, not only the channels it sets. To settle:
   what a light the scare doesn't set does while taken (dark or hold, as moving heads and fog can't just go to 0), lights

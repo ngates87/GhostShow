@@ -1,11 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Input;
-using Avalonia.Interactivity;
-using Avalonia.VisualTree;
-using GhostShow.App.Dialogs;
 using GhostShow.App.ViewModels;
-using GhostShow.Core.Model;
 
 namespace GhostShow.App;
 
@@ -14,124 +9,17 @@ public partial class MainWindow : Window
     bool _outputStopped;
     bool _closing;   // the save prompt is open or shutdown is under way
 
-    /// <summary>Keys held down. A held key repeats, but one press is one press: it mustn't start a scare over and over.</summary>
-    readonly HashSet<Key> _heldKeys = [];
-
-    /// <summary>Keys held down whose press was an input, so their release is one too.</summary>
-    readonly HashSet<Key> _inputKeys = [];
-
+    /// <summary>The window: what's inside is the main view (Views/MainView), shared with the browser page.</summary>
     public MainWindow()
     {
         InitializeComponent();
         Closing += OnClosing;
-        // Tunnel, so a focused button doesn't take Space as a click first.
-        AddHandler(KeyDownEvent, OnKeyDown, Avalonia.Interactivity.RoutingStrategies.Tunnel);
-        AddHandler(KeyUpEvent, OnKeyUp, Avalonia.Interactivity.RoutingStrategies.Tunnel);
-        AddHandler(PointerPressedEvent, OnPointerPressedAnywhere, Avalonia.Interactivity.RoutingStrategies.Tunnel);
-        // Bubble, after the field itself (handled too: a number box takes Enter to commit its value).
-        AddHandler(KeyDownEvent, OnKeyDownAfterControls, Avalonia.Interactivity.RoutingStrategies.Bubble, handledEventsToo: true);
-        Deactivated += (_, _) =>
-        {
-            _heldKeys.Clear();   // a key let go in another window never reports it here
-            _inputKeys.Clear();
-            if (DataContext is MainViewModel viewModel) viewModel.Buttons.IsAppFocused = false;
-        };
-        Activated += (_, _) =>
-        {
-            if (DataContext is MainViewModel viewModel) viewModel.Buttons.IsAppFocused = true;
-        };
+        Deactivated += (_, _) => View.HostLostFocus();
+        Activated += (_, _) => View.HostGotFocus();
         DataContextChanged += (_, _) =>
         {
             if (DataContext is MainViewModel viewModel) viewModel.ExitRequested += Close;
         };
-    }
-
-    /// <summary>
-    /// Space plays and pauses on every screen (as on show consoles). Every other key on its own is an input: the input
-    /// monitor lists it, and it presses the show button with that key. While typing in a field, keys that type (letters,
-    /// digits) go to the field instead, but F keys and the like still press their buttons: a field left with the cursor in
-    /// it mustn't silently stop the show's keys. While a button is waiting for a key, the key goes to that instead. Esc
-    /// finishes editing the buttons.
-    /// </summary>
-    void OnKeyDown(object? sender, KeyEventArgs e)
-    {
-        bool isRepeat = !_heldKeys.Add(e.Key);
-        if (DataContext is not MainViewModel { IsShowOpen: true } viewModel) return;
-        var buttons = viewModel.Buttons;
-        if (buttons.IsLearningKey)
-        {
-            if (!isRepeat) buttons.LearnKey(e.Key.ToString(), e.KeyModifiers != KeyModifiers.None);
-            e.Handled = true;
-            return;
-        }
-        string key = e.Key.ToString();
-        if (e.KeyModifiers != KeyModifiers.None || TriggerKeys.IsModifier(key)) return;   // shortcuts aren't inputs
-        bool typing = FocusManager?.GetFocusedElement() is TextBox;
-        if (e.Key == Key.Space && !typing)
-        {
-            if (!isRepeat) viewModel.Playback.PlayPauseCommand.Execute(null);
-            e.Handled = true;
-            return;
-        }
-        if (typing && TriggerKeys.TypesText(key)) return;   // it goes to the field
-
-        if (!isRepeat)
-        {
-            _inputKeys.Add(e.Key);
-            buttons.Input(ButtonTrigger.Keyboard, key, isPressed: true);
-        }
-        if (buttons.HasKey(key)) e.Handled = true;   // the button's, even while it re-arms
-        else if (e.Key == Key.Escape && buttons.IsEditing && !typing)
-        {
-            buttons.IsEditing = false;   // (while typing, Esc first leaves the field: see OnKeyDownAfterControls)
-            e.Handled = true;
-        }
-        // Otherwise it isn't ours, so an unused key that repeats (the arrows) still repeats.
-    }
-
-    /// <summary>The release of a key whose press was an input: an input too (sensors report both).</summary>
-    void OnKeyUp(object? sender, KeyEventArgs e)
-    {
-        _heldKeys.Remove(e.Key);
-        if (_inputKeys.Remove(e.Key) && DataContext is MainViewModel viewModel)
-            viewModel.Buttons.Input(ButtonTrigger.Keyboard, e.Key.ToString(), isPressed: false);
-    }
-
-    /// <summary>
-    /// A click into a field, or outside the buttons panel, stops a button waiting for a key: they've moved on to
-    /// something else. Clicks on the rest of the panel don't, or Add key couldn't be clicked to stop it itself.
-    /// </summary>
-    void OnPointerPressedAnywhere(object? sender, PointerPressedEventArgs e)
-    {
-        if (e.Source is not Visual clicked) return;
-        LeaveFieldUnlessClickedIn(clicked);
-        if (DataContext is not MainViewModel { Buttons.IsLearningKey: true } viewModel) return;
-        bool inField = clicked is TextBox || clicked.FindAncestorOfType<TextBox>() is not null;
-        if (inField || clicked.FindAncestorOfType<Views.ButtonsPanel>() is null) viewModel.Buttons.CancelLearningKey();
-    }
-
-    /// <summary>
-    /// A click anywhere but the field with the cursor (or the control it belongs to, such as a number box's arrows)
-    /// takes the cursor out of it. Otherwise a click on the lanes or a blank area would leave it there, and keys that
-    /// type would keep going to the field instead of pressing buttons.
-    /// </summary>
-    void LeaveFieldUnlessClickedIn(Visual clicked)
-    {
-        if (FocusManager?.GetFocusedElement() is not TextBox field) return;
-        var owner = field.TemplatedParent as Visual ?? field;
-        if (clicked == owner || owner.IsVisualAncestorOf(clicked)) return;
-        LeaveField();
-    }
-
-    /// <summary>Takes the cursor out of whatever field has it: nothing has keyboard focus, so keys reach the window.</summary>
-    void LeaveField() => FocusManager?.Focus(null);
-
-    /// <summary>Enter or Esc in a field: done with it, so the cursor leaves it (rename boxes do this themselves).</summary>
-    void OnKeyDownAfterControls(object? sender, KeyEventArgs e)
-    {
-        if (e.Key is not (Key.Enter or Key.Escape) || FocusManager?.GetFocusedElement() is not TextBox) return;
-        LeaveField();
-        e.Handled = true;
     }
 
     /// <summary>The window's state before it was minimized, so bringing it back keeps it maximized if it was.</summary>
@@ -150,24 +38,6 @@ public partial class MainWindow : Window
         if (WindowState == WindowState.Minimized) WindowState = _stateBeforeMinimized;
         Show();
         Activate();
-    }
-
-    async void OnAbout(object? sender, RoutedEventArgs e) => await new AboutDialog().ShowDialog(this);
-
-    Views.RemoteWindow? _remote;
-
-    /// <summary>View → Remote Access… (or the menu bar's indicator): one window, brought to the front if it's open.</summary>
-    void OnRemote(object? sender, RoutedEventArgs e)
-    {
-        if (DataContext is not MainViewModel viewModel) return;
-        if (_remote is { } open)
-        {
-            open.Activate();
-            return;
-        }
-        _remote = new Views.RemoteWindow { DataContext = viewModel.Remote };
-        _remote.Closed += (_, _) => _remote = null;
-        _remote.Show(this);
     }
 
     /// <summary>

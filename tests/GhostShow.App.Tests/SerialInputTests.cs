@@ -35,7 +35,7 @@ public class SerialInputTests : IDisposable
             return new QuietLink();
         });
         _screen = new SerialInputViewModel(_service, _settings, () => { _saves++; return Task.CompletedTask; }, () => _dmx,
-                                           () => ["COM3", "COM4"]);
+                                           () => ["COM3", "COM4"], port => port == "COM4" ? "Ethereal FX QC-24" : null);
     }
 
     public void Dispose() => _service.Dispose();
@@ -52,7 +52,7 @@ public class SerialInputTests : IDisposable
     public void Picking_a_port_saves_it_and_listens_on_it()
     {
         _screen.RefreshPortsCommand.Execute(null);
-        Assert.Equal(["None", "COM3", "COM4"], _screen.Ports.Select(p => p.Label));
+        Assert.Equal(["None", "COM3", "COM4 · Ethereal FX QC-24"], _screen.Ports.Select(p => p.Label));   // the device's own name, where the computer says
         Assert.Equal("Off: pick the port your device is on.", _screen.StatusLabel);
 
         _screen.SelectedPort = _screen.Ports[1];
@@ -79,7 +79,7 @@ public class SerialInputTests : IDisposable
     {
         _dmx.Add((1, "COM3"));
         _screen.RefreshPortsCommand.Execute(null);
-        Assert.Equal(["None", "COM3 (DMX universe 1)", "COM4"], _screen.Ports.Select(p => p.Label));
+        Assert.Equal(["None", "COM3 (DMX universe 1)", "COM4 · Ethereal FX QC-24"], _screen.Ports.Select(p => p.Label));
 
         _screen.SelectedPort = _screen.Ports[1];
         Assert.Equal(SerialInputState.Off, _service.Status.State);

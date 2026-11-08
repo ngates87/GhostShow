@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using GhostShow.Core.Storage;
+using GhostShow.Dmx.Discovery;
 using GhostShow.Inputs;
 
 namespace GhostShow.App.ViewModels;
@@ -29,18 +30,24 @@ public sealed partial class SerialInputViewModel : ObservableObject
     readonly Func<Task> _saveSettings;
     readonly Func<IEnumerable<(int Universe, string Port)>> _dmxPorts;
     readonly Func<IReadOnlyList<string>> _listPorts;
+    readonly Func<string, string?> _describePort;
     bool _updating;
 
-    /// <param name="dmxPorts">The serial ports DMX adapters are on now, by universe.</param>
+    /// <param name="dmxPorts">The serial ports DMX adapters have open now, by universe. Not where an adapter was last
+    /// seen: a port name moves to whatever device is plugged in first, so a missing adapter's old port may be the very
+    /// device wanted here.</param>
     /// <param name="listPorts">The ports this computer has (tests pass their own).</param>
+    /// <param name="describePort">What device a port is ("Ethereal FX QC-24"), or null if the computer won't say (tests pass their own).</param>
     public SerialInputViewModel(SerialInputService service, MachineSettings settings, Func<Task> saveSettings,
-                                Func<IEnumerable<(int Universe, string Port)>> dmxPorts, Func<IReadOnlyList<string>>? listPorts = null)
+                                Func<IEnumerable<(int Universe, string Port)>> dmxPorts, Func<IReadOnlyList<string>>? listPorts = null,
+                                Func<string, string?>? describePort = null)
     {
         _service = service;
         _settings = settings;
         _saveSettings = saveSettings;
         _dmxPorts = dmxPorts;
         _listPorts = listPorts ?? SerialPortLink.PortNames;
+        _describePort = describePort ?? DescribeUsbPort;
 
         _updating = true;
         Ports.Add(NoPort);
@@ -114,8 +121,23 @@ public sealed partial class SerialInputViewModel : ObservableObject
         }
     }
 
-    /// <summary>"COM3", or "COM4 (DMX universe 1)" for a port a DMX adapter is on.</summary>
-    string Label(string port) => DmxUniverseOn(port) is { } universe ? $"{port} (DMX universe {universe})" : port;
+    /// <summary>
+    /// "COM3 · Ethereal FX QC-24" (the device's own name, when the computer can say), with "(DMX universe 1)" for a port a
+    /// DMX adapter has open. Port names alone don't say which device is which.
+    /// </summary>
+    string Label(string port)
+    {
+        string label = _describePort(port) is { } device ? $"{port} · {device}" : port;
+        return DmxUniverseOn(port) is { } universe ? $"{label} (DMX universe {universe})" : label;
+    }
+
+    /// <summary>The USB device's maker and product name, as it reports them; null for a port that isn't USB.</summary>
+    static string? DescribeUsbPort(string port)
+    {
+        if (UsbSerialPorts.Describe(port) is not { } usb) return null;
+        var name = string.Join(" ", new[] { usb.Manufacturer, usb.Product }.Where(s => !string.IsNullOrWhiteSpace(s)));
+        return name.Length > 0 ? name : null;
+    }
 
     int? DmxUniverseOn(string port)
     {

@@ -582,6 +582,24 @@ public class UiTests
     });
 
     [Fact]
+    public Task A_missing_DMX_adapter_s_old_port_can_be_the_serial_input() => Ui.Run(() =>
+    {
+        // Universe 1's adapter was last on COM3 and isn't plugged in; another device (a sensor box) is on COM3 now.
+        var link = new ScriptedSerialLink();
+        using var serial = new GhostShow.Inputs.SerialInputService(NullLogger.Instance, (_, _) => link);
+        var settings = new MachineSettings
+        {
+            SerialInput = new SerialInputSettings("COM3"),
+            Outputs = [new OutputBinding(1, new OpenDmxDeviceConfig("COM3", "NOT-PLUGGED-IN"))],
+        };
+        using var rig = new WindowRig(serial, settings);
+
+        for (int i = 0; i < 100 && !rig.ViewModel.SerialInput.IsListening; i++) WindowRig.Pump(20);
+
+        Assert.Equal("Listening on COM3 at 9600 baud.", rig.ViewModel.SerialInput.StatusLabel);
+    });
+
+    [Fact]
     public Task Holding_a_button_s_key_presses_it_once() => Ui.Run(() =>
     {
         using var rig = new WindowRig();

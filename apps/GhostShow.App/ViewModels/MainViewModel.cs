@@ -82,7 +82,9 @@ public sealed partial class MainViewModel : ObservableObject
         Inputs = new InputMonitorViewModel(Buttons);
         _serial = services.SerialInput ?? new SerialInputService(logger);
         SerialInput = new SerialInputViewModel(_serial, settings, SaveSettingsAsync,
-            () => outputs.Services.Where(s => s.Device.Port is not null).Select(s => (s.Universe, s.Device.Port!)));
+            // Only adapters that have their port open: one that's missing keeps the name of the port it was last on, and
+            // another device may have that name now (the DMX output checks the adapter's serial number, so it won't take it).
+            () => outputs.Services.Where(s => s.Status == DmxOutputStatus.Connected && s.Device.Port is not null).Select(s => (s.Universe, s.Device.Port!)));
         // Both come on the serial input's reading thread, and are handled on this one. A command is an input like a key.
         _serial.CommandReceived += command => Dispatcher.UIThread.Post(() => Buttons.Input(ButtonTrigger.Serial, command, isPressed: true));
         _serial.StatusChanged += () => Dispatcher.UIThread.Post(SerialInput.Refresh);
