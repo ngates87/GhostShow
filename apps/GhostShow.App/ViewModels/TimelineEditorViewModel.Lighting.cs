@@ -26,7 +26,7 @@ public sealed record TimelineRow(int TrackIndex, TrackRowViewModel Track, double
 /// </summary>
 public sealed partial class TimelineEditorViewModel
 {
-    public const double CollapsedTrackHeight = 34, CollapsedLightingHeight = 64, ExpandedTrackHeight = 150, AudioTrackHeight = 64, EventTrackHeight = 56;
+    public const double CollapsedTrackHeight = 34, CollapsedLightingHeight = 64, ExpandedTrackHeight = 150, AudioTrackHeight = 64, EventTrackHeight = 72;
 
     readonly HashSet<Guid> _expanded = [];
     readonly HashSet<CurvePoint> _selectedPoints = [];

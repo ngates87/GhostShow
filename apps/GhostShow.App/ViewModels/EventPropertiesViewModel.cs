@@ -119,8 +119,22 @@ public sealed partial class EventPropertiesViewModel : ObservableObject
 
 
     /// <summary>Every timeline in the show, by its place in the tree.</summary>
-    public IReadOnlyList<TimelineChoice> Timelines =>
-        _session.Project.Timelines.OrderBy(t => t.TreePath, StringComparer.OrdinalIgnoreCase).Select(t => new TimelineChoice(t.Id, t.TreePath)).ToList();
+    IReadOnlyList<TimelineChoice> _timelines = [];
+
+    public IReadOnlyList<TimelineChoice> Timelines
+    {
+        get
+        {
+            // Keep the ItemsSource stable while the dropdown is open. Replacing it on every binding read can
+            // reset Avalonia's selection before the SelectedItem change reaches Target's setter.
+            var now = _session.Project.Timelines
+                .OrderBy(t => t.TreePath, StringComparer.OrdinalIgnoreCase)
+                .Select(t => new TimelineChoice(t.Id, t.TreePath))
+                .ToList();
+            if (!now.SequenceEqual(_timelines)) _timelines = now;
+            return _timelines;
+        }
+    }
 
     /// <summary>The timeline it runs or stops; null if none is chosen (or it was deleted).</summary>
     public TimelineChoice? Target

@@ -98,29 +98,6 @@
                    IsVisible="{Binding Tree.Message, Converter={x:Static ObjectConverters.IsNotNull}}" />
         <TextBlock DockPanel.Dock="Bottom" Opacity="0.6" FontSize="11" TextWrapping="Wrap" Margin="2,6,0,0"
                    Text="Double-click to open · F2 rename · drag to move into a folder · files follow on Save" />
-        <!-- What's playing: several timelines can play at once -->
-        <StackPanel DockPanel.Dock="Bottom" Spacing="4" Margin="0,8,0,0" IsVisible="{Binding !!Playback.Running.Count}">
-          <DockPanel>
-            <Button DockPanel.Dock="Right" Content="Stop all" Command="{Binding Playback.StopAllCommand}" Padding="6,1" MinHeight="0" />
-            <TextBlock Text="Playing" FontWeight="SemiBold" VerticalAlignment="Center" />
-          </DockPanel>
-          <ItemsControl ItemsSource="{Binding Playback.Running}">
-            <ItemsControl.ItemTemplate>
-              <DataTemplate x:DataType="vm:RunningRowViewModel">
-                <DockPanel Margin="0,1">
-                  <Button DockPanel.Dock="Right" Content="■" Command="{Binding StopCommand}" Padding="6,0" MinHeight="0" ToolTip.Tip="Stop it (it releases its channels)" />
-                  <Button Command="{Binding OpenCommand}" Background="Transparent" Padding="2,0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
-                          ToolTip.Tip="Open it in the editor">
-                    <StackPanel>
-                      <TextBlock Text="{Binding Name}" FontWeight="{Binding IsFocused, Converter={x:Static vm:Converters.BoldWhen}}" TextTrimming="CharacterEllipsis" />
-                      <TextBlock Text="{Binding Detail}" FontSize="11" Opacity="0.65" />
-                    </StackPanel>
-                  </Button>
-                </DockPanel>
-              </DataTemplate>
-            </ItemsControl.ItemTemplate>
-          </ItemsControl>
-        </StackPanel>
         <TreeView x:Name="TimelineTree" ItemsSource="{Binding Tree.Roots}" SelectedItem="{Binding Tree.SelectedNode}"
                   DragDrop.AllowDrop="True" Background="Transparent">
           <TreeView.Styles>
@@ -224,7 +201,7 @@
                                  ToolTip.Tip="Sounds of lower-priority timelines on the same speakers play at this volume while this one plays (0: silent)" />
                   <TextBlock Grid.Row="8" Text="At the end" VerticalAlignment="Center" />
                   <ToggleSwitch Grid.Row="8" Grid.Column="1" IsChecked="{Binding ReleaseAtEnd}" OnContent="Releases" OffContent="Holds"
-                                ToolTip.Tip="Releases: lets go of its channels when it ends (not looping), so what's underneath comes back. Holds: keeps its final look." />
+                                ToolTip.Tip="When it plays to its end (not looping) it stops and leaves the Playing list. Holds: its lights stay at their last level (as in VenueMagic) until another timeline uses them, or Stop all / 'Held lights' releases them. Releases: they fade back to what's underneath." />
                 </Grid>
                 <Button Content="Make it a scare" Command="{Binding MakeScareCommand}" HorizontalAlignment="Right"
                         ToolTip.Tip="Priority 10, plays one at a time, pauses what it overlaps, and lets go at its end with a 1 s fade, so the ambient comes back by itself" />

@@ -6,10 +6,17 @@ using GhostShow.Core.Timeline;
 
 namespace GhostShow.App.ViewModels;
 
-/// <summary>A timeline in the "Playing" list: what's running, where it is, and a Stop button.</summary>
+/// <summary>
+/// A timeline in the "Playing" list: what's running, where it is, and a Stop button. Or the "Held lights" row: the
+/// levels timelines left when they ended (Stop releases them).
+/// </summary>
 public sealed partial class RunningRowViewModel(Guid id, PlaybackViewModel owner) : ObservableObject
 {
     public Guid Id { get; } = id;
+
+    public bool IsHeld => Id == PlaybackManager.HeldLevelsId;
+
+    public string StopTip => IsHeld ? "Release them: they fade back to the manual levels" : "Stop it (it releases its channels)";
 
     [ObservableProperty]
     public partial string Name { get; set; } = "";
@@ -24,7 +31,10 @@ public sealed partial class RunningRowViewModel(Guid id, PlaybackViewModel owner
     void Stop() => owner.StopTimeline(Id);
 
     [RelayCommand]
-    void Open() => owner.OpenTimeline(Id);
+    void Open()
+    {
+        if (!IsHeld) owner.OpenTimeline(Id);
+    }
 }
 
 /// <summary>
@@ -220,7 +230,7 @@ public sealed partial class PlaybackViewModel : ObservableObject
         Length = status.Length;
         StateLabel = status switch
         {
-            { AtEnd: true } => "End of show (holding)",
+            { AtEnd: true } => "Ended",
             { State: TransportState.Playing, Loop: true } => "Playing (looping)",
             { State: var state } => state.ToString(),
         };
@@ -239,10 +249,17 @@ public sealed partial class PlaybackViewModel : ObservableObject
         for (int i = 0; i < running.Count; i++)
         {
             var (r, row) = (running[i], Running[i]);
-            row.Name = r.Id == r.TimelineId ? r.Name : $"{r.Name} (copy)";
             row.IsFocused = r.Id == _timeline?.Id;
-            string state = r.Status.State == TransportState.Paused ? (r.Status.AtEnd ? "end" : "paused") : "▶";
-            row.Detail = $"{state} {Format(r.Status.Position)}" + (r.Priority != 0 ? $" · priority {r.Priority}" : "");
+            if (r.IsHeld)
+            {
+                row.Name = r.Name;
+                row.Detail = "left at their last level by timelines that ended";
+                continue;
+            }
+            row.Name = r.Id == r.TimelineId ? r.Name : $"{r.Name} (copy)";
+            string state = r.Status.State == TransportState.Paused ? "paused" : "▶";
+            row.Detail = $"{state} {Format(r.Status.Position)}" + (r.Priority != 0 ? $" · priority {r.Priority}" : "")
+                       + (Show.IsLoadingAudio(r.TimelineId) ? " · loading sound…" : "");
         }
     }
 
@@ -251,6 +268,9 @@ public sealed partial class PlaybackViewModel : ObservableObject
 
     /// <summary>A sound file's waveform for drawing; null until it has been measured (then the timeline redraws).</summary>
     public Waveform? AudioWaveform(string file) => Show.AudioWaveform(file);
+
+    /// <summary>Whether a sound file is still being read or opened (a slow or cloud drive), for "loading…" on its clip.</summary>
+    public bool IsAudioLoading(string file) => Show.IsAudioLoading(file);
 
     public static string Format(TimeSpan time) =>
         time.TotalHours >= 1 ? time.ToString(@"h\:mm\:ss\.f") : time.ToString(@"mm\:ss\.f");

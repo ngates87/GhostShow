@@ -232,7 +232,7 @@ public sealed class TimelineCanvas : Control
     void DrawDropPreview(DrawingContext context, TimelineEditorViewModel editor)
     {
         if (_dropPreview is not { } preview) return;
-        double y = preview.Row is { } row ? RulerHeight + row.Top + row.Height / 2 : RulerHeight + editor.ContentHeight + EventTrackGhost;
+        double y = preview.Row is { } row ? RulerHeight + row.Top + ClipPad + EventMarkY : RulerHeight + editor.ContentHeight + EventTrackGhost;
         double x = X(preview.At);
         context.DrawGeometry(preview.Refused is null ? DropFill : DropRefusedFill, SnapGuidePen, EventSymbols.Of(EventSymbol.Diamond, new Point(x, y), EventMark));
         context.DrawLine(SnapGuidePen, new Point(x, RulerHeight), new Point(x, Bounds.Height));
@@ -403,6 +403,7 @@ public sealed class TimelineCanvas : Control
         // Labels stop at the next clip in the row so they don't run over it: every start, sorted once per row
         // (finding "the next one" by searching per clip made a row of 500 clips cost 250,000 comparisons).
         var starts = events.Select(e => Displayed(editor, e).Start).Order().ToArray();
+        var labels = row.Track.Kind == TrackKind.Event ? LayOutEventLabels(editor, events) : null;
         foreach (var e in events)
         {
             var (start, eventLength) = Displayed(editor, e);
@@ -412,10 +413,36 @@ public sealed class TimelineCanvas : Control
             int next = Array.BinarySearch(starts, start + TimeSpan.FromTicks(1));
             if (next < 0) next = ~next;
             double labelRoom = next < starts.Length ? X(starts[next]) - x - 6 : 400;
+            int labelLine = 0;
+            if (labels is not null && labels.TryGetValue(e.Id, out var label)) (labelLine, labelRoom) = label;
             var rect = new Rect(x, top + ClipPad, width, row.Height - 2 * ClipPad);
             using (context.PushOpacity(e.Enabled ? 1 : 0.4))
-                DrawEvent(context, editor, row, e, rect, labelRoom, eventLength, levels);
+                DrawEvent(context, editor, row, e, rect, labelRoom, eventLength, levels, labelLine);
         }
+    }
+
+    const double EventMarkY = EventMark + 2;            // an event's symbol centre, below the row's top padding
+    const double EventLabelMax = 160, EventLabelMin = 44, EventLabelLine = 14;
+
+    /// <summary>
+    /// Where an event track's labels go: under each symbol, on one of two lines. An event takes the first line where
+    /// the previous label has at least <see cref="EventLabelMin"/> pixels before it, so close events alternate lines
+    /// and each label runs up to the next one on its own line (at most <see cref="EventLabelMax"/>; long names end in
+    /// "…", the tooltip has them in full). Events closer still share the line whose last label is furthest back.
+    /// </summary>
+    Dictionary<Guid, (int Line, double Room)> LayOutEventLabels(TimelineEditorViewModel editor, IEnumerable<TimelineEvent> events)
+    {
+        var layout = new Dictionary<Guid, (int Line, double Room)>();
+        var lastX = new[] { double.NegativeInfinity, double.NegativeInfinity };
+        var lastId = new Guid?[2];
+        foreach (var (id, x) in events.Select(e => (e.Id, X: X(Displayed(editor, e).Start))).OrderBy(m => m.X))
+        {
+            int line = x - lastX[0] >= EventLabelMin ? 0 : x - lastX[1] >= EventLabelMin ? 1 : lastX[0] <= lastX[1] ? 0 : 1;
+            if (lastId[line] is { } previous) layout[previous] = (line, Math.Min(EventLabelMax, x - lastX[line] - 6));
+            layout[id] = (line, EventLabelMax);
+            (lastX[line], lastId[line]) = (x, id);
+        }
+        return layout;
     }
 
     /// <summary>
@@ -457,7 +484,7 @@ public sealed class TimelineCanvas : Control
     }
 
     void DrawEvent(DrawingContext context, TimelineEditorViewModel editor, TimelineRow row, TimelineEvent e, Rect rect, double labelRoom,
-                   TimeSpan length, IReadOnlyList<TrackLevels> levels)
+                   TimeSpan length, IReadOnlyList<TrackLevels> levels, int labelLine = 0)
     {
         bool selected = editor.Selection.Contains(e.Id), error = editor.ErrorEvents.Contains(e.Id);
         switch (e)
@@ -489,11 +516,12 @@ public sealed class TimelineCanvas : Control
                     context.DrawRectangle(UnknownLengthPen, rect.Deflate(1), 4);   // file length not known (yet)
                 DrawVolumeOutline(context, audio, row.Track.Track, rect, length);
                 double icons = DrawClipIcons(context, audio, rect, rect.Y + 1);
-                DrawText(context, TimelineCompiler.Describe(audio), rect.TopLeft + new Point(4, 1), Math.Min(labelRoom, rect.Width - 8 - icons));
+                string label = TimelineCompiler.Describe(audio) + (editor.IsAudioLoading(audio) ? " · loading…" : "");
+                DrawText(context, label, rect.TopLeft + new Point(4, 1), Math.Min(labelRoom, rect.Width - 8 - icons));
                 break;
             }
             case TimelineCommandEvent command:
-                DrawCommand(context, command, rect, selected, error);
+                DrawCommand(context, editor, command, rect, labelLine, labelRoom, selected, error);
                 return;
             default:
                 return;
@@ -505,17 +533,25 @@ public sealed class TimelineCanvas : Control
     static readonly IBrush RunFill = new SolidColorBrush(Color.Parse("#43A047")), StopFill = new SolidColorBrush(Color.Parse("#E53935"));
 
     /// <summary>
-    /// An event track's event: its symbol on its time (green: run, red: stop). What it runs or stops is its tooltip
-    /// (and in its properties), so close events stay readable.
+    /// An event track's event: its symbol on its time (green: run, red: stop) at the top of the row, and under it what
+    /// it runs or stops, on the label line <see cref="LayOutEventLabels"/> gave it, so events placed almost on top of
+    /// each other stay readable. Shortened to its room; the tooltip and its properties have it in full.
     /// </summary>
-    void DrawCommand(DrawingContext context, TimelineCommandEvent command, Rect rect, bool selected, bool error)
+    void DrawCommand(DrawingContext context, TimelineEditorViewModel editor, TimelineCommandEvent command, Rect rect, int line, double room,
+                     bool selected, bool error)
     {
-        double cx = rect.X + EventMark, cy = rect.Y + rect.Height / 2;
+        double cx = rect.X + EventMark, cy = rect.Y + EventMarkY;
         context.DrawGeometry(command.Command == TimelineCommand.Run ? RunFill : StopFill, selected ? SelectedPen : error ? ErrorPen : HandleOutline,
             EventSymbols.Of(command.Symbol, new Point(cx, cy), EventMark));
+        string? target = editor.TimelinePath(command.TimelineId);
+        string label = command.Name ?? (target is null ? "(choose a timeline)" : command.Command == TimelineCommand.Stop ? $"Stop {target}" : target);
+        DrawText(context, label, new Point(rect.X, cy + EventMark + 1 + line * EventLabelLine), room,
+                 target is null ? ErrorText : selected ? null : EventLabelText, size: 11);
     }
 
-    /// <summary>What an event does, for its tooltip: its name, or the timeline it runs ("Stop …" for a stop).</summary>
+    static readonly IBrush EventLabelText = new SolidColorBrush(Color.Parse("#D0FFFFFF"));
+
+    /// <summary>What an event does, for its label and tooltip: its name, or the timeline it runs ("Stop …" for a stop).</summary>
     static string CommandLabel(TimelineEditorViewModel editor, TimelineCommandEvent command)
     {
         string target = editor.TimelinePath(command.TimelineId) ?? "(choose a timeline)";

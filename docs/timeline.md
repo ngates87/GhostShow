@@ -114,9 +114,10 @@ moment apart, a "start zone" timeline starts its rooms, a show's start timeline 
   there's none; one undo step); a ghost diamond shows where it will go. The open timeline can't be dropped on its own
   lanes (it would start copies of itself): the lane says so instead. Or
   "+ Event" (with an event track selected) or a double-click on the row adds a Run timeline event, for the first
-  other timeline in the tree; the properties panel picks Run or Stop, the timeline and the
+  timeline in the tree this one doesn't run yet; the properties panel picks Run or Stop, the timeline and the
   event's symbol (diamond, circle, square, triangle, star, flag, bolt, skull or ghost; green: run, red: stop),
-  with what it runs or stops in its tooltip; they move, copy, paste, lock and delete like
+  with what it runs or stops written under it (close events alternate between two lines, so even events almost on
+  top of each other stay readable; long names end in "…", and the tooltip has them in full); they move, copy, paste, lock and delete like
   clips. They take no time.
 
 ### Built-in effects
@@ -170,7 +171,7 @@ of the UI and of the DMX output threads.
   | Stop | Releases the lights (manual levels return), stops all sounds, returns to 0 |
   | Restart | Plays from 0 |
   | Seek | Moves anywhere from 0 (also past the end). Levels jump to their values there, mid-fade included; sounds restart at the matching place in the file |
-  | End | Looping: wraps to 0 (sounds restart). Not looping: pauses at the end holding the final look |
+  | End | Looping: wraps to 0 (sounds restart). Not looping: stops there and leaves the Playing list; its lights hold their final look or release (its "At the end" setting). A timeline whose length isn't known yet (a sound not measured yet, or looping forever) doesn't end on its own |
 
 - **Sounds are reconciled, not triggered.** Every tick, the player works out which sounds should be playing at the
   current position, at what point in the file and at what volume (fades), and makes the audio output match. So a
@@ -183,7 +184,7 @@ of the UI and of the DMX output threads.
 Any number of timelines can play at the same time: a room's ambient loop, and a scare started on top of it. Each
 has its own transport and position (`PlaybackManager` runs one player per timeline on the playback thread and merges
 them on every update). The toolbar's transport controls the timeline open in the editor; switching tabs doesn't stop
-anything. The **Playing** list (under the timeline tree) shows everything playing or paused, with a Stop button each,
+anything. The **Playing** list (at the bottom of the Buttons drawer, on the right) shows everything playing or paused, with a Stop button each,
 and **Stop all**; Playback → Stop All Timelines does the same. Blackout, New, Open and closing stop everything at
 once.
 
@@ -199,7 +200,7 @@ plays alongside others:
 | Priority | On a channel two timelines set, the higher priority wins; on equal priority, the one started most recently. 0 for ordinary timelines; e.g. 10 for scares, 100 for an emergency look. A timeline overrides lower ones only on the channels it uses |
 | What it overrides | For lower-priority timelines using the same outputs (a DMX channel, or the same audio device and side; stereo uses both sides). **Pause:** they stop, and resume where they were when this ends, including their sound. **Suppress:** they keep advancing underneath, this takes their shared lights, and their sounds on the same speakers are turned down to a set volume. A scare with no sound leaves their sound alone. **Run alongside:** the same, with their sound untouched |
 | Release fade | When it stops (or releases at its end), its channels fade from where it left them to whatever is underneath: a lower timeline, or the manual level. 0 snaps back |
-| At the end: Holds / Releases | Holds: a non-looping timeline keeps its final look. Releases: it lets go at its end, so what's underneath comes back by itself (what an override usually wants) |
+| At the end: Holds / Releases | Either way a non-looping timeline stops at its end and leaves the Playing list. Holds (as VenueMagic's "lamps remain at last level when playback ends"): its channels stay at their last level, under any playing timeline, until another timeline that uses them stops, or **Stop all** or the Playing list's **Held lights** row releases them. Releases: it lets go at its end, so what's underneath comes back by itself (what an override usually wants) |
 
 **Make it a scare** sets the usual values: priority 10, play one at a time, Pause, and letting go at its end with a 1 s
 release fade. Trigger

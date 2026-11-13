@@ -721,12 +721,15 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
     }
 
     /// <summary>
-    /// An event track's event at a time: runs a timeline (the first other one in the tree, to start with; the
-    /// properties panel picks another, or Stop).
+    /// An event track's event at a time: runs a timeline. To start with, the first one in the tree this timeline
+    /// doesn't run yet (so a second event doesn't quietly run the first one's timeline again), else the first other
+    /// one; the properties panel picks another, or Stop. The label beside it says which.
     /// </summary>
     TimelineCommandEvent AddCommandEventAt(TrackRowViewModel row, TimeSpan at)
     {
-        var target = _session.Project.Timelines.Where(t => t != SelectedTimeline).OrderBy(t => t.TreePath, StringComparer.OrdinalIgnoreCase).FirstOrDefault();
+        var runs = AllEvents().OfType<TimelineCommandEvent>().Select(e => e.TimelineId).ToHashSet();
+        var others = _session.Project.Timelines.Where(t => t != SelectedTimeline).OrderBy(t => t.TreePath, StringComparer.OrdinalIgnoreCase).ToList();
+        var target = others.FirstOrDefault(t => !runs.Contains(t.Id)) ?? others.FirstOrDefault();
         var e = new TimelineCommandEvent { Start = at, Command = TimelineCommand.Run, TimelineId = target?.Id ?? Guid.Empty };
         var track = row.Track;
         Edit("Add Run timeline event", () => track.Events.Add(e), roots: Only(track));
@@ -1068,6 +1071,9 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
     public Waveform? WaveformOf(AudioEvent audio) => string.IsNullOrWhiteSpace(audio.File)
         ? null
         : _playback.AudioWaveform(audio.File);
+
+    /// <summary>Whether a clip's sound file is still being read or opened (slow on a cloud or network drive).</summary>
+    public bool IsAudioLoading(AudioEvent audio) => !string.IsNullOrWhiteSpace(audio.File) && _playback.IsAudioLoading(audio.File);
 
     public string? FixtureName(Guid id) => _session.Project.Fixtures.FirstOrDefault(f => f.Id == id)?.Name;
 

@@ -66,6 +66,9 @@ public sealed partial class ButtonsViewModel : ObservableObject
 
     public ObservableCollection<ShowButtonViewModel> Buttons { get; } = new();
 
+    /// <summary>The playback controls shown alongside the show's buttons.</summary>
+    public PlaybackViewModel Playback => _playback;
+
     public bool HasButtons => Buttons.Count > 0;
 
     /// <summary>Whether the panel is showing (it folds away to a strip at the edge).</summary>
