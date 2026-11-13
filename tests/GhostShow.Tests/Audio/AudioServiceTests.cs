@@ -115,12 +115,14 @@ public class AudioServiceTests : IAsyncLifetime
     [Theory]
     [InlineData("does-not-exist.wav")]
     [InlineData("not-audio.mp3")]
-    public void Missing_or_unreadable_files_fail_that_instance_and_are_reported_once(string file)
+    public async Task Missing_or_unreadable_files_fail_that_instance_and_are_reported_once(string file)
     {
         var cue = Cue(file);
 
         for (int i = 0; i < 10; i++) _audio.Start(cue, TimeSpan.Zero, 1);
 
+        // Files open in the background (so a slow drive never stalls the playback thread): it fails once tried.
+        for (int waited = 0; waited < 5000 && _audio.GetState(cue.EventId) != AudioInstanceState.Failed; waited += 10) await Task.Delay(10, TestContext.Current.CancellationToken);
         Assert.Equal(AudioInstanceState.Failed, _audio.GetState(cue.EventId));
         Assert.Single(_log.Entries, e => e.Level == LogLevel.Error);
         Assert.Equal(AudioDeviceState.Open, _audio.Status.State);   // the service itself is fine

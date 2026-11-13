@@ -12,6 +12,9 @@ public interface IAudioFiles
     /// <summary>The file's length, once measured; null until then.</summary>
     TimeSpan? GetLength(string path);
 
+    /// <summary>Whether the file is still being read or opened (slow on a cloud or network drive), for "loading…" on screen.</summary>
+    bool IsLoading(string path) => false;
+
     /// <summary>The file's waveform, for drawing on the timeline, once measured; null until then.</summary>
     Waveform? GetWaveform(string path);
 }

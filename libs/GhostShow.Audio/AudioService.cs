@@ -93,8 +93,42 @@ public sealed class AudioService : IAudioOutput, IAudioFiles, IDisposable
         public StreamDataProvider? Provider { get; } = provider;
         public Stream? Stream { get; } = stream;
         public volatile bool Finished;
-        public bool Failed => Player is null;
+        public bool Failed => Player is null && Pending is null;
+
+        /// <summary>Opening in the background (a slow drive): what it should do once open. Null once it is.</summary>
+        public PendingStart? Pending { get; init; }
     }
+
+    /// <summary>
+    /// A sound whose file is still opening: where it should be by now, so it starts in step with the timeline. Seek,
+    /// Pause, Resume and SetVolume change this while it opens. Under _lock.
+    /// </summary>
+    sealed class PendingStart(AudioCue cue, TimeSpan offset, double volume)
+    {
+        public AudioCue Cue { get; } = cue;
+        public TimeSpan Offset = offset;                  // the file position at Since (or while paused)
+        public long Since = System.Diagnostics.Stopwatch.GetTimestamp();
+        public bool Paused;
+        public double Volume = volume;
+
+        public TimeSpan OffsetNow => Paused ? Offset : Offset + System.Diagnostics.Stopwatch.GetElapsedTime(Since);
+
+        public void Seek(TimeSpan offset)
+        {
+            Offset = offset;
+            Since = System.Diagnostics.Stopwatch.GetTimestamp();
+        }
+    }
+
+    /// <summary>Files being opened for playback right now (full paths), for "loading…" on screen.</summary>
+    readonly ConcurrentDictionary<string, int> _loading = new();
+
+    /// <summary>
+    /// Whether a file is being opened for playback, or read for the first time to measure it: on a slow or cloud drive
+    /// (Google Drive, a network share) that can take a while, and the screens say so.
+    /// </summary>
+    public bool IsLoading(string path) =>
+        _loading.TryGetValue(path, out int count) && count > 0 || (_lengths.TryGetValue(path, out var length) && length is null);
 
     /// <param name="useNullDevice">Use miniaudio's null backend: a real-time device that outputs nothing (tests, headless runs).</param>
     public AudioService(ILogger logger, bool useNullDevice = false)
@@ -212,19 +246,57 @@ public sealed class AudioService : IAudioOutput, IAudioFiles, IDisposable
                 return;
             }
 
-            Stream? stream = null;
-            try
+            // Opening the file and reading its header happen in the background: on a slow or cloud drive (Google
+            // Drive downloads a file the first time it's read) they can take seconds, and this is the playback
+            // thread, which must never wait (every timeline and the lights would stall). Meanwhile the sound counts as
+            // playing, and starts where it should be by then.
+            var pending = new PendingStart(cue, fileOffset, volume);
+            var placeholder = new Instance(null, null, null, device, fallback) { Pending = pending };
+            _instances[cue.EventId] = placeholder;
+            _loading.AddOrUpdate(cue.Path, 1, (_, n) => n + 1);
+            Task.Run(() => Open(cue.EventId, placeholder, pending, device, fallback));
+        }
+    }
+
+    /// <summary>Opens a sound's file (a worker thread), then starts it if it's still wanted, where it should be by now.</summary>
+    void Open(Guid eventId, Instance placeholder, PendingStart pending, AudioPlaybackDevice device, string? fallback)
+    {
+        var cue = pending.Cue;
+        Stream? stream = null;
+        StreamDataProvider? provider = null;
+        try
+        {
+            stream = File.OpenRead(cue.Path);
+            // The format overload makes miniaudio convert to the device's rate and channels while decoding. The
+            // other constructor doesn't: a 44.1 kHz or mono file then plays at the wrong speed (measured).
+            provider = new StreamDataProvider(_engine, _format, stream);
+            lock (_lock)
             {
-                stream = File.OpenRead(cue.Path);
-                _instances[cue.EventId] = Play(device, stream, volume, cue.Loop ? TimeSpan.FromTicks(cue.Offset) : null, fileOffset, fallback, cue.Side);
+                if (_disposed || !_instances.TryGetValue(eventId, out var current) || current != placeholder)
+                {
+                    provider.Dispose();
+                    stream.Dispose();
+                    return;   // stopped, restarted or dropped while opening
+                }
+                var instance = Play(device, stream, provider, pending.Volume, cue.Loop ? TimeSpan.FromTicks(cue.Offset) : null,
+                                    pending.OffsetNow, fallback, cue.Side);
+                if (pending.Paused) instance.Player?.Pause();
+                _instances[eventId] = instance;
             }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException
-                                           or InvalidDataException or InvalidOperationException or ArgumentException)
-            {
-                stream?.Dispose();
-                _instances[cue.EventId] = new Instance(null, null, null);
-                ReportOnce(cue.Path, ex is NotSupportedException ? "not a supported audio file (WAV or MP3)" : ex.Message);
-            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException
+                                       or InvalidDataException or InvalidOperationException or ArgumentException)
+        {
+            provider?.Dispose();
+            stream?.Dispose();
+            lock (_lock)
+                if (_instances.TryGetValue(eventId, out var current) && current == placeholder)
+                    _instances[eventId] = new Instance(null, null, null);
+            ReportOnce(cue.Path, ex is NotSupportedException ? "not a supported audio file (WAV or MP3)" : ex.Message);
+        }
+        finally
+        {
+            _loading.AddOrUpdate(cue.Path, 0, (_, n) => Math.Max(0, n - 1));
         }
     }
 
@@ -349,7 +421,13 @@ public sealed class AudioService : IAudioOutput, IAudioFiles, IDisposable
     {
         // The format overload makes miniaudio convert to the device's rate and channels while decoding. The
         // other constructor doesn't: a 44.1 kHz or mono file then plays at the wrong speed (measured).
-        var provider = new StreamDataProvider(_engine, _format, stream);
+        return Play(device, stream, new StreamDataProvider(_engine, _format, stream), volume, loopFrom, fileOffset, fallback, side);
+    }
+
+    /// <summary>Starts a player for an opened file on a device (caller holds the lock). Disposes the provider if it fails.</summary>
+    Instance Play(AudioPlaybackDevice device, Stream stream, StreamDataProvider provider, double volume, TimeSpan? loopFrom,
+                  TimeSpan fileOffset, string? fallback, AudioSide side)
+    {
         try
         {
             var player = new SoundPlayer(_engine, _format, provider) { Volume = (float)volume, IsLooping = loopFrom is not null };
@@ -393,7 +471,13 @@ public sealed class AudioService : IAudioOutput, IAudioFiles, IDisposable
     {
         lock (_lock)
         {
-            if (!_instances.TryGetValue(eventId, out var instance) || instance.Player is null) return;
+            if (!_instances.TryGetValue(eventId, out var instance)) return;
+            if (instance.Pending is { } pending)
+            {
+                pending.Seek(fileOffset);
+                return;
+            }
+            if (instance.Player is null) return;
             instance.Finished = false;
             instance.Player.Seek(fileOffset, SeekOrigin.Begin);
         }
@@ -401,17 +485,40 @@ public sealed class AudioService : IAudioOutput, IAudioFiles, IDisposable
 
     public void Pause(Guid eventId)
     {
-        lock (_lock) if (_instances.TryGetValue(eventId, out var i)) i.Player?.Pause();
+        lock (_lock)
+        {
+            if (!_instances.TryGetValue(eventId, out var i)) return;
+            if (i.Pending is { Paused: false } pending)
+            {
+                pending.Seek(pending.OffsetNow);
+                pending.Paused = true;
+            }
+            i.Player?.Pause();
+        }
     }
 
     public void Resume(Guid eventId)
     {
-        lock (_lock) if (_instances.TryGetValue(eventId, out var i) && !i.Finished) i.Player?.Play();
+        lock (_lock)
+        {
+            if (!_instances.TryGetValue(eventId, out var i)) return;
+            if (i.Pending is { Paused: true } pending)
+            {
+                pending.Seek(pending.Offset);
+                pending.Paused = false;
+            }
+            if (!i.Finished) i.Player?.Play();
+        }
     }
 
     public void SetVolume(Guid eventId, double volume)
     {
-        lock (_lock) if (_instances.TryGetValue(eventId, out var i) && i.Player is not null) i.Player.Volume = (float)Math.Clamp(volume, 0, 1);
+        lock (_lock)
+        {
+            if (!_instances.TryGetValue(eventId, out var i)) return;
+            if (i.Pending is { } pending) pending.Volume = Math.Clamp(volume, 0, 1);
+            if (i.Player is not null) i.Player.Volume = (float)Math.Clamp(volume, 0, 1);
+        }
     }
 
     public void Stop(Guid eventId)
@@ -430,6 +537,7 @@ public sealed class AudioService : IAudioOutput, IAudioFiles, IDisposable
         {
             if (!_instances.TryGetValue(eventId, out var i)) return AudioInstanceState.None;
             if (i.Failed) return AudioInstanceState.Failed;
+            if (i.Pending is { } pending) return pending.Paused ? AudioInstanceState.Paused : AudioInstanceState.Playing;   // still opening
             if (i.Finished) return AudioInstanceState.Finished;
             return i.Player!.State == SoundFlow.Enums.PlaybackState.Paused ? AudioInstanceState.Paused : AudioInstanceState.Playing;
         }
@@ -486,6 +594,10 @@ public sealed class AudioService : IAudioOutput, IAudioFiles, IDisposable
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException or InvalidDataException or ArgumentException)
         {
             ReportOnce(path, ex is NotSupportedException ? "not a supported audio file (WAV or MP3)" : ex.Message);
+            // It can't be played either: say so as a length of 0, so timelines using it still end (rather than waiting
+            // for a length forever) and it no longer shows as loading.
+            _lengths[path] = TimeSpan.Zero;
+            LengthMeasured?.Invoke(path);
             return null;
         }
     }

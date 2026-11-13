@@ -198,6 +198,10 @@ public sealed class ShowPlayback : IPlayback
     /// <summary>A sound file's waveform, once measured (asking starts measuring it). Named as the show names it.</summary>
     public Waveform? AudioWaveform(string file) => _audio.GetWaveform(ResolveAudio(file));
 
+    public bool IsAudioLoading(string file) => _audio.IsLoading(ResolveAudio(file));
+
+    public bool IsLoadingAudio(Guid timelineId) => Find(timelineId) is { } timeline && AudioFiles(timeline).Any(_audio.IsLoading);
+
     /// <summary>Where a sound file the show names (relative to its folder, or absolute) is on this computer.</summary>
     public string ResolveAudio(string file) => AudioPaths.Resolve(file, _session.ShowFolder);
 

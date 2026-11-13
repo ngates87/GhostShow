@@ -70,4 +70,10 @@ public interface IPlayback
 
     /// <summary>A sound file's waveform, once known (asking may start measuring it). Named as for <see cref="AudioLength"/>.</summary>
     Waveform? AudioWaveform(string file);
+
+    /// <summary>Whether a sound file is still being read or opened (slow on a cloud or network drive). Named as for <see cref="AudioLength"/>.</summary>
+    bool IsAudioLoading(string file) => false;
+
+    /// <summary>Whether any of a timeline's sound files is still being read or opened, for "loading sound…" in the Playing list.</summary>
+    bool IsLoadingAudio(Guid timelineId) => false;
 }
