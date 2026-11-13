@@ -1,0 +1,44 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:GhostShow.App.ViewModels"
+             x:Class="GhostShow.App.Views.InputMonitorView"
+             x:DataType="vm:InputMonitorViewModel">
+  <!-- Inputs → Input monitor: every input event and what it did; an input's Monitor button shows only its own. -->
+  <DockPanel>
+    <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+      <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6" VerticalAlignment="Top">
+        <Button x:Name="MonitorShowAll" Content="Show all inputs" Command="{Binding ShowAllCommand}" IsVisible="{Binding IsFiltered}" />
+        <Button Content="Clear" Command="{Binding ClearCommand}" IsEnabled="{Binding !IsEmpty}" />
+      </StackPanel>
+      <StackPanel Spacing="2">
+        <StackPanel Orientation="Horizontal" Spacing="12">
+          <TextBlock Text="Input monitor" Classes="heading" />
+          <TextBlock x:Name="MonitorFilter" Text="{Binding FilterLabel}" IsVisible="{Binding IsFiltered}" Classes="warning" VerticalAlignment="Center" />
+        </StackPanel>
+        <TextBlock Opacity="0.7" TextWrapping="Wrap"
+                   Text="Every input as it arrives, and what it did. It keeps listening on every screen, so trip a sensor in the room and look here after. Shortcuts (Ctrl+…) and letters typed into a field aren't inputs." />
+      </StackPanel>
+    </DockPanel>
+    <Grid DockPanel.Dock="Top" ColumnDefinitions="100,140,120,80,*" Opacity="0.7" Margin="12,0,0,4">
+      <TextBlock Text="Time" /><TextBlock Grid.Column="1" Text="From" /><TextBlock Grid.Column="2" Text="Input" />
+      <TextBlock Grid.Column="3" Text="" /><TextBlock Grid.Column="4" Text="What it did" />
+    </Grid>
+    <Panel>
+      <TextBlock Text="{Binding EmptyLabel}" Opacity="0.6" Margin="12,8" IsVisible="{Binding IsEmpty}" />
+      <ListBox x:Name="InputRows" ItemsSource="{Binding Rows}">
+        <ListBox.ItemTemplate>
+          <DataTemplate x:DataType="vm:InputMonitorRow">
+            <Grid ColumnDefinitions="100,140,120,80,*">
+              <TextBlock Text="{Binding Time}" Opacity="0.7" />
+              <TextBlock Grid.Column="1" Text="{Binding Source}" TextTrimming="CharacterEllipsis" />
+              <TextBlock Grid.Column="2" Text="{Binding Address}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+              <TextBlock Grid.Column="3" Text="{Binding Change}" Opacity="0.7" />
+              <TextBlock Grid.Column="4" Text="{Binding Outcome}" TextWrapping="Wrap"
+                         FontWeight="{Binding PressedAButton, Converter={x:Static vm:Converters.BoldWhen}}" />
+            </Grid>
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+    </Panel>
+  </DockPanel>
+</UserControl>

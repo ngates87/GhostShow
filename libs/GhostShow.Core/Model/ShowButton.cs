@@ -37,16 +37,23 @@ public sealed class ButtonTrigger
 {
     public const string Keyboard = "keyboard";
 
-    /// <summary>A command (one line of text) from the serial device set up on the Inputs screen.</summary>
+    /// <summary>A command (one line of text) from one of the show's serial devices (<see cref="Input"/>).</summary>
     public const string Serial = "serial";
 
     public string Source { get; set; } = Keyboard;
 
+    /// <summary>The show's input device it listens to (<see cref="Project.Inputs"/>); null for the keyboard.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public Guid? Input { get; set; }
+
     /// <summary>
     /// Which input of that source. Keyboard: the key's name ("F5", "D1" for the 1 key, "Q"). Serial: the whole command,
-    /// without its line ending ("channel 1 1").
+    /// without its line ending ("BTN24").
     /// </summary>
     public string Address { get; set; } = "";
+
+    /// <summary>Whether it listens for this input.</summary>
+    public bool Matches(string source, Guid? input, string address) => Source == source && Input == input && Address == address;
 
     /// <summary>
     /// After firing, it does nothing for this many seconds, so a flickering sensor or a crowd walking past doesn't fire

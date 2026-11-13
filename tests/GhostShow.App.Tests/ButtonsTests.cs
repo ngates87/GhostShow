@@ -1,4 +1,5 @@
 using GhostShow.App.ViewModels;
+using GhostShow.Core.Inputs;
 using GhostShow.Core.Model;
 using GhostShow.Core.Playback;
 using GhostShow.Core.Timeline;
@@ -510,14 +511,27 @@ public class ButtonsTests : IDisposable
         Assert.Equal("From the iPad", back.Name);
     }
 
+    /// <summary>One of the show's serial input devices (the Inputs screen adds them).</summary>
+    Guid Device(string name)
+    {
+        var device = new SerialInputDevice { Name = name };
+        _rig.Session.Project.Inputs.Add(device);
+        return device.Id;
+    }
+
+    /// <summary>Gives a button a trigger for a device's command, as an edit (another device could have made it).</summary>
+    void Listen(ShowButtonViewModel button, Guid device, string command) =>
+        _rig.Session.Document.Record("Add trigger", () => button.Button.Triggers.Add(new ButtonTrigger { Source = ButtonTrigger.Serial, Input = device, Address = command }), [button.Button]);
+
     [Fact]
     public void A_serial_command_is_learned_while_a_button_waits_then_presses_it()
     {
         var monitor = new InputMonitorViewModel(_buttons);
+        var ethereal = Device("Ethereal FX");
         var scare = Button("Scare", new RunTimelineAction { TimelineId = _scare.Id });
         var other = Button("Other");
         scare = _buttons.Buttons[0];
-        void Serial(string command) => _buttons.Input(ButtonTrigger.Serial, command, isPressed: true);
+        void Serial(string command) => _buttons.Input(ButtonTrigger.Serial, command, isPressed: true, ethereal);
 
         Assert.Equal("Add key", scare.LearnKeyLabel);
         _buttons.IsSerialListening = true;   // the Inputs screen says a serial device is being listened to
@@ -525,37 +539,71 @@ public class ButtonsTests : IDisposable
         scare.LearnKeyCommand.Execute(null);
         Assert.Equal("Press a key or send a command… (Esc cancels)", scare.LearnKeyLabel);
 
-        Serial("channel 1 1");
+        Serial("BTN24");
         Assert.False(_buttons.IsLearningKey);
-        Assert.Equal("Serial “channel 1 1”", Assert.Single(scare.Triggers).Label);
+        var trigger = Assert.Single(scare.Triggers);
+        Assert.Equal("Ethereal FX “BTN24”", trigger.Label);
+        Assert.Equal(ethereal, trigger.Trigger.Input);   // it listens to the device the command came from
         Assert.Equal(0, Copies);   // learning it doesn't press it
 
-        Serial("channel 1 1");
-        Serial("channel 2 1");
+        Serial("BTN24");
+        Serial("BTN25");
         Assert.Equal(1, Copies);
 
         // One command, one button.
         other.LearnKeyCommand.Execute(null);
-        Serial("channel 1 1");
+        Serial("BTN24");
         Assert.True(other.IsLearningKey);
-        Assert.Equal("Serial “channel 1 1” is already on Scare.", other.KeyProblem);
+        Assert.Equal("Ethereal FX “BTN24” is already on Scare.", other.KeyProblem);
         Assert.Empty(other.Triggers);
 
         Assert.Equal(
         [
-            ("Serial", "channel 1 1", "received", "Learned by Scare"),
-            ("Serial", "channel 1 1", "received", "Pressed Scare"),
-            ("Serial", "channel 2 1", "received", "No button uses it"),
-            ("Serial", "channel 1 1", "received", "Not learned: it's already on Scare"),
+            ("Ethereal FX", "BTN24", "received", "Learned by Scare"),
+            ("Ethereal FX", "BTN24", "received", "Pressed Scare"),
+            ("Ethereal FX", "BTN25", "received", "No button uses it"),
+            ("Ethereal FX", "BTN24", "received", "Not learned: it's already on Scare"),
         ], monitor.Rows.Reverse().Select(r => (r.Source, r.Address, r.Change, r.Outcome)));
+    }
+
+    [Fact]
+    public void The_same_command_from_two_devices_presses_different_buttons()
+    {
+        var hall = Device("Hall box");
+        var ward = Device("Ward box");
+        var hallScare = Button("Hall scare", new RunTimelineAction { TimelineId = _scare.Id });
+        var wardScare = Button("Ward scare");
+        Listen(hallScare, hall, "GO");
+        Listen(wardScare, ward, "GO");
+
+        Assert.Equal("Ward scare", _buttons.Input(ButtonTrigger.Serial, "GO", isPressed: true, ward)?.Name);
+        Assert.Equal("Hall scare", _buttons.Input(ButtonTrigger.Serial, "GO", isPressed: true, hall)?.Name);
+        Assert.Equal("Ward box “GO”", _buttons.Buttons.Single(b => b.Name == "Ward scare").Triggers.Single().Label);
+    }
+
+    [Fact]
+    public void A_trigger_follows_its_device_s_name_and_says_when_it_s_gone()
+    {
+        var box = Device("COM5");
+        var scare = Button("Scare");
+        Listen(scare, box, "BTN24");
+        var device = _rig.Session.Project.Inputs.Single();
+        var document = _rig.Session.Document;
+
+        document.Record("Rename input", () => device.Name = "Ethereal FX", [Core.Editing.ShowDocument.Shallow(device)]);
+        Assert.Equal("Ethereal FX “BTN24”", scare.Triggers.Single().Label);
+
+        document.Record("Remove input", () => _rig.Session.Project.Inputs.Remove(device), [Core.Editing.ShowDocument.Shallow(_rig.Session.Project)]);
+        Assert.Equal("A removed input “BTN24”", scare.Triggers.Single().Label);
     }
 
     [Fact]
     public void Serial_commands_show_their_control_characters()
     {
         var monitor = new InputMonitorViewModel(_buttons);
-        _buttons.Input(ButtonTrigger.Serial, "GO\u001b1", isPressed: true);
+        var box = Device("Box");
+        _buttons.Input(ButtonTrigger.Serial, "GO\u001b1", isPressed: true, box);
         Assert.Equal("GO[1B]1", monitor.Rows.Single().Address);
-        Assert.Equal("Serial “GO[1B]1”", ButtonTriggerViewModel.Describe(ButtonTrigger.Serial, "GO\u001b1"));
+        Assert.Equal("Box “GO[1B]1”", _buttons.Describe(ButtonTrigger.Serial, box, "GO\u001b1"));
     }
 }

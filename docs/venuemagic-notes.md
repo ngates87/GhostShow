@@ -163,7 +163,10 @@ From help: Serial/UDP Port Input/Output, Setup Serial Port, Serial Input Command
 - **Re-arming:** edge triggering is what a closed contact wants: fire once, re-arm when it opens. A re-arm time adds
   debouncing. Manual reset matches "re-arm once the timelines it started have finished".
 - **Serial input** for the Ethereal FX: VenueMagic matches whole command strings ending in CR, and shows them in a
-  monitor with raw mode. That's the same as the plan's serial step and input monitor.
+  monitor with raw mode. That's the same as the plan's serial step and input monitor. In the 2024 show the port is
+  stored as `CSerialDevicePort` (data bits, then the baud rate as an int, then [len]name "Ethereal Fx", and later its
+  `\\.\COM5`), followed by each `CSerialInputCommand` ([len]command `BTN24`, bytes, and a level range to 100.0). Buttons
+  take it as "Trigger cue on external source", with a threshold.
 - **Auto play on project load** is VenueMagic's answer to starting the show without a key.
 - **Worth considering later:** foreground-style queueing and crossfading for timelines that replace one another, the cue list's pause/resume/stop-all triggers, a per-start master volume and lamp level, trigger probability
   and delay, random or shuffled multi-events, an event status view, and a schedule.

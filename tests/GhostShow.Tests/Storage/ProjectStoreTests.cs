@@ -1,4 +1,5 @@
 using GhostShow.Core.Fixtures;
+using GhostShow.Core.Inputs;
 using GhostShow.Core.Model;
 using GhostShow.Core.Storage;
 using GhostShow.Core.Timeline;
@@ -116,6 +117,37 @@ public class ProjectStoreTests : IDisposable
         Assert.Equal(4, result.FileVersion);
         var timeline = Assert.Single(result.Project!.Timelines);
         Assert.Equal(("A", true, "L"), (timeline.Name, timeline.Loop, timeline.Tracks[0].Name));
+    }
+
+    [Fact]
+    public void Version_7_show_s_serial_triggers_listen_to_one_serial_device()
+    {
+        var project = ProjectStore.FromJson("""
+            { "version": 7, "buttons": [
+              { "name": "Scare", "triggers": [ { "source": "serial", "address": "BTN24" }, { "source": "keyboard", "address": "F5" } ] },
+              { "name": "Other", "triggers": [ { "source": "serial", "address": "BTN25" } ] } ] }
+            """).Project!;
+
+        var device = Assert.IsType<SerialInputDevice>(Assert.Single(project.Inputs));
+        Assert.Equal((LegacySerialTriggers.DeviceName, 9600), (device.Name, device.BaudRate));
+        Assert.Equal([device.Id, null, device.Id], project.Buttons.SelectMany(b => b.Triggers).Select(t => t.Input));
+    }
+
+    [Fact]
+    public void Input_devices_and_the_device_a_trigger_listens_to_are_saved()
+    {
+        var device = new SerialInputDevice { Name = "Ethereal FX", BaudRate = 57600 };
+        var project = new Project
+        {
+            Inputs = [device],
+            Buttons = [new ShowButton { Name = "Scare", Triggers = [new ButtonTrigger { Source = ButtonTrigger.Serial, Input = device.Id, Address = "BTN24" }] }],
+        };
+
+        var loaded = ProjectStore.FromJson(ProjectStore.ToJson(project)).Project!;
+
+        var back = Assert.IsType<SerialInputDevice>(Assert.Single(loaded.Inputs));
+        Assert.Equal((device.Id, "Ethereal FX", 57600), (back.Id, back.Name, back.BaudRate));
+        Assert.Equal(device.Id, loaded.Buttons.Single().Triggers.Single().Input);
     }
 
     [Fact]

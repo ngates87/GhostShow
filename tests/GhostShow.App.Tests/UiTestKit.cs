@@ -43,9 +43,10 @@ sealed class WindowRig : IDisposable
     readonly string _config = Path.Combine(Path.GetTempPath(), "ghostshow-ui-tests", Guid.NewGuid().ToString("N"));
     readonly UiResponsivenessProbe _probe = new();
 
-    /// <param name="serialInput">A serial input with a stand-in port, for tests of commands arriving.</param>
+    /// <param name="serialInputs">Serial inputs with a stand-in port, for tests of commands arriving.</param>
     /// <param name="settings">This computer's settings to start with.</param>
-    public WindowRig(GhostShow.Inputs.SerialInputService? serialInput = null, MachineSettings? settings = null)
+    /// <param name="setUp">Changes the show before the window opens, e.g. to give it input devices.</param>
+    public WindowRig(GhostShow.Inputs.SerialInputs? serialInputs = null, MachineSettings? settings = null, Action<ShowSession>? setUp = null)
     {
         // Built-in profiles: starting the window loads the full library, which replaces whatever the session had.
         Session = new ShowSession(new ShowEngine(), new FixtureProfileLibrary(FixtureProfileLoader.LoadBuiltIn()), NullLogger<ShowSession>.Instance);
@@ -53,13 +54,14 @@ sealed class WindowRig : IDisposable
         Session.Project.Fixtures.AddRange([new FixtureInstance { Name = "Fog", ProfileId = "generic/dimmer", ModeName = "1 channel", StartAddress = 10 }, Rgb]);
         var lighting = Session.Project.Timelines[0].Tracks[0];
         lighting.Channels.Add(new ChannelLane { Target = LaneTarget.FixtureControl(Rgb.Id, ChannelFunction.Red) });
+        setUp?.Invoke(Session);
         Session.Apply();
 
         Audio = new AudioService(NullLogger.Instance, useNullDevice: true);
         Manager = new PlaybackManager(Session.Engine, Audio, new StopwatchClock());
         var services = new AppServices(Session, new OutputManager(Session.Engine, NullLoggerFactory.Instance), Manager,
                                        new PlaybackLoop(Manager, NullLogger.Instance), Audio, settings ?? new MachineSettings(),
-                                       new AppPaths(_config), new RecentEventsLog(), _probe, new NoAdapters(), serialInput);
+                                       new AppPaths(_config), new RecentEventsLog(), _probe, new NoAdapters(), serialInputs);
         Window = new MainWindow { Width = 1400, Height = 820 };
         ViewModel = new MainViewModel(services, Window.StorageProvider, new Dialogs.SaveChangesDialogPrompt(Window), NullLogger<MainViewModel>.Instance);
         Window.DataContext = ViewModel;

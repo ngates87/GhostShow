@@ -80,19 +80,15 @@ public sealed partial class MainViewModel : ObservableObject
         AudioDevices = new AudioDeviceList(services.Audio);
         Timeline = new TimelineEditorViewModel(session, Playback, PickAudioFileAsync, MarkDirty, AudioDevices);
         Buttons = new ButtonsViewModel(session, Playback, Blackout, MarkDirty);
-        Inputs = new InputMonitorViewModel(Buttons);
-        _serial = services.SerialInput ?? new SerialInputService(logger);
-        SerialInput = new SerialInputViewModel(_serial, settings, SaveSettingsAsync,
+        _serial = services.SerialInputs ?? new SerialInputs(logger);
+        Inputs = new InputsViewModel(session, _serial, settings, SaveSettingsAsync,
             // Only adapters that have their port open: one that's missing keeps the name of the port it was last on, and
             // another device may have that name now (the DMX output checks the adapter's serial number, so it won't take it).
-            () => outputs.Services.Where(s => s.Status == DmxOutputStatus.Connected && s.Device.Port is not null).Select(s => (s.Universe, s.Device.Port!)));
-        // Both come on the serial input's reading thread, and are handled on this one. A command is an input like a key.
-        _serial.CommandReceived += command => Dispatcher.UIThread.Post(() => Buttons.Input(ButtonTrigger.Serial, command, isPressed: true));
-        _serial.StatusChanged += () => Dispatcher.UIThread.Post(SerialInput.Refresh);
-        SerialInput.PropertyChanged += (_, e) =>
-        {
-            if (e.PropertyName == nameof(SerialInputViewModel.IsListening)) Buttons.IsSerialListening = SerialInput.IsListening;
-        };
+            () => outputs.Services.Where(s => s.Status == DmxOutputStatus.Connected && s.Device.Port is not null).Select(s => (s.Universe, s.Device.Port!)),
+            Buttons);
+        // Both come on a port's reading thread, and are handled on this one. A command is an input like a key.
+        _serial.CommandReceived += (device, command) => Dispatcher.UIThread.Post(() => Inputs.OnCommand(device, command));
+        _serial.StatusChanged += _ => Dispatcher.UIThread.Post(Inputs.Refresh);
         Remote = new RemoteViewModel(new AppRemoteHost(session, ShowPlayback, Playback, new AppShowControl(this), () => WarningsSnapshot, AudioDevices, () => IsDirty, () => _session.FilePath is null || _session.IsSingleFileShow, library, _outputSetup, levels),
                                      settings.Remote, SaveSettingsAsync, logger);
         Audio = new AudioViewModel(services.Audio, AudioDevices, session, settings, SaveSettingsAsync);
@@ -136,9 +132,8 @@ public sealed partial class MainViewModel : ObservableObject
     public OutputsViewModel Outputs => Lighting.Outputs;
     public FixtureSetupViewModel Fixtures => Lighting.Fixtures;
     public DiagnosticsViewModel Diagnostics { get; }
-    public InputMonitorViewModel Inputs { get; }
-    public SerialInputViewModel SerialInput { get; }
-    readonly SerialInputService _serial;
+    public InputsViewModel Inputs { get; }
+    readonly SerialInputs _serial;
     public PerformanceMeterViewModel Performance { get; }
 
     public string Title => IsShowOpen ? $"GhostShow — {ShowName}{(IsDirty ? " *" : "")}" : "GhostShow";
@@ -275,7 +270,7 @@ public sealed partial class MainViewModel : ObservableObject
         }
         _outputSetup.Refresh();
         if (CurrentPage == Page.Diagnostics) Diagnostics.Tick();
-        if (CurrentPage == Page.InputMonitor) SerialInput.RefreshPortsCommand.Execute(null);   // a cable may have been plugged in
+        if (CurrentPage == Page.InputMonitor) Inputs.RefreshPortsCommand.Execute(null);   // a cable may have been plugged in
         Tick();
     }
 
@@ -288,8 +283,8 @@ public sealed partial class MainViewModel : ObservableObject
         if (settingsError is not null) ReportError(settingsError);
         RefreshRecentShows();
         await _outputSetup.ApplyAsync();
-        SerialInput.RefreshPortsCommand.Execute(null);
-        SerialInput.Apply();   // after the DMX outputs, so a port they use isn't taken
+        Inputs.RefreshPortsCommand.Execute(null);
+        Inputs.Apply();   // after the DMX outputs, so a port they use isn't taken
         _tick.Start();
         if (RecentShows.FirstOrDefault() is { Exists: true } last) await OpenPathAsync(last.Path);
         await Remote.StartIfEnabledAsync();
@@ -613,6 +608,7 @@ public sealed partial class MainViewModel : ObservableObject
         Playback.Reset();    // the old show's timelines stop at once
         Timeline.Reload();   // focuses the new show's first timeline
         Buttons.Reload();
+        Inputs.Reload();     // the new show's input devices, on this computer's ports
         Remote.ShowReplaced();
         Guide.Reset();
         await _outputSetup.ApplyAsync();
@@ -672,7 +668,7 @@ public sealed partial class MainViewModel : ObservableObject
         if (_tickCount % 15 == 0) Performance.Update();   // twice a second, so the meter moves like one
         if (_tickCount % 30 != 0) return;
         _outputSetup.Tick();
-        SerialInput.Tick();
+        Inputs.Tick();
         if (CurrentPage == Page.Diagnostics) Diagnostics.Tick();
         if (CurrentPage == Page.Audio) Audio.Tick();
         // Open the devices audio tracks are routed to before they're needed (cheap when nothing changed).
@@ -693,7 +689,7 @@ public sealed partial class MainViewModel : ObservableObject
             warnings.Add($"Universe {service.Universe}: {service.LastError} Retrying.");
         foreach (var output in _services.Audio.Status.MissingOutputs)
             warnings.Add($"Audio output '{output}' isn't connected: its tracks play on the default output. See Audio.");
-        if (SerialInput.Warning is { } serial) warnings.Add(serial);
+        warnings.AddRange(Inputs.Warnings);
 
         if (warnings.SequenceEqual(Warnings)) return;
         _warningsSnapshot = [.. warnings];

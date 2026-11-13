@@ -25,8 +25,9 @@ Stream Deck 3   ┘
 
 - **Inputs become one kind of event:** a source, an address and pressed or released. OSC and DMX input send values, so
   each needs a threshold to become pressed or released.
-- **A running timeline:** decided by the timeline's **Play one at a time** (built, in Timeline properties). It stays
-  off by default, matching VenueMagic's copies; Make it a scare turns it on.
+- **A running timeline:** decided by what runs it, as in VenueMagic: a Run (a button action or an event) says whether
+  that run plays **one only** (not if the timeline is already playing) and whether it **loops** (built). Off by
+  default, matching VenueMagic's copies.
 - **Firing again is configurable, per trigger:**
   - a **re-arm time**, so a flickering sensor or a passing crowd doesn't fire it over and over;
   - **when the re-arm time starts:** straight away when it fires, or once the timelines it started have finished,
@@ -36,12 +37,33 @@ Stream Deck 3   ┘
   they're off. Being off isn't saved with the show. Clicking a tile always works.
 - **Keyboard focus:** GhostShow has focus during a show, so normal keys are enough. While triggers are armed and it loses
   focus, it shows a clear warning.
-- **Where settings live:** the show stores what a button listens to ("Ethereal channel 1"). The computer's settings store
-  which port that device is on, as with DMX adapters.
+- **Where settings live:** the show lists its **input devices** (a name, a kind, and the device's own settings, such as a
+  serial speed), as it lists universes, and a trigger names the device and what to listen for on it ("Ethereal FX:
+  BTN24"). The computer's settings store which port each device is on, as with DMX adapters. See "The Inputs screen".
 - **Later, if a real scare needs it:** a button option to stop on release, for something held like a pressure mat.
 
 Trigger settings and the input monitor belong in the browser too, like everything else; the hardware stays on the show
 computer.
+
+## The Inputs screen
+
+Laid out like the DMX outputs (and QLC+'s I/O page), built for serial (step 4):
+
+- **On the left, the show's inputs**, a card each: its name, its kind's settings, which port it's on (this computer's),
+  Listen, how it stands ("Listening on COM5 at 57600 baud", or what's wrong), and the last thing it sent, so it's clear at
+  a glance whether the device is talking at all. The keyboard has a card too; it's always there and has no settings.
+- **On the right, what this computer has:** serial ports, with the USB device on each when the computer says
+  ("COM5 · FTDI"), and what already has one (a DMX adapter, another input). **Add** makes an input of it, named after
+  the port until renamed: the computer usually can't tell what's on the end of a cable. Later kinds list here too:
+  GPIO pins on a Raspberry Pi, Stream Decks, network inputs (OSC, Art-Net in).
+- **Each input's Monitor button** shows only its own events in the input monitor below. Kinds with a signal worth seeing
+  raw get a monitor of their own when they arrive (levels for DMX in, pin states for GPIO).
+- **A device moves port:** its USB serial number is kept with the port, and a device that's gone is looked for by it, so
+  plugging it into another socket (a new COM number) just works.
+- **Opened on another computer**, a device has no port there: it says so, on its card and under the toolbar's ⚠, until
+  one is picked. Its triggers are kept.
+- **Inputs that send levels** (DMX in, OSC, GPIO, VenueMagic's `command = level`) will need a threshold per trigger.
+- **Feedback** (a Stream Deck's screens, a MIDI pad's lights) belongs on that device's card, not the Outputs page.
 
 ## How timelines layer
 
@@ -82,14 +104,19 @@ shared channels. A paused timeline resumes only once everything that paused it h
    re-arming). Keys arrive as the same events a sensor will (`InputEvent`: a source, an address, pressed or released),
    so later inputs only have to supply them. Learn exists for keys (Add key); each later kind of input gets it with
    it: press Learn, trip the input, and it's filled in.
-4. **Serial input (built, desktop only):** Inputs → Serial input picks the port and speed (8 data bits, no parity, 1 stop
-   bit), saved in this computer's settings. Like VenueMagic, a command is a whole line ending in CR or LF (trimmed); a
-   line that never ends is taken once it goes quiet for 0.2 s, so an unknown device still shows something. Each command
-   is an input (`serial`, the command) in the input monitor, with control characters shown as `[1B]`. A button waiting
-   for a key also learns a command sent then (Add key or command). Only the port picked is opened; a port a DMX
-   adapter is on isn't, and it says so. A missing or unplugged device is retried every 3 s. One port for now; typing a
-   command in by hand, more ports, and VenueMagic's level commands (`command = level`) can follow if a device needs them.
-5. **Ethereal FX:** read its real messages in the monitor. `channel 1 1` and `channel 1 0` are from memory and unconfirmed.
+4. **Serial input (built, desktop only):** the show's serial devices on the Inputs screen (above), any number, each on
+   its own port with its own speed (8 data bits, no parity, 1 stop bit). Like VenueMagic, a command is a whole line
+   ending in CR or LF (trimmed); a line that never ends is taken once it goes quiet for 0.2 s, so an unknown device
+   still shows something. Each command is an input (`serial`, the device, the command) in the input monitor, with
+   control characters shown as `[1B]`. A button waiting for a key also learns a command sent then (Add key or command),
+   listening to the device it came from. Only the ports picked are opened; a port a DMX adapter is on isn't, and it says
+   so. A missing or unplugged device is retried every 3 s. Shows from before version 8 had one serial port per computer:
+   their serial triggers get one device, "Serial input", put on that port. Typing a command in by hand and VenueMagic's
+   level commands (`command = level`) can follow if a device needs them.
+5. **Ethereal FX:** a real VenueMagic show (2024) has it as a serial port named "Ethereal Fx" on COM5 at 57600 baud,
+   with one input command, `BTN24`, almost certainly the attack button's external trigger. To confirm in the monitor
+   with the box. Next: the VenueMagic import brings the port, speed and command over (`CSerialDevicePort`,
+   `CSerialInputCommand`).
 6. **Stream Deck:** its keys as inputs, then its screens showing names and what's playing.
 7. **Then, as wanted:** OSC, MIDI, DMX input, web endpoints.
 

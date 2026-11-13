@@ -12,6 +12,8 @@ namespace GhostShow.Core.Model;
 public sealed class Project
 {
     /// <summary>
+    /// 8: the show lists its input devices, and a serial trigger names the one it listens to; before, there was one
+    /// serial port per computer (see <see cref="Storage.LegacySerialTriggers"/>).
     /// 7: a Run Timeline (button action or event) says whether it loops and whether it plays only if the timeline isn't
     /// playing already; before, the timeline did (see <see cref="Storage.LegacyRunSettings"/>).
     /// 6: a button has a list of triggers, in place of its one key (older keys aren't carried over).
@@ -20,7 +22,7 @@ public sealed class Project
     /// 3: universes numbered from 1, like consoles and sACN (earlier versions started at 0; loading shifts them up).
     /// 2: fixtures added, output hardware moved to machine settings. 1: the timeline prototype.
     /// </summary>
-    public const int CurrentSchemaVersion = 7;
+    public const int CurrentSchemaVersion = 8;
 
     /// <summary>Universe numbers run 1-63999: sACN's range, the widest of the protocols GhostShow will speak.</summary>
     public const int FirstUniverse = 1, LastUniverse = 63999;
@@ -33,6 +35,9 @@ public sealed class Project
 
     /// <summary>The buttons panel's buttons, in order (see <see cref="ShowButton"/>).</summary>
     public List<ShowButton> Buttons { get; set; } = [];
+
+    /// <summary>The devices the show listens to, in order (see <see cref="Inputs.InputDevice"/>); the keyboard isn't listed.</summary>
+    public List<Inputs.InputDevice> Inputs { get; set; } = [];
 
     /// <summary>
     /// The show's sequences, in every folder; a new show has one, "Main", with a lighting and an audio track.

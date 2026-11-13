@@ -39,6 +39,7 @@ public sealed partial class ButtonsViewModel : ObservableObject
         {
             if (change.Ops.Any(o => o.Path == "buttons" || o.Path.StartsWith("buttons/", StringComparison.Ordinal))) Sync();
             if (change.Ops.Any(o => o.Path.StartsWith("timelines", StringComparison.Ordinal))) RefreshTimelines();
+            if (change.Touches("inputs")) RefreshTriggerLabels();   // an input was renamed, removed or put back
         };
     }
 
@@ -188,31 +189,49 @@ public sealed partial class ButtonsViewModel : ObservableObject
     /// the trigger is ready (not still re-arming); a release does nothing yet. Returns the button it pressed, or null. A
     /// click on the button always works, whatever its triggers.
     ///
-    /// While a button waits for a key, a serial command is learned instead: it becomes that button's trigger. (Keys
-    /// being learned never get here: the window hands them to <see cref="LearnKey"/>.)
+    /// While a button waits for a key, a serial command is learned instead: it becomes that button's trigger, listening
+    /// to the device it came from. (Keys being learned never get here: the window hands them to <see cref="LearnKey"/>.)
     /// </summary>
-    public ShowButtonViewModel? Input(string source, string address, bool isPressed)
+    /// <param name="device">The show's input device it came from (<see cref="Project.Inputs"/>); null for the keyboard.</param>
+    public ShowButtonViewModel? Input(string source, string address, bool isPressed, Guid? device = null)
     {
-        var input = new InputEvent(source, address, isPressed, _time.GetLocalNow());
+        var input = new InputEvent(source, address, isPressed, _time.GetLocalNow(), device);
         var (pressed, outcome) = !isPressed ? (null, "")
-                               : LearningKeyFor is { } learning && source != ButtonTrigger.Keyboard ? (null, Learn(learning, source, address))
+                               : LearningKeyFor is { } learning && source != ButtonTrigger.Keyboard ? (null, Learn(learning, input))
                                : PressFor(input);
         InputReceived?.Invoke(input, outcome);
         return pressed;
     }
 
     /// <summary>A serial command (or later input) arriving while a button waits for its trigger. Returns what came of it.</summary>
-    string Learn(ShowButtonViewModel button, string source, string address)
+    string Learn(ShowButtonViewModel button, InputEvent input)
     {
-        string label = ButtonTriggerViewModel.Describe(source, address);
-        if (ButtonWith(source, address) is { } other)
+        if (ButtonWith(input.Source, input.Input, input.Address) is { } other)
         {
-            button.KeyProblem = $"{label} is already on {other.Name}.";
+            button.KeyProblem = $"{Describe(input.Source, input.Input, input.Address)} is already on {other.Name}.";
             return $"Not learned: it's already on {other.Name}";
         }
         LearningKeyFor = null;
-        button.AddTrigger(source, address);
+        button.AddTrigger(input.Source, input.Address, input.Input);
         return $"Learned by {button.Name}";
+    }
+
+    /// <summary>An input in words: "Key F5", "Ethereal FX “BTN24”" (the device's name in the show).</summary>
+    public string Describe(string source, Guid? device, string address) => source switch
+    {
+        ButtonTrigger.Keyboard => $"Key {TriggerKeys.Label(address)}",
+        ButtonTrigger.Serial => $"{InputName(device)} “{InputText.Visible(address)}”",
+        _ => $"{source} {address}",
+    };
+
+    /// <summary>The show's name for an input device: "Ethereal FX", or "Keyboard"; "A removed input" once it's gone.</summary>
+    public string InputName(Guid? device) =>
+        device is null ? "Keyboard" : _session.Project.Inputs.FirstOrDefault(i => i.Id == device)?.Name ?? "A removed input";
+
+    void RefreshTriggerLabels()
+    {
+        foreach (var button in Buttons)
+            foreach (var trigger in button.Triggers) trigger.Refresh();
     }
 
     /// <summary>
@@ -231,7 +250,7 @@ public sealed partial class ButtonsViewModel : ObservableObject
 
     (ShowButtonViewModel? Pressed, string Outcome) PressFor(InputEvent input)
     {
-        var matches = Buttons.SelectMany(b => b.Triggers.Where(t => t.Matches(input.Source, input.Address)).Select(t => (Button: b, Trigger: t))).ToList();
+        var matches = Buttons.SelectMany(b => b.Triggers.Where(t => t.Trigger.Matches(input.Source, input.Input, input.Address)).Select(t => (Button: b, Trigger: t))).ToList();
         if (matches.Count == 0) return (null, "No button uses it");
         if (!TriggersArmed) return (null, "Triggers are off");
         var live = matches.Where(m => m.Trigger.IsOn).ToList();
@@ -256,8 +275,8 @@ public sealed partial class ButtonsViewModel : ObservableObject
     }
 
     /// <summary>The button with this input as a trigger, on or off (for learning: one input, one button).</summary>
-    ShowButtonViewModel? ButtonWith(string source, string address) =>
-        Buttons.FirstOrDefault(b => b.Triggers.Any(t => t.Matches(source, address)));
+    ShowButtonViewModel? ButtonWith(string source, Guid? device, string address) =>
+        Buttons.FirstOrDefault(b => b.Triggers.Any(t => t.Trigger.Matches(source, device, address)));
 
     // ---- learning a key: the next key pressed becomes a trigger of the button ----
 
@@ -292,7 +311,7 @@ public sealed partial class ButtonsViewModel : ObservableObject
         if (key == "Escape") LearningKeyFor = null;
         else if (withModifier) button.KeyProblem = "Press the key on its own, without Ctrl, Shift or Alt.";
         else if (!TriggerKeys.CanUse(key)) button.KeyProblem = $"GhostShow uses {label} itself: try a letter, a number or an F key.";
-        else if (ButtonWith(ButtonTrigger.Keyboard, key) is { } other) button.KeyProblem = $"{label} is already on {other.Name}.";
+        else if (ButtonWith(ButtonTrigger.Keyboard, null, key) is { } other) button.KeyProblem = $"{label} is already on {other.Name}.";
         else
         {
             LearningKeyFor = null;
@@ -450,6 +469,8 @@ public sealed partial class ShowButtonViewModel : ObservableObject
 
     public ShowButton Button { get; }
 
+    internal ButtonsViewModel Owner => _owner;
+
     public string Name
     {
         get => Button.Name;
@@ -509,9 +530,9 @@ public sealed partial class ShowButtonViewModel : ObservableObject
     [RelayCommand]
     void AddKeyFromMenu() => _owner.StartLearningKey(this);
 
-    internal void AddTrigger(string source, string address)
+    internal void AddTrigger(string source, string address, Guid? device = null)
     {
-        var trigger = new ButtonTrigger { Source = source, Address = address };
+        var trigger = new ButtonTrigger { Source = source, Input = device, Address = address };
         Edit(source == ButtonTrigger.Keyboard ? "Add key" : "Add trigger", () => Button.Triggers.Add(trigger));
     }
 
@@ -594,19 +615,10 @@ public sealed partial class ButtonTriggerViewModel(ButtonTrigger trigger, ShowBu
 {
     public ButtonTrigger Trigger { get; } = trigger;
 
-    public string Label => Describe(Trigger.Source, Trigger.Address);
+    /// <summary>"Key F5", "Ethereal FX “BTN24”".</summary>
+    public string Label => button.Owner.Describe(Trigger.Source, Trigger.Input, Trigger.Address);
 
-    /// <summary>An input in words: "Key F5", "Serial “channel 1 1”".</summary>
-    public static string Describe(string source, string address) => source switch
-    {
-        ButtonTrigger.Keyboard => $"Key {TriggerKeys.Label(address)}",
-        ButtonTrigger.Serial => $"Serial “{InputText.Visible(address)}”",
-        _ => $"{source} {address}",
-    };
-
-    internal bool Matches(string source, string address) => Trigger.Source == source && Trigger.Address == address;
-
-    internal bool IsKey(string key) => Matches(ButtonTrigger.Keyboard, key);
+    internal bool IsKey(string key) => Trigger.Matches(ButtonTrigger.Keyboard, null, key);
 
     [RelayCommand]
     void Remove() => button.RemoveTrigger(this);
@@ -646,6 +658,7 @@ public sealed partial class ButtonTriggerViewModel(ButtonTrigger trigger, ShowBu
     /// <summary>After a change to the show: every setting shows the model.</summary>
     internal void Refresh()
     {
+        OnPropertyChanged(nameof(Label));
         OnPropertyChanged(nameof(RearmSeconds));
         OnPropertyChanged(nameof(RearmAfterTimelines));
         OnPropertyChanged(nameof(RearmSummary));

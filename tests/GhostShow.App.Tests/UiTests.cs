@@ -7,6 +7,7 @@ using Avalonia.LogicalTree;
 using Avalonia.VisualTree;
 using GhostShow.App.ViewModels;
 using GhostShow.Core.Fixtures;
+using GhostShow.Core.Inputs;
 using GhostShow.Core.Storage;
 using GhostShow.Core.Timeline;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -524,7 +525,7 @@ public class UiTests
             ("F5", "released", ""),
             ("Q", "pressed", "No button uses it"),
             ("Q", "released", ""),
-        ], rig.ViewModel.Inputs.Rows.Reverse().Select(r => (r.Address, r.Change, r.Outcome)));
+        ], rig.ViewModel.Inputs.Monitor.Rows.Reverse().Select(r => (r.Address, r.Change, r.Outcome)));
         var list = rig.Find<ListBox>(l => l.Name == "InputRows");
         Assert.True(list.IsEffectivelyVisible);
         Assert.Equal(4, list.ItemCount);
@@ -550,35 +551,39 @@ public class UiTests
     public Task A_serial_command_shows_in_the_monitor_is_learned_by_a_waiting_button_then_presses_it() => Ui.Run(() =>
     {
         var link = new ScriptedSerialLink();
-        using var serial = new GhostShow.Inputs.SerialInputService(NullLogger.Instance, (_, _) => link);
-        using var rig = new WindowRig(serial, new MachineSettings { SerialInput = new SerialInputSettings("COM3") });
+        using var serial = new GhostShow.Inputs.SerialInputs(NullLogger.Instance, (_, _) => link);
+        var ethereal = new SerialInputDevice { Name = "Ethereal FX", BaudRate = 57600 };
+        using var rig = new WindowRig(serial, new MachineSettings { InputPorts = [new InputPortBinding(ethereal.Id, "COM3")] },
+                                      session => session.Project.Inputs.Add(ethereal));
         void PumpUntil(Func<bool> done)
         {
             for (int i = 0; i < 100 && !done(); i++) WindowRig.Pump(20);
             Assert.True(done());
         }
 
-        PumpUntil(() => rig.ViewModel.SerialInput.IsListening);
+        PumpUntil(() => rig.ViewModel.Inputs.IsListening);
         rig.Key(Key.D4, RawInputModifiers.Control);
         WindowRig.Pump();
-        var status = rig.Find<TextBlock>(t => t.Name == "SerialStatus");
+        var status = rig.Find<TextBlock>(t => t.Name == "InputStatus");
         Assert.True(status.IsEffectivelyVisible);
-        Assert.Equal("Listening on COM3 at 9600 baud.", status.Text);
+        Assert.Equal("Listening on COM3 at 57600 baud.", status.Text);
 
         rig.ViewModel.Buttons.AddCommand.Execute(null);   // a new button waits for its trigger: a key or a command
         var button = rig.ViewModel.Buttons.Buttons.Single();
         Assert.Equal("Press a key or send a command… (Esc cancels)", button.LearnKeyLabel);
-        link.Send("channel 1 1\r");
+        link.Send("BTN24\r");
         PumpUntil(() => button.Triggers.Count == 1);
-        Assert.Equal("Serial “channel 1 1”", button.Triggers[0].Label);
+        Assert.Equal("Ethereal FX “BTN24”", button.Triggers[0].Label);
 
-        link.Send("channel 1 1\r");
-        PumpUntil(() => rig.ViewModel.Inputs.Rows.Count == 2);
+        link.Send("BTN24\r");
+        var monitor = rig.ViewModel.Inputs.Monitor;
+        PumpUntil(() => monitor.Rows.Count == 2);
         Assert.Equal(
         [
-            ("Serial", "channel 1 1", "received", "Learned by Button 1"),
-            ("Serial", "channel 1 1", "received", "Pressed Button 1"),
-        ], rig.ViewModel.Inputs.Rows.Reverse().Select(r => (r.Source, r.Address, r.Change, r.Outcome)));
+            ("Ethereal FX", "BTN24", "received", "Learned by Button 1"),
+            ("Ethereal FX", "BTN24", "received", "Pressed Button 1"),
+        ], monitor.Rows.Reverse().Select(r => (r.Source, r.Address, r.Change, r.Outcome)));
+        Assert.StartsWith("Last: “BTN24”", rig.ViewModel.Inputs.Devices.Single().LastReceived);
     });
 
     [Fact]
@@ -586,17 +591,18 @@ public class UiTests
     {
         // Universe 1's adapter was last on COM3 and isn't plugged in; another device (a sensor box) is on COM3 now.
         var link = new ScriptedSerialLink();
-        using var serial = new GhostShow.Inputs.SerialInputService(NullLogger.Instance, (_, _) => link);
+        using var serial = new GhostShow.Inputs.SerialInputs(NullLogger.Instance, (_, _) => link);
+        var box = new SerialInputDevice { Name = "Sensor box" };
         var settings = new MachineSettings
         {
-            SerialInput = new SerialInputSettings("COM3"),
+            InputPorts = [new InputPortBinding(box.Id, "COM3")],
             Outputs = [new OutputBinding(1, new OpenDmxDeviceConfig("COM3", "NOT-PLUGGED-IN"))],
         };
-        using var rig = new WindowRig(serial, settings);
+        using var rig = new WindowRig(serial, settings, session => session.Project.Inputs.Add(box));
 
-        for (int i = 0; i < 100 && !rig.ViewModel.SerialInput.IsListening; i++) WindowRig.Pump(20);
+        for (int i = 0; i < 100 && !rig.ViewModel.Inputs.IsListening; i++) WindowRig.Pump(20);
 
-        Assert.Equal("Listening on COM3 at 9600 baud.", rig.ViewModel.SerialInput.StatusLabel);
+        Assert.Equal("Listening on COM3 at 9600 baud.", rig.ViewModel.Inputs.Devices.Single().StatusLabel);
     });
 
     [Fact]

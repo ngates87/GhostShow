@@ -19,7 +19,7 @@ its steps 4 and 5 (a separate server, and the native window over the connection)
 | Frame: sections, status bar, warnings, Blackout | `MainWindow` + `MainViewModel` | hand-built in `ShellView.cs` |
 | Menus (File, Edit, View, Playback) | full | a separate File button (`FileMenu.cs`) |
 | Buttons panel: tiles, editor, triggers, arming | full | a plain row of buttons that press |
-| Inputs: input monitor, serial input | full | missing |
+| Inputs: the show's input devices, input monitor | full | missing |
 | Audio screen | full | a hand-built summary |
 | Diagnostics, Home (recent shows) | full | missing |
 | Keys: Space, trigger keys, learning keys, fields | `MainWindow.axaml.cs` | only Ctrl+S |
@@ -70,8 +70,8 @@ and by a single page in the browser.
   - **Triggers:** whether they're armed, turning one trigger off, each trigger's state and last fired time, and the
     input monitor's events. All of these live on the show computer, because that's where triggers fire, so the browser
     gets a feed of them and sends arm and off requests.
-  - **Serial input:** the ports on the show computer, the chosen port and speed, and its status. These are the show
-    computer's settings, like its DMX adapters.
+  - **Inputs:** the show's input devices (names and speeds, the show's), the ports on the show computer and which each
+    device is on (the show computer's settings, like its DMX adapters), and each one's status.
   - **Audio setup:** the show computer's audio devices, test tones, and the screen's other settings.
   - **Diagnostics:** the show computer's figures (load, timing, outputs), sent now and then.
 - **Deleted:** the hand-built frame, button row and Audio page in `ShellView.cs`. What's left of it is the connection
@@ -96,7 +96,7 @@ tried in Chromium against the desktop.
    version yet show "On the show computer" instead of the screen, and say so.
 4. **Buttons and triggers in the browser.** The Buttons panel with its editor: pressing, editing, learning keys and
    commands, arming, turning a trigger off, each trigger's state. Includes the trigger feed from the show computer.
-5. **Inputs in the browser.** The input monitor (from the same feed) and the serial input settings.
+5. **Inputs in the browser.** The input monitor (from the same feed) and the Inputs screen's devices and ports.
 6. **Audio in the browser.** The real Audio screen replaces the hand-built summary.
 7. **Diagnostics and Home.** The Diagnostics section from the show computer's figures. Home's recent shows become the
    show computer's saved shows (the browser's File menu scope stays as decided: no folder browser).

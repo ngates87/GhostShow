@@ -24,4 +24,4 @@ public sealed record AppServices(
     RecentEventsLog Log,
     UiResponsivenessProbe Probe,
     IDmxAdapterFinder? AdapterFinder = null,
-    SerialInputService? SerialInput = null);
+    SerialInputs? SerialInputs = null);

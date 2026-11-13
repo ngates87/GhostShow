@@ -9,8 +9,8 @@ unclear, it follows VenueMagic 3/4. Decided 2026-10-28.
   **actions** run in order when the button is pressed (a click, or a trigger).
 - **Actions:**
   - **Run timeline**: plays it from its start. If it's already running, another **copy** plays (as VenueMagic
-    does): a scare fired twice plays twice, sounds overlapping. A timeline set to **play one at a time** (Timeline
-    properties) doesn't start again while it plays. The timeline doesn't have to be open in the editor.
+    does): a scare fired twice plays twice, sounds overlapping. A Run set to **play one only** doesn't start it again
+    while it plays, and one set to **loop** repeats it. The timeline doesn't have to be open in the editor.
   - **Stop timeline**: stops it and every copy (each releasing its lights with its release fade).
   - **Stop all timelines**, and **Blackout** (the toolbar's: stop everything, every manual level to 0).
 - **Copies** (`PlaybackManager.Launch`): each copy is a timeline of its own for merging, priority and overrides,
