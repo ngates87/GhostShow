@@ -64,6 +64,8 @@
         <Separator />
         <MenuItem Header="_Save" InputGesture="Ctrl+S" Command="{Binding SaveCommand}" />
         <MenuItem Header="Save _As…" InputGesture="Ctrl+Shift+S" Command="{Binding SaveAsCommand}" />
+        <MenuItem Header="Copy _Audio Into Show Folder" Command="{Binding CollectAudioCommand}"
+                  ToolTip.Tip="Copies sounds the show uses from elsewhere (another drive, Google Drive, …) into its audio folder, so the folder holds everything and plays from the local disk" />
         <Separator />
         <MenuItem Header="_Close Show" InputGesture="Ctrl+W" Command="{Binding CloseShowCommand}" />
         <Separator />

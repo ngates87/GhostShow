@@ -4,6 +4,7 @@ using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using GhostShow.Core.Diagnostics;
+using GhostShow.Core.Editing;
 using GhostShow.Core.Engine;
 using GhostShow.Core.Fixtures;
 using GhostShow.Core.Playback;
@@ -445,7 +446,67 @@ public sealed partial class MainViewModel : ObservableObject
         await RememberShowAsync();
         if (result.IsSingleFileShow) notes.Add("This show is from an older version (a single file). Saving asks for a folder to save it in; the old file isn't changed.");
         if (result.Warnings is { Count: > 0 } warnings) notes.Add($"{warnings.Count} problem(s) opening it: {string.Join(" ", warnings)}");
+        if (!result.IsSingleFileShow && _session.ShowFolder is { } folder && AudioCollector.Plan(_session.Project.Timelines, folder) is { Count: > 0 } outside)
+            notes.Add($"{(outside.Count == 1 ? "1 sound is" : $"{outside.Count} sounds are")} outside the show folder: File → Copy Audio Into Show Folder (or the next save) copies them in.");
         StatusMessage = notes.Count > 0 ? string.Join(" ", notes) : $"Opened {ShowName}.";
+    }
+
+    bool _collectingAudio;
+
+    /// <summary>
+    /// Copies the sounds the show uses from outside its folder into its "audio" folder, then points the clips at the
+    /// copies (one undo step): the show folder then holds everything, so it can be zipped and moved, and its sounds
+    /// play from the local disk instead of a slow or cloud drive. Runs after every save too (quietly when there's
+    /// nothing to copy), so a sound added from elsewhere is copied in shortly after.
+    /// </summary>
+    [RelayCommand]
+    Task CollectAudio() => CollectAudioAsync(quiet: false);
+
+    async Task CollectAudioAsync(bool quiet)
+    {
+        if (_collectingAudio) return;
+        if (_session.ShowFolder is not { } folder || _session.IsSingleFileShow)
+        {
+            if (!quiet) StatusMessage = "Save the show first: its sounds are copied into its folder.";
+            return;
+        }
+        var project = _session.Project;
+        var plan = AudioCollector.Plan(project.Timelines, folder);
+        if (plan.Count == 0)
+        {
+            if (!quiet) StatusMessage = "Every sound is already in the show folder.";
+            return;
+        }
+
+        _collectingAudio = true;
+        string what = plan.Count == 1 ? Path.GetFileName(plan[0].Source) : $"{plan.Count} sounds";
+        try
+        {
+            long shown = -1;
+            var progress = new Progress<(long Done, long Total)>(p =>
+            {
+                long percent = p.Done * 100 / Math.Max(1, p.Total);
+                if (percent == shown) return;
+                shown = percent;
+                StatusMessage = $"Copying {what} into the show folder… {percent}%";
+            });
+            await Task.Run(() => AudioCollector.CopyAsync(plan, folder, progress));
+            if (_session.Project != project || _session.ShowFolder != folder) return;   // another show meanwhile
+
+            var clips = AudioCollector.Clips(project.Timelines, plan, folder);
+            if (clips.Count > 0)
+                _session.Document.Record($"Copy {what} into the show folder", () => AudioCollector.Repoint(project.Timelines, plan, folder),
+                                         [.. clips.Select(ShowDocument.Shallow)]);
+            StatusMessage = $"Copied {what} into {Path.Combine(folder, AudioCollector.Folder)}; the show plays them from there now.";
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            ReportError($"Couldn't copy {what} into the show folder: {ex.Message}. The show still plays them from where they are.");
+        }
+        finally
+        {
+            _collectingAudio = false;
+        }
     }
 
     [RelayCommand]
@@ -525,6 +586,7 @@ public sealed partial class MainViewModel : ObservableObject
             _saveGate.Release();
         }
 
+        if (saved) _ = CollectAudioAsync(quiet: true);   // sounds added from elsewhere: copied into the show folder
         if (saved && _dirtyGeneration != generation) ScheduleAutoSave(AutoSaveDelay);
         else if (!saved && IsDirty && _session.FilePath is not null && !_session.IsSingleFileShow)
             ScheduleAutoSave(TimeSpan.FromSeconds(2));
