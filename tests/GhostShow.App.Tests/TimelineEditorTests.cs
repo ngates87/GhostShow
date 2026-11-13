@@ -901,9 +901,19 @@ public class TimelineEditorTests : IDisposable
         Assert.True(_rig.Manager.IsRunning(other.Id));   // loaded ahead (it isn't open anywhere) and run when the playhead got there
 
         properties.CommandIndex = 1;
-        Assert.Equal(TimelineCommand.Stop, e.Command);
+        Assert.Equal((TimelineCommand.Stop, false), (e.Command, properties.IsRunCommand));
+        properties.CommandIndex = 2;
+        Assert.Equal(TimelineCommand.EndLoop, e.Command);
         Editor.UndoCommand.Execute(null);
-        Assert.Equal(TimelineCommand.Run, e.Command);
+        Editor.UndoCommand.Execute(null);
+        Assert.Equal((TimelineCommand.Run, true), (e.Command, properties.IsRunCommand));
+
+        properties.RunLoop = true;
+        properties.RunOneOnly = true;
+        Assert.Equal((true, true), (e.Loop, e.OneOnly));
+        Assert.Equal(new RunOptions(true, true), Assert.Single(_rig.Compiled.Cues).Options);   // the player has them straight away
+        Editor.UndoCommand.Execute(null);
+        Assert.Equal((true, false), (e.Loop, e.OneOnly));
     }
 
     [Fact]
@@ -1441,7 +1451,7 @@ public class TimelineEditorTests : IDisposable
 
         Editor.MakeScareCommand.Execute(null);
 
-        Assert.Equal(new TimelinePlayback(10, true, S(1), 1, true, OneAtATime: true), Editor.SelectedTimeline.Playback);
+        Assert.Equal(new TimelinePlayback(10, true, S(1), 1, true), Editor.SelectedTimeline.Playback);
         Assert.Equal(TimelineEditorViewModel.Pause, Editor.OverrideMode);
     }
 
@@ -1459,12 +1469,8 @@ public class TimelineEditorTests : IDisposable
         Assert.Equal(new TimelinePlayback(10, false, S(2), 0.25, true), Editor.SelectedTimeline!.Playback);
         Assert.Equal("Priority 10 · others' sound at 25% · releases at end · 2 s release", Editor.PlaybackSummary);
         Editor.Loop = true;
-        Editor.OneAtATime = true;
-        Assert.Equal("Loops · one at a time · Priority 10 · others' sound at 25% · releases at end · 2 s release", Editor.PlaybackSummary);
-        Assert.True(Editor.SelectedTimeline.Playback.OneAtATime);
-        Assert.True(_rig.Compiled.Playback.OneAtATime);   // the player has it straight away
-        Editor.UndoCommand.Execute(null);
-        Assert.False(Editor.OneAtATime);
+        Assert.Equal("Loops when played here · Priority 10 · others' sound at 25% · releases at end · 2 s release", Editor.PlaybackSummary);
+        Assert.True(_rig.Compiled.Loop);   // the player has it straight away
         Editor.UndoCommand.Execute(null);
         Assert.Equal(("Priority 10 · others' sound at 25% · releases at end · 2 s release", false), (Editor.PlaybackSummary, Editor.Loop));
 

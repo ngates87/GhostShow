@@ -530,10 +530,11 @@ public sealed class TimelineCanvas : Control
         if (selected) context.DrawRectangle(SelectedPen, rect.Inflate(1), 4);
     }
 
-    static readonly IBrush RunFill = new SolidColorBrush(Color.Parse("#43A047")), StopFill = new SolidColorBrush(Color.Parse("#E53935"));
+    static readonly IBrush RunFill = new SolidColorBrush(Color.Parse("#43A047")), StopFill = new SolidColorBrush(Color.Parse("#E53935")),
+                           EndLoopFill = new SolidColorBrush(Color.Parse("#FB8C00"));
 
     /// <summary>
-    /// An event track's event: its symbol on its time (green: run, red: stop) at the top of the row, and under it what
+    /// An event track's event: its symbol on its time (green: run, red: stop, orange: end loop) at the top of the row, and under it what
     /// it runs or stops, on the label line <see cref="LayOutEventLabels"/> gave it, so events placed almost on top of
     /// each other stay readable. Shortened to its room; the tooltip and its properties have it in full.
     /// </summary>
@@ -541,10 +542,15 @@ public sealed class TimelineCanvas : Control
                      bool selected, bool error)
     {
         double cx = rect.X + EventMark, cy = rect.Y + EventMarkY;
-        context.DrawGeometry(command.Command == TimelineCommand.Run ? RunFill : StopFill, selected ? SelectedPen : error ? ErrorPen : HandleOutline,
-            EventSymbols.Of(command.Symbol, new Point(cx, cy), EventMark));
+        var fill = command.Command switch { TimelineCommand.Run => RunFill, TimelineCommand.Stop => StopFill, _ => EndLoopFill };
+        context.DrawGeometry(fill, selected ? SelectedPen : error ? ErrorPen : HandleOutline, EventSymbols.Of(command.Symbol, new Point(cx, cy), EventMark));
         string? target = editor.TimelinePath(command.TimelineId);
-        string label = command.Name ?? (target is null ? "(choose a timeline)" : command.Command == TimelineCommand.Stop ? $"Stop {target}" : target);
+        string label = command.Name ?? (target is null ? "(choose a timeline)" : command.Command switch
+        {
+            TimelineCommand.Stop => $"Stop {target}",
+            TimelineCommand.EndLoop => $"End loop {target}",
+            _ => target + RunNote(command),
+        });
         DrawText(context, label, new Point(rect.X, cy + EventMark + 1 + line * EventLabelLine), room,
                  target is null ? ErrorText : selected ? null : EventLabelText, size: 11);
     }
@@ -555,8 +561,22 @@ public sealed class TimelineCanvas : Control
     static string CommandLabel(TimelineEditorViewModel editor, TimelineCommandEvent command)
     {
         string target = editor.TimelinePath(command.TimelineId) ?? "(choose a timeline)";
-        return command.Name ?? (command.Command == TimelineCommand.Run ? $"Run {target}" : $"Stop {target}");
+        return command.Name ?? command.Command switch
+        {
+            TimelineCommand.Stop => $"Stop {target}",
+            TimelineCommand.EndLoop => $"End loop {target}",
+            _ => $"Run {target}{RunNote(command)}",
+        };
     }
+
+    /// <summary>A Run's settings, after what it runs: " (looped)", " (one only)", " (looped, one only)", or nothing.</summary>
+    static string RunNote(TimelineCommandEvent command) => (command.Loop, command.OneOnly) switch
+    {
+        (true, true) => " (looped, one only)",
+        (true, false) => " (looped)",
+        (false, true) => " (one only)",
+        _ => "",
+    };
 
     static readonly IBrush ErrorText = new SolidColorBrush(Color.Parse("#FF8A80"));
 

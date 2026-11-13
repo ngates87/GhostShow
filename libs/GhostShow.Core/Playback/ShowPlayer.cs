@@ -6,7 +6,10 @@ namespace GhostShow.Core.Playback;
 public enum TransportState { Stopped, Playing, Paused }
 
 /// <param name="AtEnd">A non-looping timeline played to its end and stopped there (Play starts it over).</param>
-public readonly record struct PlaybackStatus(TransportState State, TimeSpan Position, TimeSpan Length, bool AtEnd, bool Loop);
+/// <param name="Loop">It starts again at its end: as what ran it said (<see cref="RunOptions.Loop"/>), or, played on its
+/// own, its timeline's Loop.</param>
+/// <param name="OneOnly">What ran it said "Play one only": running it again while it plays does nothing.</param>
+public readonly record struct PlaybackStatus(TransportState State, TimeSpan Position, TimeSpan Length, bool AtEnd, bool Loop, bool OneOnly = false);
 
 /// <summary>
 /// Plays a <see cref="CompiledTimeline"/>: owns the transport and the show clock, and on every <see cref="Tick"/> sets
@@ -24,6 +27,9 @@ public readonly record struct PlaybackStatus(TransportState State, TimeSpan Posi
 /// - Pause: holds the current levels and pauses audio. Play resumes from the same position.
 /// - Seek: moves the position (anywhere from 0, including past the end); levels are evaluated at the new position (mid-fade gives the mid-fade value) and audio
 ///   restarts at the matching file offset.
+/// - Run (<see cref="Run"/>): plays from the start as a button or an event says (<see cref="RunOptions"/>): looping or
+///   once. Played on its own (Play, Restart) it loops if its timeline is set to. Stopping, or reaching the end, forgets
+///   what the run said; <see cref="EndLoop"/> makes a looping run stop at its next end.
 /// - End: a looping timeline wraps to 0; otherwise it stops there (Play starts over), as VenueMagic's do. What its
 ///   channels do then is its "At the end" setting: Holds leaves them at their last levels (VenueMagic's "lamps remain
 ///   at last level"; see <see cref="EndFrame"/>), Releases lets go of them. A timeline whose length isn't known yet
@@ -45,6 +51,8 @@ public sealed class ShowPlayer
     int _edits;               // bumped by Load (a recompiled timeline): only changed sounds move
     int _loops;               // bumped when a looping timeline wraps: audio restarts
     bool _atEnd;
+    bool? _runLoop;           // this run loops (or not), as what ran it said; null: as its timeline is set to
+    bool _runOneOnly;         // what ran it said "Play one only"
     long _startedAt;          // when it last started playing from stopped: on equal priority, the later started wins
     long _cueFrom = -1;       // event cues after this position (ticks) and up to the playhead fire on the next update
     readonly List<TimelineCue> _fired = new();
@@ -93,7 +101,8 @@ public sealed class ShowPlayer
         get
         {
             lock (_lock)
-                return new PlaybackStatus(_state, TimeSpan.FromTicks(PositionAt(_clock.Now)), TimeSpan.FromTicks(_timeline.Length), _atEnd, _timeline.Loop);
+                return new PlaybackStatus(_state, TimeSpan.FromTicks(PositionAt(_clock.Now)), TimeSpan.FromTicks(_timeline.Length), _atEnd, Loops,
+                                          _state != TransportState.Stopped && _runOneOnly);
         }
     }
 
@@ -101,6 +110,8 @@ public sealed class ShowPlayer
     {
         get { lock (_lock) return _timeline; }
     }
+
+    bool Loops => _runLoop ?? _timeline.Loop;   // under _lock
 
     /// <summary>
     /// Swaps in a (re)compiled timeline, e.g. after an edit. Playback continues from the same position with the new
@@ -150,23 +161,49 @@ public sealed class ShowPlayer
         {
             _state = TransportState.Stopped;
             _atEnd = false;
+            ForgetRun();
             Anchor(0);
             _jumps++;
         }
     }
 
-    /// <summary>Plays from the start.</summary>
+    /// <summary>Plays from the start (looping, or once, as the run it's playing said; played on its own, as its timeline says).</summary>
     public void Restart()
+    {
+        lock (_lock) RestartLocked();
+    }
+
+    /// <summary>Plays from the start as a button or an event says: looping or once (<see cref="RunOptions"/>).</summary>
+    public void Run(RunOptions how)
     {
         lock (_lock)
         {
-            _startedAt = _clock.Now;
-            _state = TransportState.Playing;
-            _atEnd = false;
-            Anchor(0);
-            _jumps++;
-            _cueFrom = -1;
+            _runLoop = how.Loop;
+            _runOneOnly = how.OneOnly;
+            RestartLocked();
         }
+    }
+
+    /// <summary>A looping run finishes the pass it's on, then stops at its end (VenueMagic's End loop).</summary>
+    public void EndLoop()
+    {
+        lock (_lock) _runLoop = false;
+    }
+
+    void ForgetRun()
+    {
+        _runLoop = null;
+        _runOneOnly = false;
+    }
+
+    void RestartLocked()
+    {
+        _startedAt = _clock.Now;
+        _state = TransportState.Playing;
+        _atEnd = false;
+        Anchor(0);
+        _jumps++;
+        _cueFrom = -1;
     }
 
     /// <summary>
@@ -235,7 +272,7 @@ public sealed class ShowPlayer
             long position = PositionAt(now);
             long length = _timeline.Length;
             bool reachedEnd = _state == TransportState.Playing && position >= length && !_timeline.OpenEnded;
-            bool ended = reachedEnd && !(_timeline.Loop && length > 0);
+            bool ended = reachedEnd && !(Loops && length > 0);
             if (reachedEnd)
             {
                 if (!ended)
@@ -252,6 +289,7 @@ public sealed class ShowPlayer
                     position = length;
                     _state = TransportState.Stopped;
                     _atEnd = true;
+                    ForgetRun();
                     _anchorPosition = length;
                     _anchorTime = now;
                 }

@@ -31,7 +31,9 @@ public sealed record RunningTimeline(Guid Id, string Name, PlaybackStatus Status
 /// its own end decides), or Stop all / the "Held lights" row (<see cref="HeldLevelsId"/>) releases them.
 ///
 /// Event tracks: a timeline's commands (<see cref="CompiledTimeline.Cues"/>) run or stop other timelines when its
-/// playhead reaches them, the same way as a button: Run is a <see cref="Launch"/>, Stop a <see cref="StopTimeline"/>.
+/// playhead reaches them, the same way as a button: Run is a <see cref="Launch"/>, Stop a <see cref="StopTimeline"/>,
+/// End loop an <see cref="EndLoop"/>. What runs a timeline says whether that run loops and whether it plays only if
+/// the timeline isn't playing already ("Play one only"), as VenueMagic's Run Timeline does (<see cref="RunOptions"/>).
 ///
 /// Copies: <see cref="Launch"/> (a show button's Run Timeline, or an event track's) plays a timeline from its start as a new copy when
 /// it's already running (as VenueMagic does), so a scare fired twice plays twice, sounds overlapping. A copy is a
@@ -130,19 +132,20 @@ public sealed class PlaybackManager
 
     /// <summary>
     /// Plays a loaded timeline from its start: its own player if that's stopped, otherwise a new copy (beyond
-    /// <see cref="MaxCopies"/>, the oldest copy stops). A timeline that plays one at a time doesn't start while it's
-    /// already playing. Returns what it's playing as (to stop or pause by), or null if it didn't start: not loaded, or
-    /// one at a time and already playing.
+    /// <see cref="MaxCopies"/>, the oldest copy stops). <paramref name="how"/> is what the button or event running it
+    /// says: whether it loops, and "Play one only" (it doesn't start while the timeline is already playing). Null:
+    /// as if played on its own (looping if its timeline is set to). Returns what it's playing as (to stop or pause by),
+    /// or null if it didn't start: not loaded, or one only and already playing.
     /// </summary>
-    public Guid? Launch(Guid timelineId)
+    public Guid? Launch(Guid timelineId, RunOptions? how = null)
     {
         lock (_lock)
         {
             if (!_slots.TryGetValue(timelineId, out var own)) return null;
-            if (own.Timeline.Playback.OneAtATime && IsRunning(timelineId)) return null;
+            if (how is { OneOnly: true } && IsRunning(timelineId)) return null;
             if (own.Player.Status.State == TransportState.Stopped)
             {
-                own.Player.Restart();
+                Start(own.Player);
                 return timelineId;
             }
             var running = _slots.Values.Where(s => s.TimelineId == timelineId && s.Player.Status.State != TransportState.Stopped).ToList();
@@ -154,10 +157,23 @@ public sealed class PlaybackManager
                 Name = own.Name, Timeline = own.Timeline,
             };
             copy.Player.Load(own.Timeline);
-            copy.Player.Restart();
+            Start(copy.Player);
             _slots[id] = copy;
             return id;
         }
+
+        void Start(ShowPlayer player)
+        {
+            if (how is { } options) player.Run(options);
+            else player.Restart();
+        }
+    }
+
+    /// <summary>Every copy of a timeline playing in a loop finishes the pass it's on, then stops (VenueMagic's End loop).</summary>
+    public void EndLoop(Guid timelineId)
+    {
+        lock (_lock)
+            foreach (var slot in _slots.Values.Where(s => s.TimelineId == timelineId)) slot.Player.EndLoop();
     }
 
     /// <summary>Stops a timeline and every copy of it playing (each releasing its channels with its fade).</summary>
@@ -358,10 +374,13 @@ public sealed class PlaybackManager
         {
             case TimelineCommand.Run:
                 if (!IsLoaded(cue.Timeline)) CueNotLoaded?.Invoke(cue);
-                else Launch(cue.Timeline);   // doesn't start if it plays one at a time and is still playing
+                else Launch(cue.Timeline, cue.Options);   // doesn't start if "Play one only" and it's still playing
                 break;
             case TimelineCommand.Stop:
                 StopTimeline(cue.Timeline);
+                break;
+            case TimelineCommand.EndLoop:
+                EndLoop(cue.Timeline);
                 break;
         }
     }

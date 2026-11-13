@@ -37,7 +37,11 @@ public sealed class ShowTimeline
     /// <summary>Explicit length; null means "until the last event ends".</summary>
     public TimeSpan? Length { get; set; }
 
-    /// <summary>Start again from 0 at the end (a haunt room's scare loop). Otherwise the final look holds at the end.</summary>
+    /// <summary>
+    /// Start again from 0 at the end when it's played on its own: the editor's (or a remote's) transport. A button or
+    /// an event that runs it says for itself whether it loops (<see cref="TimelineCommandEvent.Loop"/>), as
+    /// VenueMagic's Run Timeline does, so one timeline can loop as a room's ambient and play once from a test button.
+    /// </summary>
     public bool Loop { get; set; }
 
     /// <summary>Order matters: where two events start at the same moment on the same channel, the lower track wins.</summary>
@@ -73,10 +77,18 @@ public sealed class ShowTimeline
 /// <param name="DuckOthers">While this plays, lower-priority timelines' sounds play at this volume (0-1). 1: untouched.</param>
 /// <param name="ReleaseAtEnd">At the end (when not looping), let go of its channels instead of holding its final look:
 /// what an override usually wants, so the ambient comes back by itself.</param>
-/// <param name="OneAtATime">Starting it while it's already playing (a button, a key, another timeline's event) does
-/// nothing. Otherwise each start plays another copy, as VenueMagic does. A scare wants this, so it can't stack.</param>
+/// <remarks>Whether it loops, and whether it can play more than once at a time, are up to what runs it (a button's or
+/// an event's "Play looped" and "Play one only"), as in VenueMagic.</remarks>
 public sealed record TimelinePlayback(int Priority = 0, bool PauseOverridden = false, TimeSpan ReleaseFade = default,
-                                      double DuckOthers = 1, bool ReleaseAtEnd = false, bool OneAtATime = false);
+                                      double DuckOthers = 1, bool ReleaseAtEnd = false);
+
+/// <summary>
+/// How a run of a timeline plays, as whatever runs it (a button, an event) says: VenueMagic's "Play looped" and
+/// "Play one only" on its Run Timeline event and cue buttons.
+/// </summary>
+/// <param name="Loop">It starts again from 0 at its end, until it's stopped or its loop is ended.</param>
+/// <param name="OneOnly">It doesn't start if the timeline is already playing (otherwise it plays another copy).</param>
+public readonly record struct RunOptions(bool Loop = false, bool OneOnly = false);
 
 /// <summary>Which side of a stereo output a track plays on.</summary>
 public enum AudioSide { Stereo, Left, Right }
@@ -552,11 +564,17 @@ public sealed record Level(byte To, int? Channel = null, ChannelFunction? Contro
 [JsonConverter(typeof(JsonStringEnumConverter<TimelineCommand>))]
 public enum TimelineCommand
 {
-    /// <summary>Plays it from its start: a new copy if it's already running (unless that timeline plays one at a time).</summary>
+    /// <summary>
+    /// Plays it from its start: a new copy if it's already running, unless the event says "Play one only". The event
+    /// also says whether it loops (<see cref="TimelineCommandEvent.Loop"/>).
+    /// </summary>
     Run,
 
     /// <summary>Stops it, every copy (each releasing its lights with its release fade).</summary>
     Stop,
+
+    /// <summary>Every copy of it playing in a loop finishes the pass it's on, then stops (VenueMagic's End loop).</summary>
+    EndLoop,
 }
 
 /// <summary>How an event track's event is drawn on its lane (a marker to tell events apart at a glance).</summary>
@@ -575,13 +593,25 @@ public sealed class TimelineCommandEvent : TimelineEvent
     /// <summary>The timeline it runs or stops (<see cref="ShowTimeline.Id"/>).</summary>
     public Guid TimelineId { get; set; }
 
+    /// <summary>Run: it plays in a loop until it's stopped (or its loop is ended). Otherwise once.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool Loop { get; set; }
+
+    /// <summary>Run: nothing happens if the timeline is already playing. Otherwise it plays another copy, as VenueMagic does.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool OneOnly { get; set; }
+
     /// <summary>The marker it's drawn with on its lane.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public EventSymbol Symbol { get; set; }
 
+    /// <summary>How a Run plays what it runs.</summary>
+    [JsonIgnore]
+    public RunOptions Options => new(Loop, OneOnly);
+
     public override TimelineEvent Clone() => new TimelineCommandEvent
     {
-        Name = Name, Start = Start, Enabled = Enabled, Command = Command, TimelineId = TimelineId, Symbol = Symbol,
+        Name = Name, Start = Start, Enabled = Enabled, Command = Command, TimelineId = TimelineId, Loop = Loop, OneOnly = OneOnly, Symbol = Symbol,
     };
 }
 

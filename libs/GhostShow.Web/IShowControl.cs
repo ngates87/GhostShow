@@ -14,8 +14,14 @@ public interface IShowControl
     /// <summary>The timeline open in the editor (play, pause, stop, play from the start, or go to a position).</summary>
     string? Transport(TransportAction action, TimeSpan? position);
 
-    /// <summary>Runs a timeline from its start, as a show button does: another copy if it's already running.</summary>
-    string? Run(Guid timelineId);
+    /// <summary>
+    /// Runs a timeline from its start, as a show button does: another copy if it's already running. how: loop and
+    /// "Play one only" as a button says; null (a device's list of timelines): as if played on its own.
+    /// </summary>
+    string? Run(Guid timelineId, RunOptions? how = null);
+
+    /// <summary>Every copy of a timeline playing in a loop finishes the pass it's on, then stops.</summary>
+    string? EndLoop(Guid timelineId);
 
     /// <summary>Stops a timeline and every copy of it.</summary>
     string? StopTimeline(Guid timelineId);

@@ -155,8 +155,9 @@ From help: Serial/UDP Port Input/Output, Setup Serial Port, Serial Input Command
 
 - Show buttons, copies per press, the Playing list and Run Timeline events already follow cue buttons and the cue list.
 - **Loop:** VenueMagic has it on the timeline and on whatever starts it. **One only:** only on whatever starts it.
-  GhostShow puts both on the timeline only (Timeline properties: Loop, Play one at a time, which ignores a start while
-  it's playing).
+  GhostShow does the same: a button's Run timeline and an event's Run each have Play looped and Play one only; the
+  timeline's own Loop applies only when it's played with the transport. End loop is a button action and an event.
+  Beyond VenueMagic, the Playing list marks each run that loops or is one only with an icon.
 - **Keys:** VenueMagic gives each button one key, through the caption's `&`, or uses the keyboard as an input device
   with key-down and key-up. GhostShow's learned keys fill the same role.
 - **Re-arming:** edge triggering is what a closed contact wants: fire once, re-arm when it opens. A re-arm time adds
@@ -164,6 +165,5 @@ From help: Serial/UDP Port Input/Output, Setup Serial Port, Serial Input Command
 - **Serial input** for the Ethereal FX: VenueMagic matches whole command strings ending in CR, and shows them in a
   monitor with raw mode. That's the same as the plan's serial step and input monitor.
 - **Auto play on project load** is VenueMagic's answer to starting the show without a key.
-- **Worth considering later:** foreground-style queueing and crossfading for timelines that replace one another, end
-  loop, the cue list's pause/resume/stop-all triggers, a per-start master volume and lamp level, trigger probability
+- **Worth considering later:** foreground-style queueing and crossfading for timelines that replace one another, the cue list's pause/resume/stop-all triggers, a per-start master volume and lamp level, trigger probability
   and delay, random or shuffled multi-events, an event status view, and a schedule.

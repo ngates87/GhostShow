@@ -505,7 +505,7 @@ public class PlaybackManagerTests : IDisposable
     }
 
     [Fact]
-    public void Events_at_the_start_fire_on_play_and_again_on_every_loop_as_new_copies_unless_one_at_a_time()
+    public void Events_at_the_start_fire_on_play_and_again_on_every_loop_as_new_copies_unless_one_only()
     {
         Load(Ambient, Show("Loop", length: 3, loop: true, tracks: Events((0, Scare, TimelineCommand.Run))));
         Load(Scare, Show("Scream", length: 60, tracks: Lights(Raw(0, 5, to: 200))));
@@ -519,17 +519,63 @@ public class PlaybackManagerTests : IDisposable
 
         _manager.StopAll();
         After(0.1);
-        Load(Scare, Show("Scream", new TimelinePlayback(OneAtATime: true), length: 60, tracks: Lights(Raw(0, 5, to: 200))));
+        var events = Events((0, Scare, TimelineCommand.Run));
+        ((TimelineCommandEvent)events.Events[0]).OneOnly = true;
+        Load(Ambient, Show("Loop", length: 3, loop: true, tracks: events));
         _manager.Play(Ambient);
         After(0.1);
         After(3);
         After(0.1);
-        Assert.Single(_manager.Running, r => r.TimelineId == Scare);   // one at a time: not again while it runs
-        Assert.Null(_manager.Launch(Scare));                            // nor from a button
+        Assert.Single(_manager.Running, r => r.TimelineId == Scare);   // one only: not again while it runs
+        Assert.True(_manager.Running.Single(r => r.TimelineId == Scare).Status.OneOnly);
+        Assert.Null(_manager.Launch(Scare, new RunOptions(OneOnly: true)));   // nor from a button that says so
+        Assert.NotNull(_manager.Launch(Scare));                                // a button that doesn't plays a copy
 
         _manager.StopTimeline(Scare);
         After(0.1);
-        Assert.NotNull(_manager.Launch(Scare));                         // once it's stopped, it starts again
+        Assert.NotNull(_manager.Launch(Scare, new RunOptions(OneOnly: true)));   // once it's stopped, it starts again
+    }
+
+    [Fact]
+    public void A_run_loops_or_plays_once_as_what_ran_it_says_whatever_its_timeline_is_set_to()
+    {
+        Load(Scare, Show("Scream", length: 2, tracks: Lights(Raw(0, 5, to: 200))));
+        Load(Other, Show("Ambient", length: 2, loop: true, tracks: Lights(Raw(0, 6, to: 100))));
+
+        _manager.Launch(Scare, new RunOptions(Loop: true));
+        _manager.Launch(Other, new RunOptions());
+        After(1);
+        After(1.5);
+
+        var scare = Assert.Single(_manager.Running, r => !r.IsHeld);   // the ambient played once and ended (its lights held); the scare loops
+        Assert.Equal((Scare, true), (scare.TimelineId, scare.Status.Loop));
+        Assert.Equal(0.5, scare.Status.Position.TotalSeconds, 3);
+
+        _manager.Launch(Other);   // nothing says: as its timeline is set to (loop)
+        After(2.5);
+        Assert.True(_manager.IsRunning(Other));
+    }
+
+    [Fact]
+    public void End_loop_lets_a_looping_run_finish_its_pass_then_stop_and_stopping_forgets_how_it_was_run()
+    {
+        Load(Scare, Show("Scream", length: 2, tracks: Lights(Raw(0, 5, to: 200))));
+        Load(Ambient, Show("Calm down", length: 10, tracks: Events((0.5, Scare, TimelineCommand.EndLoop))));
+        _manager.Launch(Scare, new RunOptions(Loop: true, OneOnly: true));
+        _manager.Launch(Scare, new RunOptions(Loop: true));   // one only: not again
+        After(2.5);   // looped once
+
+        _manager.Play(Ambient);
+        After(0.6);   // its End loop
+        Assert.False(_manager.StatusOf(Scare).Loop);
+        After(0.8);
+        Assert.True(_manager.IsRunning(Scare));    // finishing its pass
+        After(0.2);
+        Assert.False(_manager.IsRunning(Scare));   // then it stopped at its end
+
+        _manager.Play(Scare);   // played on its own now: once, and not "one only"
+        After(0.1);
+        Assert.Equal((false, false), (_manager.StatusOf(Scare).Loop, _manager.StatusOf(Scare).OneOnly));
     }
 
     [Fact]

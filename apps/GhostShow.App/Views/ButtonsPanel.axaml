@@ -38,6 +38,12 @@
     <Style Selector="ToggleButton.arming:checked /template/ ContentPresenter">
       <Setter Property="Background" Value="#1B5E20" />
     </Style>
+    <Style Selector="PathIcon.runFlag">
+      <Setter Property="Width" Value="14" />
+      <Setter Property="Height" Value="14" />
+      <Setter Property="Foreground" Value="#FFD54F" />
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
     <Style Selector="Button.small">
       <Setter Property="Padding" Value="6,1" />
       <Setter Property="MinHeight" Value="0" />
@@ -75,6 +81,45 @@
         <TextBlock DockPanel.Dock="Bottom" Text="{Binding Status}" Opacity="0.7" FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0"
                    IsVisible="{Binding Status, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
 
+        <!-- What's playing: at the bottom of the drawer. Docked before the tiles, so it keeps its room however many
+             buttons there are (docked after them, a full panel pushed it off the bottom, where its rows couldn't be
+             scrolled to). -->
+        <Border DockPanel.Dock="Bottom" Classes="card" Height="200" Margin="0,8,0,0" Padding="8"
+                IsVisible="{Binding !!Playback.Running.Count}">
+          <DockPanel>
+            <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4">
+              <Button DockPanel.Dock="Right" Classes="small" Content="Stop all" Command="{Binding Playback.StopAllCommand}"
+                      ToolTip.Tip="Stop every timeline and release the held lights" />
+              <TextBlock Text="Playing" FontWeight="SemiBold" VerticalAlignment="Center" />
+            </DockPanel>
+            <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+              <ItemsControl ItemsSource="{Binding Playback.Running}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="vm:RunningRowViewModel">
+                    <DockPanel Margin="0,1">
+                      <Button DockPanel.Dock="Right" Classes="small" Content="■" Command="{Binding StopCommand}" ToolTip.Tip="{Binding StopTip}" />
+                      <!-- How it was run: looped (it won't leave the list by itself), one only (running it again does nothing). -->
+                      <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="2" Margin="0,0,4,0" VerticalAlignment="Center">
+                        <PathIcon Classes="runFlag" Data="{StaticResource Icon.Loop}" IsVisible="{Binding Loops}"
+                                  ToolTip.Tip="Looped: it plays until it's stopped (or an End loop)" />
+                        <PathIcon Classes="runFlag" Data="{StaticResource Icon.OneOnly}" IsVisible="{Binding OneOnly}"
+                                  ToolTip.Tip="One only: running it again while it plays does nothing" />
+                      </StackPanel>
+                      <Button Command="{Binding OpenCommand}" Background="Transparent" Padding="2,0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                              ToolTip.Tip="Open it in the editor" IsHitTestVisible="{Binding !IsHeld}">
+                        <StackPanel>
+                          <TextBlock Text="{Binding Name}" FontWeight="{Binding IsFocused, Converter={x:Static vm:Converters.BoldWhen}}" TextTrimming="CharacterEllipsis" />
+                          <TextBlock Text="{Binding Detail}" FontSize="11" Opacity="0.65" TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+                      </Button>
+                    </DockPanel>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </ScrollViewer>
+          </DockPanel>
+        </Border>
+
         <!-- The buttons -->
         <ScrollViewer DockPanel.Dock="Top" Classes="tiles" Classes.editing="{Binding IsEditing}">
           <StackPanel>
@@ -106,36 +151,6 @@
             </ItemsControl>
           </StackPanel>
         </ScrollViewer>
-
-        <!-- What's playing: kept at the bottom of the drawer, below the button list/editor. -->
-        <Border DockPanel.Dock="Bottom" Classes="card" Height="180" Margin="0,8,0,0" Padding="8"
-                IsVisible="{Binding !!Playback.Running.Count}">
-          <DockPanel>
-            <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4">
-              <Button DockPanel.Dock="Right" Classes="small" Content="Stop all" Command="{Binding Playback.StopAllCommand}"
-                      ToolTip.Tip="Stop every timeline and release the held lights" />
-              <TextBlock Text="Playing" FontWeight="SemiBold" VerticalAlignment="Center" />
-            </DockPanel>
-            <ScrollViewer>
-              <ItemsControl ItemsSource="{Binding Playback.Running}">
-                <ItemsControl.ItemTemplate>
-                  <DataTemplate x:DataType="vm:RunningRowViewModel">
-                    <DockPanel Margin="0,1">
-                      <Button DockPanel.Dock="Right" Classes="small" Content="■" Command="{Binding StopCommand}" ToolTip.Tip="{Binding StopTip}" />
-                      <Button Command="{Binding OpenCommand}" Background="Transparent" Padding="2,0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
-                              ToolTip.Tip="Open it in the editor" IsHitTestVisible="{Binding !IsHeld}">
-                        <StackPanel>
-                          <TextBlock Text="{Binding Name}" FontWeight="{Binding IsFocused, Converter={x:Static vm:Converters.BoldWhen}}" TextTrimming="CharacterEllipsis" />
-                          <TextBlock Text="{Binding Detail}" FontSize="11" Opacity="0.65" TextTrimming="CharacterEllipsis" />
-                        </StackPanel>
-                      </Button>
-                    </DockPanel>
-                  </DataTemplate>
-                </ItemsControl.ItemTemplate>
-              </ItemsControl>
-            </ScrollViewer>
-          </DockPanel>
-        </Border>
 
         <!-- Editing the selected button: right under the tiles, filling the rest of the panel -->
         <Border BorderBrush="#30FFFFFF" BorderThickness="0,1,0,0" Margin="0,4,0,0" Padding="0,8,0,0" IsVisible="{Binding IsEditing}">
@@ -213,6 +228,8 @@
                         <MenuFlyout>
                           <MenuItem Header="Run timeline" Command="{Binding AddActionCommand}" CommandParameter="run" />
                           <MenuItem Header="Stop timeline" Command="{Binding AddActionCommand}" CommandParameter="stop" />
+                          <MenuItem Header="End loop" Command="{Binding AddActionCommand}" CommandParameter="endLoop"
+                                    ToolTip.Tip="A timeline playing in a loop finishes the pass it's on, then stops" />
                           <MenuItem Header="Stop all timelines" Command="{Binding AddActionCommand}" CommandParameter="stopAll" />
                           <MenuItem Header="Blackout" Command="{Binding AddActionCommand}" CommandParameter="blackout" />
                         </MenuFlyout>
@@ -234,6 +251,12 @@
                             </DockPanel>
                             <ComboBox ItemsSource="{Binding Timelines}" SelectedItem="{Binding Timeline}" HorizontalAlignment="Stretch"
                                       IsVisible="{Binding HasTimeline}" PlaceholderText="(its timeline was deleted)" />
+                            <WrapPanel IsVisible="{Binding IsRun}">
+                              <CheckBox Content="Play looped" IsChecked="{Binding Loop}" MinHeight="0" Margin="0,0,12,0"
+                                        ToolTip.Tip="It plays in a loop until it's stopped (or an End loop). Off: it plays once and leaves the Playing list at its end." />
+                              <CheckBox Content="Play one only" IsChecked="{Binding OneOnly}" MinHeight="0"
+                                        ToolTip.Tip="If the timeline is already playing, pressing does nothing (a scare can't stack). Off: each press plays another copy on top, as VenueMagic does." />
+                            </WrapPanel>
                           </StackPanel>
                         </Border>
                       </DataTemplate>

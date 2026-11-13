@@ -105,15 +105,39 @@ public sealed partial class EventPropertiesViewModel : ObservableObject
 
     public bool IsCommand => Command is not null;
 
-    public static IReadOnlyList<string> Commands { get; } = ["Run timeline", "Stop timeline"];
+    /// <summary>In <see cref="TimelineCommand"/>'s order.</summary>
+    public static IReadOnlyList<string> Commands { get; } = ["Run timeline", "Stop timeline", "End loop"];
 
-    /// <summary>0: run, 1: stop.</summary>
+    /// <summary>0: run, 1: stop, 2: end loop.</summary>
     public int CommandIndex
     {
-        get => Command?.Command == TimelineCommand.Stop ? 1 : 0;
+        get => (int)(Command?.Command ?? TimelineCommand.Run);
         set
         {
-            if (Command is { } e) Change(value == 1 ? "Make it Stop timeline" : "Make it Run timeline", e.Command, value == 1 ? TimelineCommand.Stop : TimelineCommand.Run, v => e.Command = v, "command");
+            if (Command is not { } e || value < 0 || value >= Commands.Count) return;
+            Change($"Make it {Commands[value]}", e.Command, (TimelineCommand)value, v => e.Command = v, "command");
+        }
+    }
+
+    public bool IsRunCommand => Command?.Command == TimelineCommand.Run;
+
+    /// <summary>Run: the timeline plays in a loop until it's stopped (or an End loop).</summary>
+    public bool RunLoop
+    {
+        get => Command?.Loop ?? false;
+        set
+        {
+            if (Command is { } e) Change(value ? "Play looped" : "Play once", e.Loop, value, v => e.Loop = v, "loop");
+        }
+    }
+
+    /// <summary>Run: nothing happens if the timeline is already playing (otherwise another copy plays).</summary>
+    public bool RunOneOnly
+    {
+        get => Command?.OneOnly ?? false;
+        set
+        {
+            if (Command is { } e) Change(value ? "Play one only" : "Play a copy each time", e.OneOnly, value, v => e.OneOnly = v, "oneOnly");
         }
     }
 

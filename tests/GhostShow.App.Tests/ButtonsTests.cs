@@ -62,11 +62,31 @@ public class ButtonsTests : IDisposable
 
         _rig.Manager.StopTimeline(_scare.Id);
         _rig.Manager.Tick();
-        // An edit, as Timeline properties makes it: playback picks it up.
-        _rig.Session.Document.Record("Play one at a time", () => _scare.Playback = _scare.Playback with { OneAtATime = true }, Core.Editing.ShowDocument.Shallow(_scare));
+        scare.Actions[0].OneOnly = true;   // the button's "Play one only"
         _buttons.Press(scare);
         _buttons.Press(scare);
-        Assert.Equal(1, Copies);   // a timeline that plays one at a time doesn't stack
+        Assert.Equal(1, Copies);   // it doesn't stack
+        Assert.True(Assert.Single(_rig.Playback.Running).OneOnly);   // and the Playing list shows it
+
+        _rig.Session.Document.UndoLatest(null);
+        Assert.False(((RunTimelineAction)scare.Button.Actions[0]).OneOnly);
+    }
+
+    [Fact]
+    public void A_button_says_whether_its_run_loops_and_End_loop_lets_it_finish_its_pass()
+    {
+        var run = Button("Ambient", new RunTimelineAction { TimelineId = _scare.Id });
+        var end = Button("Calm down", new EndLoopAction { TimelineId = _scare.Id });
+        run.Actions[0].Loop = true;
+        Assert.True(((RunTimelineAction)run.Button.Actions[0]).Loop);
+
+        _buttons.Press(run);
+        var row = Assert.Single(_rig.Playback.Running);
+        Assert.True((row.Loops, row.OneOnly) == (true, false));
+
+        _buttons.Press(end);
+        Assert.False(Assert.Single(_rig.Manager.Running).Status.Loop);   // it plays to its end, then stops
+        Assert.Equal("Calm down", _buttons.Status);
     }
 
     [Fact]

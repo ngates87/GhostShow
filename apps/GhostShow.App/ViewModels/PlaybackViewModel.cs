@@ -27,6 +27,14 @@ public sealed partial class RunningRowViewModel(Guid id, PlaybackViewModel owner
     [ObservableProperty]
     public partial bool IsFocused { get; set; }
 
+    /// <summary>It plays in a loop (as what ran it said): it won't leave the list by itself.</summary>
+    [ObservableProperty]
+    public partial bool Loops { get; set; }
+
+    /// <summary>What ran it said "Play one only": running it again while it plays does nothing.</summary>
+    [ObservableProperty]
+    public partial bool OneOnly { get; set; }
+
     [RelayCommand]
     void Stop() => owner.StopTimeline(Id);
 
@@ -133,13 +141,21 @@ public sealed partial class PlaybackViewModel : ObservableObject
 
     /// <summary>
     /// Runs a timeline from its start (a show button): as a new copy if it's already running, as VenueMagic does,
-    /// or not at all if it plays one at a time and is still playing. Returns whether it started.
+    /// or not at all if "Play one only" and it's still playing. how: loop and one only, as the button says; null: as
+    /// if played on its own. Returns whether it started.
     /// </summary>
-    public bool Launch(ShowTimeline timeline)
+    public bool Launch(ShowTimeline timeline, RunOptions? how = null)
     {
-        bool started = Show.Launch(timeline.Id);
+        bool started = Show.Launch(timeline.Id, how);
         Tick();
         return started;
+    }
+
+    /// <summary>Every copy of a timeline playing in a loop finishes the pass it's on, then stops.</summary>
+    public void EndLoop(ShowTimeline timeline)
+    {
+        Show.EndLoop(timeline.Id);
+        Tick();
     }
 
     /// <summary>Stops a timeline and every copy of it playing.</summary>
@@ -257,6 +273,8 @@ public sealed partial class PlaybackViewModel : ObservableObject
                 continue;
             }
             row.Name = r.Id == r.TimelineId ? r.Name : $"{r.Name} (copy)";
+            row.Loops = r.Status.Loop;
+            row.OneOnly = r.Status.OneOnly;
             string state = r.Status.State == TransportState.Paused ? "paused" : "▶";
             row.Detail = $"{state} {Format(r.Status.Position)}" + (r.Priority != 0 ? $" · priority {r.Priority}" : "")
                        + (Show.IsLoadingAudio(r.TimelineId) ? " · loading sound…" : "");

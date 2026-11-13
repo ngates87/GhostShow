@@ -109,6 +109,7 @@ public static class ProjectStore
         {
             DisambiguateNames(project);
             foreach (var timeline in project.Timelines) LevelEventConversion.Upgrade(timeline);
+            LegacyRunSettings.Apply(project, new HashSet<Guid>());   // a show folder's are applied once its timelines are read
         }
         project.Version = Project.CurrentSchemaVersion;
         return new ProjectLoadResult(project, null, migratedOutputs, version);

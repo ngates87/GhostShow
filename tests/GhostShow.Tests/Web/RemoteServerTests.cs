@@ -37,7 +37,8 @@ public sealed class RemoteServerTests : IAsyncLifetime
         }
 
         public string? Transport(TransportAction action, TimeSpan? position) => Did($"{action} {position?.TotalSeconds}".Trim());
-        public string? Run(Guid timelineId) => Did($"run {timelineId}");
+        public string? Run(Guid timelineId, RunOptions? how = null) => Did(how is { } o ? $"run {timelineId} {o.Loop} {o.OneOnly}" : $"run {timelineId}");
+        public string? EndLoop(Guid timelineId) => Did($"endLoop {timelineId}");
         public string? StopTimeline(Guid timelineId) => Did($"stopTimeline {timelineId}");
         public string? StopRunning(Guid runningId) => Did($"stopRunning {runningId}");
         public string? StopAll() => Did("stopAll");
@@ -322,8 +323,12 @@ public sealed class RemoteServerTests : IAsyncLifetime
             var answer = await CommandAsync(socket, command);
             Assert.True(answer["ok"]!.GetValue<bool>(), answer.ToJsonString());
         }
+        // A button in the browser build says how it runs: looped, one only.
+        Assert.True((await CommandAsync(socket, new { action = "run", timeline = scare.ToString(), loop = true, oneOnly = false }))["ok"]!.GetValue<bool>());
+        Assert.True((await CommandAsync(socket, new { action = "endLoop", timeline = scare.ToString() }))["ok"]!.GetValue<bool>());
 
-        Assert.Equal(["Play", "Seek 12.5", $"run {scare}", $"stopRunning {slot}", "stopAll", "blackout", $"open {scare}"], _host.Commands.Calls);
+        Assert.Equal(["Play", "Seek 12.5", $"run {scare}", $"stopRunning {slot}", "stopAll", "blackout", $"open {scare}",
+                      $"run {scare} True False", $"endLoop {scare}"], _host.Commands.Calls);
         var refused = await CommandAsync(socket, new { action = "press", button = button.ToString() });
         Assert.Equal((false, "That button isn't in the show any more."), (refused["ok"]!.GetValue<bool>(), refused["error"]!.GetValue<string>()));
         Assert.Contains("doesn't know", (await CommandAsync(socket, new { action = "fly" }))["error"]!.GetValue<string>());

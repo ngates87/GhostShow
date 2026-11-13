@@ -155,8 +155,12 @@ public sealed partial class ButtonsViewModel : ObservableObject
             switch (action)
             {
                 case RunTimelineAction run:
-                    if (Find(run.TimelineId) is { } timeline) _playback.Launch(timeline);
+                    if (Find(run.TimelineId) is { } timeline) _playback.Launch(timeline, run.Options);
                     else problems.Add("a timeline it runs is gone");
+                    break;
+                case EndLoopAction endLoop:
+                    if (Find(endLoop.TimelineId) is { } looping) _playback.EndLoop(looping);
+                    else problems.Add("a timeline it ends the loop of is gone");
                     break;
                 case StopTimelineAction stop:
                     if (Find(stop.TimelineId) is { } stopped) _playback.StopTimeline(stopped);
@@ -545,7 +549,7 @@ public sealed partial class ShowButtonViewModel : ObservableObject
     [RelayCommand]
     void PickColor(string color) => Color = color;
 
-    /// <summary>Adds an action: "run", "stop", "stopAll" or "blackout". A timeline action starts on the first timeline.</summary>
+    /// <summary>Adds an action: "run", "stop", "endLoop", "stopAll" or "blackout". A timeline action starts on the first timeline.</summary>
     [RelayCommand]
     void AddAction(string kind)
     {
@@ -553,6 +557,7 @@ public sealed partial class ShowButtonViewModel : ObservableObject
         ButtonAction action = kind switch
         {
             "stop" => new StopTimelineAction { TimelineId = first },
+            "endLoop" => new EndLoopAction { TimelineId = first },
             "stopAll" => new StopAllAction(),
             "blackout" => new BlackoutAction(),
             _ => new RunTimelineAction { TimelineId = first },
@@ -699,22 +704,49 @@ public sealed partial class ButtonActionViewModel(ButtonAction action, ShowButto
     {
         RunTimelineAction => "Run timeline",
         StopTimelineAction => "Stop timeline",
+        EndLoopAction => "End loop",
         StopAllAction => "Stop all timelines",
         BlackoutAction => "Blackout",
         _ => "?",
     };
 
-    public bool HasTimeline => Action is RunTimelineAction or StopTimelineAction;
+    public bool HasTimeline => Action is RunTimelineAction or StopTimelineAction or EndLoopAction;
+
+    /// <summary>A Run timeline: it has "Play looped" and "Play one only".</summary>
+    public bool IsRun => Action is RunTimelineAction;
+
+    /// <summary>Run: the timeline plays in a loop until it's stopped (or a button's or event's End loop).</summary>
+    public bool Loop
+    {
+        get => Action is RunTimelineAction { Loop: true };
+        set
+        {
+            if (Action is RunTimelineAction r && r.Loop != value)
+                button.EditAction(Action, value ? "Play looped" : "Play once", () => r.Loop = value);
+        }
+    }
+
+    /// <summary>Run: nothing happens if the timeline is already playing (otherwise another copy plays).</summary>
+    public bool OneOnly
+    {
+        get => Action is RunTimelineAction { OneOnly: true };
+        set
+        {
+            if (Action is RunTimelineAction r && r.OneOnly != value)
+                button.EditAction(Action, value ? "Play one only" : "Play a copy each time", () => r.OneOnly = value);
+        }
+    }
 
     public IReadOnlyList<TimelineChoice> Timelines => owner.Timelines;
 
     Guid TimelineId
     {
-        get => Action switch { RunTimelineAction r => r.TimelineId, StopTimelineAction s => s.TimelineId, _ => Guid.Empty };
+        get => Action switch { RunTimelineAction r => r.TimelineId, StopTimelineAction s => s.TimelineId, EndLoopAction e => e.TimelineId, _ => Guid.Empty };
         set
         {
             if (Action is RunTimelineAction r) r.TimelineId = value;
             else if (Action is StopTimelineAction s) s.TimelineId = value;
+            else if (Action is EndLoopAction e) e.TimelineId = value;
         }
     }
 

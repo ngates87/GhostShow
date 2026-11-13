@@ -157,6 +157,43 @@ public class ShowFolderStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task An_older_show_gives_each_run_the_loop_and_one_at_a_time_of_the_timeline_it_runs()
+    {
+        Directory.CreateDirectory(TimelineFile(""));
+        const string scare = "6f0e9d1c-1c49-4a0e-9a53-2b1d2b8f6a11", calm = "6f0e9d1c-1c49-4a0e-9a53-2b1d2b8f6a12";
+        await File.WriteAllTextAsync(Path.Combine(_show, "show.json"), $$"""
+            { "version": 6, "name": "Old",
+              "buttons": [ { "name": "Boo", "actions": [ { "type": "runTimeline", "timelineId": "{{scare}}" }, { "type": "runTimeline", "timelineId": "{{calm}}" } ] } ] }
+            """, Token);
+        await File.WriteAllTextAsync(TimelineFile("Scare.timeline.json"), $$"""
+            { "version": 5, "id": "{{scare}}", "loop": true, "playback": { "priority": 10, "oneAtATime": true }, "tracks": [] }
+            """, Token);
+        await File.WriteAllTextAsync(TimelineFile("Calm.timeline.json"), $$"""{ "version": 5, "id": "{{calm}}", "tracks": [] }""", Token);
+        await File.WriteAllTextAsync(TimelineFile("Main.timeline.json"), $$"""
+            { "version": 5, "id": "6f0e9d1c-1c49-4a0e-9a53-2b1d2b8f6a13",
+              "tracks": [ { "name": "E", "kind": "Event", "events": [ { "type": "timelineCommand", "command": "Run", "timelineId": "{{scare}}" },
+                                                                    { "type": "timelineCommand", "command": "Run", "timelineId": "{{calm}}" } ] } ] }
+            """, Token);
+
+        var project = (await Load()).Project!;
+
+        var main = project.FindTimeline("Main")!;
+        Assert.Equal([(true, true), (false, false)], main.Tracks[0].Events.Cast<TimelineCommandEvent>().Select(e => (e.Loop, e.OneOnly)));
+        Assert.Equal([(true, true), (false, false)], project.Buttons[0].Actions.Cast<RunTimelineAction>().Select(r => (r.Loop, r.OneOnly)));
+        Assert.True(main.HasUnsavedChanges);   // written in the new form
+        Assert.True(project.FindTimeline("Scare")!.Loop);   // kept, for playing it on its own
+        Assert.Equal(10, project.FindTimeline("Scare")!.Playback.Priority);
+
+        // Saved, it's a version 7 show: what's set on the runs stays as set.
+        ((TimelineCommandEvent)main.Tracks[0].Events[0]).Loop = false;
+        main.HasUnsavedChanges = true;
+        await Save(project);
+        var reloaded = (await Load()).Project!;
+        Assert.Equal([(false, true), (false, false)], reloaded.FindTimeline("Main")!.Tracks[0].Events.Cast<TimelineCommandEvent>().Select(e => (e.Loop, e.OneOnly)));
+        Assert.Equal((true, true), (((RunTimelineAction)reloaded.Buttons[0].Actions[0]).Loop, ((RunTimelineAction)reloaded.Buttons[0].Actions[0]).OneOnly));
+    }
+
+    [Fact]
     public async Task Marker_tracks_in_older_timeline_files_are_dropped()
     {
         Directory.CreateDirectory(TimelineFile(""));

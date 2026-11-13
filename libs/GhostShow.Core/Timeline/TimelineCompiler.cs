@@ -83,10 +83,10 @@ public static class TimelineCompiler
                     case TimelineCommandEvent command:
                         if (context.Timelines is { } timelines && !timelines.Contains(command.TimelineId))
                         {
-                            issues.Add(Error(e, $"'{Describe(e)}': the timeline it {(command.Command == TimelineCommand.Run ? "runs" : "stops")} isn't in the show."));
+                            issues.Add(Error(e, $"'{Describe(e)}': the timeline it {command.Command switch { TimelineCommand.Run => "runs", TimelineCommand.Stop => "stops", _ => "ends the loop of" }} isn't in the show."));
                             break;
                         }
-                        cues.Add(new TimelineCue(command.Id, command.Start.Ticks, command.TimelineId, command.Command));
+                        cues.Add(new TimelineCue(command.Id, command.Start.Ticks, command.TimelineId, command.Command, command.Options));
                         contentEnd = Math.Max(contentEnd, command.Start.Ticks);
                         break;
                     case LightingClip clip:
@@ -319,7 +319,7 @@ public static class TimelineCompiler
     public static string Describe(TimelineEvent e) => e.Name ?? e switch
     {
         AudioEvent a => Path.GetFileName(a.File),
-        TimelineCommandEvent c => $"{c.Command} timeline at {e.Start:hh\\:mm\\:ss\\.fff}",
+        TimelineCommandEvent c => $"{(c.Command == TimelineCommand.EndLoop ? "End loop" : c.Command)} timeline at {e.Start:hh\\:mm\\:ss\\.fff}",
         LevelsEvent => $"Levels at {e.Start:hh\\:mm\\:ss\\.fff}",
         _ => $"Event at {e.Start:hh\\:mm\\:ss\\.fff}",
     };

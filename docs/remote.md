@@ -138,8 +138,10 @@ Audio shows the show computer's devices and the files used by the show; its sett
   - **Transport targets:** `play`, `pause`, `stop`, `restart`, `seek` and `cue` work on the timeline open in the
     desktop's editor, or, given a `timeline`, on that timeline. The full app on a laptop always names its own, so
     it never moves the desktop's editor.
-  - **Run:** `run` (`timeline`) runs it as a show button does: another copy, or nothing if it plays one at a time and
-    is still playing.
+  - **Run:** `run` (`timeline`, and optionally `loop` and `oneOnly`) runs it as a show button does: another copy, or
+    nothing if `oneOnly` and it's still playing. Without `loop` and `oneOnly` (a phone's list of timelines), it plays
+    as it would from the transport: looping if the timeline is set to. `endLoop` (`timeline`) lets every copy playing
+    in a loop finish its pass, then stop. Each entry of the status's running list has `loop` and `oneOnly`.
   - **Watch:** `watch` (`timeline`) says which timeline the device shows. The show computer loads it and sends its
     problems and status.
   - **Sound files:** `audio` (`file`, as the show names it) asks for a sound file's length and waveform.

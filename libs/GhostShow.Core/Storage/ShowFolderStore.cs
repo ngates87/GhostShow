@@ -72,12 +72,16 @@ public static class ShowFolderStore
         if (result.Project is not { } project || result.IsSingleFileShow) return result;
 
         var warnings = new List<string>();
+        var oneAtATime = new HashSet<Guid>();
         project.Timelines = await LoadTimelinesAsync(Path.Combine(Path.GetDirectoryName(Path.GetFullPath(showFile))!, TimelinesFolderName),
-                                                     project, warnings, cancellationToken);
+                                                     project, warnings, oneAtATime, cancellationToken);
+        if (result.FileVersion < 7) LegacyRunSettings.Apply(project, oneAtATime);
         return result with { Warnings = warnings };
     }
 
-    static async Task<List<ShowTimeline>> LoadTimelinesAsync(string root, Project project, List<string> warnings, CancellationToken cancellationToken)
+    /// <param name="oneAtATime">Gets the timelines whose files have the old "Play one at a time" on (see <see cref="LegacyRunSettings"/>).</param>
+    static async Task<List<ShowTimeline>> LoadTimelinesAsync(string root, Project project, List<string> warnings, HashSet<Guid> oneAtATime,
+                                                             CancellationToken cancellationToken)
     {
         var timelines = new List<ShowTimeline>();
         project.TimelineFolders.Clear();
@@ -102,7 +106,7 @@ public static class ShowFolderStore
             string name = TimelineNames.LeafOf(relative)[..^TimelineExtension.Length];
 
             TimelineFile? content;
-            bool droppedMarkers;
+            bool droppedMarkers, oneAtATimeOn;
             try
             {
                 var json = JsonNode.Parse(await File.ReadAllTextAsync(file, cancellationToken), documentOptions: new JsonDocumentOptions
@@ -110,6 +114,7 @@ public static class ShowFolderStore
                     CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true,
                 });
                 droppedMarkers = LegacyMarkers.Drop(json);
+                oneAtATimeOn = LegacyRunSettings.OneAtATime(json);
                 content = json.Deserialize<TimelineFile>(Json.Options);
             }
             catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
@@ -141,6 +146,7 @@ public static class ShowFolderStore
                 timeline.HasUnsavedChanges = true;
             }
             timelines.Add(timeline);
+            if (oneAtATimeOn) oneAtATime.Add(timeline.Id);
             project.SavedTimelinePaths.Add(relative);
         }
         return timelines;

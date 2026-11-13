@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using GhostShow.Core.Timeline;
 
 namespace GhostShow.Core.Model;
 
@@ -63,6 +64,7 @@ public sealed class ButtonTrigger
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "type")]
 [JsonDerivedType(typeof(RunTimelineAction), "runTimeline")]
 [JsonDerivedType(typeof(StopTimelineAction), "stopTimeline")]
+[JsonDerivedType(typeof(EndLoopAction), "endLoop")]
 [JsonDerivedType(typeof(StopAllAction), "stopAll")]
 [JsonDerivedType(typeof(BlackoutAction), "blackout")]
 public abstract class ButtonAction
@@ -72,13 +74,32 @@ public abstract class ButtonAction
 
 /// <summary>
 /// Plays a timeline from its start (VenueMagic's Run Timeline): a new copy if it's already running, so a scare
-/// fired twice plays twice. A timeline that plays one at a time (TimelinePlayback.OneAtATime) doesn't start again while it runs.
+/// fired twice plays twice, unless <see cref="OneOnly"/>.
 /// </summary>
 public sealed class RunTimelineAction : ButtonAction
 {
     public Guid TimelineId { get; set; }
 
-    public override ButtonAction Clone() => new RunTimelineAction { TimelineId = TimelineId };
+    /// <summary>It plays in a loop until it's stopped (or its loop is ended). Otherwise once.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool Loop { get; set; }
+
+    /// <summary>Nothing happens if the timeline is already playing, so a scare can't stack.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool OneOnly { get; set; }
+
+    [JsonIgnore]
+    public RunOptions Options => new(Loop, OneOnly);
+
+    public override ButtonAction Clone() => new RunTimelineAction { TimelineId = TimelineId, Loop = Loop, OneOnly = OneOnly };
+}
+
+/// <summary>Every copy of a timeline playing in a loop finishes the pass it's on, then stops (VenueMagic's End loop).</summary>
+public sealed class EndLoopAction : ButtonAction
+{
+    public Guid TimelineId { get; set; }
+
+    public override ButtonAction Clone() => new EndLoopAction { TimelineId = TimelineId };
 }
 
 /// <summary>Stops a timeline, every copy of it playing (each releasing its lights with its release fade).</summary>

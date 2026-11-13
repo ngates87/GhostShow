@@ -17,6 +17,8 @@ File → Import VenueMagic Project… (a `.vmp`, or its `.vmp.bak` backup) makes
    - audio tracks keep their clips (start, length, volume); files are looked for in the project's folder, by their
      path under it, else by name.
    - event tracks keep their Run Timeline events; each runs the timeline of that name (in the same folder first).
+     Their "Play looped" and "Play one only" aren't read from the file yet: each imports as playing once, so tick
+     them on the events that need them.
    Left out, and listed in the notes: Run Timeline events whose timeline isn't in the project, other
    expressions ("Chaos", "Flash", "Electric Short", …), volume fades and pan, channels not in the patch, timelines
    whose file is missing, and timelines saved by older VenueMagic versions (record version 381).

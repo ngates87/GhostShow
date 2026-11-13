@@ -21,8 +21,9 @@ readonly record struct LevelStep(long Start, long Fade, int Slot, int Index, byt
     }
 }
 
-/// <summary>An event track's command, flattened: at Time (ticks), run or stop another timeline.</summary>
-public sealed record TimelineCue(Guid EventId, long Time, Guid Timeline, TimelineCommand Command);
+/// <summary>An event track's command, flattened: at Time (ticks), run, stop or end the loop of another timeline.</summary>
+/// <param name="Options">For Run: whether it loops, and whether it plays only if it isn't playing already.</param>
+public sealed record TimelineCue(Guid EventId, long Time, Guid Timeline, TimelineCommand Command, RunOptions Options = default);
 
 /// <param name="End">When the cue stops; null when it plays until the file ends on its own (length unknown).</param>
 /// <param name="Device">The output device to play on (its track's); null for the default output.</param>

@@ -3,6 +3,8 @@ export const icons = {
   play: 'M8 5v14l11-7z',
   pause: 'M6 5h4v14H6zm8 0h4v14h-4z',
   stop: 'M6 6h12v12H6z',
+  loop: 'M17 17H7v-3l-4 4 4 4v-3h12v-6h-2M7 7h10v3l4-4-4-4v3H5v6h2z',
+  oneOnly: 'M10 7h4v10h-2V9h-2zm2-5a10 10 0 1 1 0 20 10 10 0 0 1 0-20m0 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16',
   restart: 'M6 6h2v12H6zm3.5 6L18 18V6z',
   open: 'M14 3h7v7h-2V6.41l-8.29 8.3-1.42-1.42L17.59 5H14zM5 5h6v2H6v11h11v-5h2v6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z',
 } as const;

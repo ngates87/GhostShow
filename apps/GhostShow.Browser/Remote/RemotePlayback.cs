@@ -51,11 +51,15 @@ sealed class RemotePlayback(RemoteLink link) : IPlayback
         link.Send("cue", ("timeline", timelineId.ToString()), ("position", position.TotalSeconds));
 
     /// <summary>Asks for it; whether it started shows in the next status. Answers true (it was asked).</summary>
-    public bool Launch(Guid timelineId)
+    public bool Launch(Guid timelineId, RunOptions? how = null)
     {
-        link.Send("run", ("timeline", timelineId.ToString()));
+        if (how is { } options)
+            link.Send("run", ("timeline", timelineId.ToString()), ("loop", options.Loop), ("oneOnly", options.OneOnly));
+        else link.Send("run", ("timeline", timelineId.ToString()));
         return true;
     }
+
+    public void EndLoop(Guid timelineId) => link.Send("endLoop", ("timeline", timelineId.ToString()));
 
     public void StopTimeline(Guid timelineId) => link.Send("stopTimeline", ("timeline", timelineId.ToString()));
 
@@ -140,5 +144,6 @@ sealed class RemotePlayback(RemoteLink link) : IPlayback
         TimeSpan.FromSeconds(s["position"]!.GetValue<double>()),
         TimeSpan.FromSeconds(s["length"]!.GetValue<double>()),
         s["atEnd"]?.GetValue<bool>() ?? false,
-        s["loop"]?.GetValue<bool>() ?? false);
+        s["loop"]?.GetValue<bool>() ?? false,
+        s["oneOnly"]?.GetValue<bool>() ?? false);
 }

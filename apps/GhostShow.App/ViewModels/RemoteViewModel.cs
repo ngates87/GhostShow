@@ -74,10 +74,17 @@ sealed class AppShowControl(MainViewModel app) : IShowControl
         return null;
     }
 
-    public string? Run(Guid timelineId)
+    public string? Run(Guid timelineId, RunOptions? how = null)
     {
         if (Find(timelineId) is not { } timeline) return Gone;
-        Playback.Launch(timeline);
+        Playback.Launch(timeline, how);
+        return null;
+    }
+
+    public string? EndLoop(Guid timelineId)
+    {
+        if (Find(timelineId) is not { } timeline) return Gone;
+        Playback.EndLoop(timeline);
         return null;
     }
 

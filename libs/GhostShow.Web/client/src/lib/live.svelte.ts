@@ -16,6 +16,8 @@ export interface PlaybackState {
   position: number;
   length: number;
   loop: boolean;
+  /** What ran it said "Play one only": running it again while it plays does nothing. */
+  oneOnly?: boolean;
 }
 
 export interface Focused extends PlaybackState {

@@ -178,10 +178,10 @@
             </DockPanel>
             <ScrollViewer>
               <StackPanel Spacing="8">
-                <CheckBox Content="Loop" IsChecked="{Binding Loop}"
-                          ToolTip.Tip="Start again from the beginning at the end, until stopped (the same as the loop button under the timeline)" />
-                <CheckBox Content="Play one at a time" IsChecked="{Binding OneAtATime}"
-                          ToolTip.Tip="Starting it while it's already playing (a button, a key, another timeline's event) does nothing. Off: each start plays another copy." />
+                <CheckBox Content="Loop when played here" IsChecked="{Binding Loop}"
+                          ToolTip.Tip="When you play it with the transport here (or a remote's): start again from the beginning at the end, until stopped. The same as the loop button under the timeline." />
+                <TextBlock TextWrapping="Wrap" Opacity="0.75" FontSize="12"
+                           Text="A button or an event that runs it says for itself whether it loops, and whether it plays only if it isn't already playing (Play looped, Play one only), as in VenueMagic." />
                 <Separator Margin="0,4" />
                 <TextBlock Text="Playing alongside other timelines" FontWeight="SemiBold" />
                 <TextBlock TextWrapping="Wrap" Opacity="0.75" FontSize="12"
@@ -327,7 +327,7 @@
         <Button Classes="icon" Command="{Binding Playback.StopCommand}" ToolTip.Tip="Stop: audio stops and the lights go back to their manual levels">
           <PathIcon Data="{StaticResource Icon.Stop}" />
         </Button>
-        <ToggleButton Classes="icon" IsChecked="{Binding Loop}" ToolTip.Tip="Loop: start again from the beginning at the end">
+        <ToggleButton Classes="icon" IsChecked="{Binding Loop}" ToolTip.Tip="Loop when played here: start again from the beginning at the end. Buttons and events that run it say for themselves whether it loops.">
           <PathIcon Data="{StaticResource Icon.Loop}" />
         </ToggleButton>
         <StackPanel VerticalAlignment="Center" Margin="10,0,0,0">
@@ -610,14 +610,18 @@
                     </StackPanel>
                   </StackPanel>
 
-                  <!-- Event track: run or stop a timeline -->
+                  <!-- Event track: run or stop a timeline, or end its loop -->
                   <StackPanel Spacing="6" IsVisible="{Binding IsCommand}" IsEnabled="{Binding IsUnlocked}">
                     <ComboBox ItemsSource="{x:Static vm:EventPropertiesViewModel.Commands}" SelectedIndex="{Binding CommandIndex}" HorizontalAlignment="Stretch" />
                     <TextBlock Text="Timeline" Classes="label" />
                     <ComboBox ItemsSource="{Binding Timelines}" SelectedItem="{Binding Target}" HorizontalAlignment="Stretch" PlaceholderText="(choose a timeline)" />
+                    <CheckBox Content="Play looped" IsChecked="{Binding RunLoop}" IsVisible="{Binding IsRunCommand}"
+                              ToolTip.Tip="It plays in a loop until it's stopped (or an End loop). Off: it plays once and leaves the Playing list at its end." />
+                    <CheckBox Content="Play one only" IsChecked="{Binding RunOneOnly}" IsVisible="{Binding IsRunCommand}"
+                              ToolTip.Tip="If the timeline is already playing, this does nothing. Off: it plays another copy on top, as VenueMagic does." />
                     <TextBlock Text="Symbol" Classes="label" />
                     <ComboBox ItemsSource="{x:Static vm:EventPropertiesViewModel.Symbols}" SelectedItem="{Binding Symbol}" HorizontalAlignment="Stretch"
-                              ToolTip.Tip="How it's marked on the lane (green: run, red: stop)">
+                              ToolTip.Tip="How it's marked on the lane (green: run, red: stop, orange: end loop)">
                       <ComboBox.ItemTemplate>
                         <DataTemplate x:DataType="tl:EventSymbol">
                           <StackPanel Orientation="Horizontal" Spacing="8">
@@ -628,7 +632,7 @@
                       </ComboBox.ItemTemplate>
                     </ComboBox>
                     <TextBlock TextWrapping="Wrap" Opacity="0.7" FontSize="12"
-                               Text="When this timeline's playhead gets here, it runs (from its start) or stops the other timeline, as VenueMagic's Run Timeline event does. A room's play timeline can start its lights and sounds this way." />
+                               Text="When this timeline's playhead gets here, it runs (from its start) or stops the other timeline, as VenueMagic's Run Timeline event does. A room's play timeline can start its lights and sounds this way. End loop lets a looping timeline finish the pass it's on, then stop." />
                   </StackPanel>
 
                   <!-- Audio -->

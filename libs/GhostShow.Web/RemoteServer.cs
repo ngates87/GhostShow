@@ -418,7 +418,9 @@ public sealed partial class RemoteServer : IAsyncDisposable
             "edit" => ApplyEdit(connection, message),
             "undo" => UndoOrRedo(connection, message, undo: true),
             "redo" => UndoOrRedo(connection, message, undo: false),
-            "run" => control.Run(Id("timeline")),
+            "run" => control.Run(Id("timeline"), message["loop"] is null && message["oneOnly"] is null ? null
+                                 : new RunOptions(message["loop"]?.GetValue<bool>() ?? false, message["oneOnly"]?.GetValue<bool>() ?? false)),
+            "endLoop" => control.EndLoop(Id("timeline")),
             "stopTimeline" => control.StopTimeline(Id("timeline")),
             "stopRunning" => control.StopRunning(Id("running")),
             "stopAll" => control.StopAll(),
@@ -557,6 +559,7 @@ public sealed partial class RemoteServer : IAsyncDisposable
             ["position"] = Math.Round(s.Position.TotalSeconds, 2),
             ["length"] = Math.Round(s.Length.TotalSeconds, 2),
             ["loop"] = s.Loop,
+            ["oneOnly"] = s.OneOnly,
             ["atEnd"] = s.AtEnd,
         };
         JsonObject? focused = null;
