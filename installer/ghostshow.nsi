@@ -23,10 +23,11 @@ SetCompressor /SOLID lzma
 
 Name "GhostShow"
 OutFile "${SETUP_FILE}"
-InstallDir "$PROGRAMFILES64\GhostShow"
+; Per-user install: a normal double-click should not require an administrator password.
+InstallDir "$LOCALAPPDATA\Programs\GhostShow"
 ; An upgrade goes where the last version went.
-InstallDirRegKey HKLM "${SETTINGS_KEY}" "InstallDir"
-RequestExecutionLevel admin
+InstallDirRegKey HKCU "${SETTINGS_KEY}" "InstallDir"
+RequestExecutionLevel user
 
 VIProductVersion "${VERSION}.0"
 VIAddVersionKey "ProductName" "GhostShow"
@@ -39,7 +40,6 @@ VIAddVersionKey "LegalCopyright" "The GhostShow authors"
 !define MUI_UNICON "..\apps\GhostShow.App\Assets\ghostshow.ico"
 !define MUI_ABORTWARNING
 
-!insertmacro MUI_PAGE_COMPONENTS
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
 !define MUI_FINISHPAGE_RUN
@@ -97,7 +97,7 @@ FunctionEnd
 
 Function .onInit
   SetRegView 64
-  SetShellVarContext all
+  SetShellVarContext current
   ${IfNot} ${RunningX64}
   ${OrIfNot} ${AtLeastWin10}
     MessageBox MB_OK|MB_ICONSTOP "GhostShow needs 64-bit Windows 10 or newer." /SD IDOK
@@ -118,27 +118,28 @@ Section "GhostShow" SectionApp
   WriteUninstaller "$INSTDIR\uninstall.exe"
   CreateShortCut "$SMPROGRAMS\GhostShow.lnk" "$INSTDIR\${APP_EXE}"
 
-  WriteRegStr HKLM "${SETTINGS_KEY}" "InstallDir" "$INSTDIR"
+  WriteRegStr HKCU "${SETTINGS_KEY}" "InstallDir" "$INSTDIR"
   ; For Windows' list of installed apps.
   ${GetSize} "$INSTDIR" "/S=0K" $0 $1 $2
-  WriteRegDWORD HKLM "${UNINSTALL_KEY}" "EstimatedSize" $0
-  WriteRegStr HKLM "${UNINSTALL_KEY}" "DisplayName" "GhostShow"
-  WriteRegStr HKLM "${UNINSTALL_KEY}" "DisplayVersion" "${VERSION}"
-  WriteRegStr HKLM "${UNINSTALL_KEY}" "Publisher" "GhostShow"
-  WriteRegStr HKLM "${UNINSTALL_KEY}" "DisplayIcon" "$INSTDIR\${APP_EXE}"
-  WriteRegStr HKLM "${UNINSTALL_KEY}" "InstallLocation" "$INSTDIR"
-  WriteRegStr HKLM "${UNINSTALL_KEY}" "UninstallString" '"$INSTDIR\uninstall.exe"'
-  WriteRegDWORD HKLM "${UNINSTALL_KEY}" "NoModify" 1
-  WriteRegDWORD HKLM "${UNINSTALL_KEY}" "NoRepair" 1
+  WriteRegDWORD HKCU "${UNINSTALL_KEY}" "EstimatedSize" $0
+  WriteRegStr HKCU "${UNINSTALL_KEY}" "DisplayName" "GhostShow"
+  WriteRegStr HKCU "${UNINSTALL_KEY}" "DisplayVersion" "${VERSION}"
+  WriteRegStr HKCU "${UNINSTALL_KEY}" "Publisher" "GhostShow"
+  WriteRegStr HKCU "${UNINSTALL_KEY}" "DisplayIcon" "$INSTDIR\${APP_EXE}"
+  WriteRegStr HKCU "${UNINSTALL_KEY}" "InstallLocation" "$INSTDIR"
+  WriteRegStr HKCU "${UNINSTALL_KEY}" "UninstallString" '"$INSTDIR\uninstall.exe"'
+  WriteRegDWORD HKCU "${UNINSTALL_KEY}" "NoModify" 1
+  WriteRegDWORD HKCU "${UNINSTALL_KEY}" "NoRepair" 1
 SectionEnd
 
 Section "Desktop shortcut" SectionDesktopShortcut
+  SetShellVarContext current
   CreateShortCut "$DESKTOP\GhostShow.lnk" "$INSTDIR\${APP_EXE}"
 SectionEnd
 
 Function un.onInit
   SetRegView 64
-  SetShellVarContext all
+  SetShellVarContext current
 FunctionEnd
 
 ; Only removes what the installer put there, and the install folder only if that leaves it empty: the person may have
@@ -151,6 +152,6 @@ Section "Uninstall"
   RMDir /r "$INSTDIR\bin"
   Delete "$INSTDIR\uninstall.exe"
   RMDir "$INSTDIR"
-  DeleteRegKey HKLM "${UNINSTALL_KEY}"
-  DeleteRegKey HKLM "${SETTINGS_KEY}"
+  DeleteRegKey HKCU "${UNINSTALL_KEY}"
+  DeleteRegKey HKCU "${SETTINGS_KEY}"
 SectionEnd

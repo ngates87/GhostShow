@@ -13,19 +13,20 @@ browsers only when that's out of date (about 5 minutes), as `dev.cs` does.
 
 ## What it does on the show computer
 
-- Asks for administrator rights, and installs for everyone on the computer, in `C:\Program Files\GhostShow`.
+- Installs for the signed-in Windows user in `%LOCALAPPDATA%\Programs\GhostShow`; a normal install does not need administrator rights.
 - Includes .NET, so the computer doesn't need it, and the browser app, so `/app/` works with no setup.
 - Installs Microsoft's Visual C++ runtime if it's missing. The sound library needs it, and a fresh Windows may not have
   it. If that fails, it warns and carries on, since everything but sound still works.
-- Adds a Start menu shortcut and, if ticked, a desktop one.
+- Adds Start menu and desktop shortcuts.
 - Refuses to continue while GhostShow is running, in case it's running a show, and asks for it to be closed.
 
-Installing a newer version over an older one replaces the program and keeps everything else. Uninstalling (from
-Windows' list of installed apps) removes the program, and keeps the settings and fixture profiles in
+Installing a newer version over an older per-user version replaces the program and keeps everything else. Uninstalling
+(from Windows' list of installed apps) removes the program, and keeps the settings and fixture profiles in
 `%APPDATA%\GhostShow`, and the shows.
 
-`GhostShow-Setup-1.2.0.exe /S` installs with no questions, and `/D=C:\Some\Folder` (last on the command line) picks the
-folder. Without someone there to close it, a running GhostShow makes that fail.
+Double-click `GhostShow-Setup-1.2.0.exe` and follow the short install flow. `/S` installs silently, and
+`/D=C:\Some\Folder` (last on the command line) picks the folder. Without someone there to close it, a running
+GhostShow makes that fail.
 
 ## Things to expect
 

@@ -24,18 +24,10 @@
       "label": "build the Windows installer",
       "type": "process",
       "command": "dotnet",
-      "args": ["run", "installer/build.cs", "--", "${input:installerVersion}"],
+      "args": ["run", "installer/build.cs"],
       "options": { "cwd": "${workspaceFolder}" },
       "problemMatcher": "$msCompile",
       "group": "build"
-    }
-  ],
-  "inputs": [
-    {
-      "id": "installerVersion",
-      "type": "promptString",
-      "description": "The installer's version: three numbers",
-      "default": "0.1.0"
     }
   ]
 }
