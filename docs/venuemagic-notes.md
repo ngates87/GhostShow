@@ -63,6 +63,19 @@ From help: Cue Button General Properties and Foreground Playback Settings.
   at each scare's end that starts the ambient again, with variables to stop a second scare mid-scare. It works, but
   it's fiddly. That's the confusion GhostShow's priority and Pause/Suppress replace.
 
+## When a timeline ends
+
+From help: Timeline Fixture Control and Playlist Lamp Options (read 2026-11-08).
+
+- **Turn off lamps after playback:** "When checked, all timeline lamps are set to level zero at the end of playback.
+  Unchecked, lamps remain at last level when playback ends." Only dimmer and RGB channels are turned off; other
+  channel types stay where they are. Playlists have the same option.
+- **Ease-in on playback/stop** (SC+): blends from the current levels to the timeline's start levels over a set time.
+- The timeline itself is done: it leaves the cue list.
+- GhostShow: a timeline stops at its end and leaves the Playing list. Its **At the end** setting is this checkbox:
+  Holds leaves its lights at their last level (shown as a "Held lights" row; Stop all releases them), Releases lets
+  them go with its release fade. GhostShow turns every channel off, not only dimmers and colours.
+
 ## Merging channels
 
 From help: Fixture Channel Merge Modes, Control Track Channel Settings and Edit Fixture Settings.

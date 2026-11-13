@@ -58,7 +58,93 @@ public class PlaybackManagerTests : IDisposable
         After(5);
 
         Assert.Equal((100, 80, 33), (Output(1), Output(2), Output(3)));
-        Assert.Equal(2, _manager.Running.Count);
+        // Other ended (5 s) and left its channel held: the ambient, then the "Held lights" row.
+        Assert.Equal([Ambient, PlaybackManager.HeldLevelsId], _manager.Running.Select(r => r.Id));
+    }
+
+    [Fact]
+    public void A_timeline_that_ends_leaves_the_list_and_its_lights_stay_at_their_last_level()
+    {
+        Load(Other, Show("Other", length: 2, tracks: Lights(Raw(0, 3, to: 120))));
+        _manager.Play(Other);
+        After(1);
+        Assert.Equal(Other, Assert.Single(_manager.Running).Id);
+
+        After(1.5);
+
+        Assert.Equal(120, Output(3));
+        var held = Assert.Single(_manager.Running);
+        Assert.True(held.IsHeld);
+        Assert.Equal("Held lights (1 channel)", held.Name);
+        Assert.Equal(1, _manager.HeldChannelCount);
+        Assert.Equal(TransportState.Stopped, _manager.StatusOf(Other).State);
+    }
+
+    [Fact]
+    public void A_timeline_set_to_release_at_the_end_leaves_nothing_held()
+    {
+        Load(Other, Show("Other", new TimelinePlayback(ReleaseAtEnd: true), length: 2, tracks: Lights(Raw(0, 3, to: 120))));
+        _manager.Play(Other);
+
+        After(3);
+
+        Assert.Equal(0, Output(3));
+        Assert.Empty(_manager.Running);
+    }
+
+    [Fact]
+    public void A_playing_timeline_wins_over_held_levels_and_its_own_end_replaces_them()
+    {
+        Load(Other, Show("Other", length: 1, tracks: Lights(Raw(0, 3, to: 120))));
+        Load(Scare, Show("Scare", new TimelinePlayback(Priority: -50, ReleaseAtEnd: true), length: 2, tracks: Lights(Raw(0, 3, to: 30))));
+        _manager.Play(Other);
+        After(1.5);
+        Assert.Equal(120, Output(3));
+
+        _manager.Play(Scare);   // even a low priority beats what's merely held
+        After(1);
+        Assert.Equal(30, Output(3));
+
+        After(1.5);   // it ends, releasing the channel: the held 120 doesn't come back
+        Assert.Equal(0, Output(3));
+        Assert.Equal(0, _manager.HeldChannelCount);
+    }
+
+    [Fact]
+    public void Stop_all_and_the_held_row_release_the_held_levels()
+    {
+        Load(Other, Show("Other", length: 1, tracks: Lights(Raw(0, 3, to: 120))));
+        _manager.Play(Other);
+        After(1.5);
+        Assert.Equal(120, Output(3));
+
+        _manager.Stop(PlaybackManager.HeldLevelsId);
+        After(0.01);
+        Assert.Equal(0, Output(3));
+        Assert.Empty(_manager.Running);
+
+        _manager.Play(Other);
+        After(1.5);
+        Assert.Equal(120, Output(3));
+        _manager.StopAll();
+        After(0.01);
+        Assert.Equal(0, Output(3));
+    }
+
+    [Fact]
+    public void A_timeline_that_runs_others_and_ends_leaves_them_playing()
+    {
+        // Main: two events, at 0.1 s and 0.3 s, then nothing: it ends there and leaves the list.
+        var main = Guid.NewGuid();
+        Load(Ambient, AmbientLoop());
+        Load(Other, Show("Other", loop: true, length: 10, tracks: Lights(Raw(0, 3, to: 33))));
+        Load(main, Show("Main", tracks: Events((0.1, Ambient, TimelineCommand.Run), (0.3, Other, TimelineCommand.Run))));
+        _manager.Play(main);
+
+        for (int i = 0; i < 50; i++) After(0.01);
+
+        Assert.Equal(new[] { Ambient, Other }.Order(), _manager.Running.Select(r => r.Id).Order());
+        Assert.Equal(TransportState.Stopped, _manager.StatusOf(main).State);
     }
 
     [Fact]

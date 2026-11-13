@@ -161,7 +161,7 @@ public class ShowPlayerTests
     }
 
     [Fact]
-    public void Seek_stops_at_zero_but_may_go_past_the_end_where_playing_holds_the_final_look()
+    public void Seek_stops_at_zero_but_may_go_past_the_end_where_playing_stops_holding_the_final_look()
     {
         Load(Lights(Raw(0, 1, to: 200, fade: 10)));
 
@@ -172,7 +172,7 @@ public class ShowPlayerTests
 
         _player.Play();
         After(0.01);
-        Assert.Equal(new PlaybackStatus(TransportState.Paused, S(10), S(10), AtEnd: true, Loop: false), _player.Status);
+        Assert.Equal(new PlaybackStatus(TransportState.Stopped, S(10), S(10), AtEnd: true, Loop: false), _player.Status);
         Assert.Equal(200, Output(1));
     }
 
@@ -202,18 +202,50 @@ public class ShowPlayerTests
     }
 
     [Fact]
-    public void A_non_looping_timeline_holds_its_final_look_at_the_end_and_play_starts_again()
+    public void A_non_looping_timeline_stops_at_the_end_holding_its_final_look_and_play_starts_again()
     {
         Load(Lights(Raw(0, 1, to: 200, fade: 10, from: 0)));
         _player.Play();
 
         After(15);
 
-        Assert.Equal((TransportState.Paused, true, S(10)), (_player.Status.State, _player.Status.AtEnd, _player.Status.Position));
+        Assert.Equal((TransportState.Stopped, true, S(10)), (_player.Status.State, _player.Status.AtEnd, _player.Status.Position));
+        Assert.Equal(200, Output(1));   // standalone, the engine keeps the final look ("lamps remain at last level")
+        After(1);
         Assert.Equal(200, Output(1));
         _player.Play();
         After(1);
         Assert.Equal(S(1), _player.Status.Position);
+    }
+
+    [Fact]
+    public void Stop_after_the_end_lets_go_of_the_final_look()
+    {
+        Load(Lights(Raw(0, 1, to: 200)));
+        _player.Play();
+        After(1);
+        Assert.True(_player.Status.AtEnd);
+        Assert.Equal(200, Output(1));
+
+        _player.Stop();
+        After(0.01);
+
+        Assert.Equal(0, Output(1));
+        Assert.False(_player.Status.AtEnd);
+    }
+
+    [Fact]
+    public void A_timeline_set_to_release_at_the_end_lets_go_of_its_channels_there()
+    {
+        var timeline = Timeline(Lights(Raw(0, 1, to: 200)));
+        timeline.Playback = new TimelinePlayback(ReleaseAtEnd: true);
+        LoadTimeline(timeline);
+        _player.Play();
+
+        After(1);
+
+        Assert.Equal((TransportState.Stopped, true), (_player.Status.State, _player.Status.AtEnd));
+        Assert.Equal(0, Output(1));
     }
 
     [Fact]
@@ -249,7 +281,8 @@ public class ShowPlayerTests
             var status = _player.Status;
             // Playing never runs past the end; paused or stopped it can sit wherever a seek put it (up to 12 s here).
             Assert.InRange(status.Position, TimeSpan.Zero, status.State == TransportState.Playing ? S(10) : S(12));
-            if (status.State == TransportState.Stopped) Assert.Equal(0, Output(1));
+            // Stopped lets go of the lights, except at the end, where it holds its final look.
+            if (status.State == TransportState.Stopped) Assert.Equal(status.AtEnd ? 200 : 0, Output(1));
         }
     }
 

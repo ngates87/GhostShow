@@ -5,7 +5,7 @@ namespace GhostShow.Core.Playback;
 
 public enum TransportState { Stopped, Playing, Paused }
 
-/// <param name="AtEnd">A non-looping timeline reached its end and is holding its final look.</param>
+/// <param name="AtEnd">A non-looping timeline played to its end and stopped there (Play starts it over).</param>
 public readonly record struct PlaybackStatus(TransportState State, TimeSpan Position, TimeSpan Length, bool AtEnd, bool Loop);
 
 /// <summary>
@@ -24,7 +24,10 @@ public readonly record struct PlaybackStatus(TransportState State, TimeSpan Posi
 /// - Pause: holds the current levels and pauses audio. Play resumes from the same position.
 /// - Seek: moves the position (anywhere from 0, including past the end); levels are evaluated at the new position (mid-fade gives the mid-fade value) and audio
 ///   restarts at the matching file offset.
-/// - End: a looping timeline wraps to 0; otherwise it pauses at the end holding the final look (Play starts over).
+/// - End: a looping timeline wraps to 0; otherwise it stops there (Play starts over), as VenueMagic's do. What its
+///   channels do then is its "At the end" setting: Holds leaves them at their last levels (VenueMagic's "lamps remain
+///   at last level"; see <see cref="EndFrame"/>), Releases lets go of them. A timeline whose length isn't known yet
+///   (a sound not measured yet, or one looping forever) doesn't end on its own.
 /// </summary>
 public sealed class ShowPlayer
 {
@@ -50,6 +53,7 @@ public sealed class ShowPlayer
     LevelsFrame? _frame;
     CompiledTimeline? _frameTimeline;
     TransportState _lastState;
+    bool _engineHolding;      // standalone: it ended holding, so the engine keeps its final look until Stop or Play
     int _seenJumps = -1, _seenEdits, _seenLoops, _seenAudioGeneration;
     readonly Dictionary<Guid, AudioCue> _activeAudio = new();
     readonly HashSet<Guid> _pausedAudio = new();
@@ -68,6 +72,12 @@ public sealed class ShowPlayer
 
     /// <summary>The levels from the last tick; null while stopped (the timeline controls nothing then).</summary>
     public LevelsFrame? Frame { get; private set; }
+
+    /// <summary>
+    /// Its levels at its very end, on the one update where it played to its end and stopped; null otherwise. A
+    /// <see cref="PlaybackManager"/> keeps them (Holds) or fades them out (Releases). Playback thread only.
+    /// </summary>
+    public LevelsFrame? EndFrame { get; private set; }
 
     /// <summary>Scales every sound's volume, e.g. while a higher-priority timeline ducks this one. Set by the playback thread.</summary>
     public Func<AudioCue, double> VolumeScale { get; set; } = _ => 1;
@@ -182,7 +192,7 @@ public sealed class ShowPlayer
         bool wrapped = loops != _seenLoops;
 
         FireCues(state, position, timeline, wrapped, ended);
-        UpdateLevels(state, position, timeline);
+        UpdateLevels(state, position, timeline, ended, jumped);
         ReconcileAudio(state, position, timeline, resync: jumped || wrapped, edited: edits != _seenEdits);
 
         _lastState = state;
@@ -224,53 +234,72 @@ public sealed class ShowPlayer
             long now = _clock.Now;
             long position = PositionAt(now);
             long length = _timeline.Length;
-            bool ended = _state == TransportState.Playing && position >= length && !(_timeline.Loop && length > 0);
-            if (_state == TransportState.Playing && position >= length)
+            bool reachedEnd = _state == TransportState.Playing && position >= length && !_timeline.OpenEnded;
+            bool ended = reachedEnd && !(_timeline.Loop && length > 0);
+            if (reachedEnd)
             {
-                if (_timeline.Loop && length > 0)
+                if (!ended)
                 {
                     position %= length;
                     _anchorPosition = position;
                     _anchorTime = now;
                     _loops++;
                 }
-                else if (_timeline.Playback.ReleaseAtEnd)
-                {
-                    // Let go of its channels (and sounds) instead of holding the final look: from this update it's
-                    // stopped at 0.
-                    position = length;
-                    _state = TransportState.Stopped;
-                    _anchorPosition = 0;
-                    _anchorTime = now;
-                }
                 else
                 {
+                    // Stopped at its end: its sounds stop, its channels hold or release (see EndFrame), and it leaves
+                    // the Playing list. The playhead stays at the end; Play starts over.
                     position = length;
-                    _state = TransportState.Paused;
+                    _state = TransportState.Stopped;
                     _atEnd = true;
-                    _anchorPosition = position;
+                    _anchorPosition = length;
+                    _anchorTime = now;
                 }
             }
             return (_state, position, _timeline, _jumps, _edits, _loops, ended);
         }
     }
 
-    void UpdateLevels(TransportState state, long position, CompiledTimeline timeline)
+    void UpdateLevels(TransportState state, long position, CompiledTimeline timeline, bool ended, bool jumped)
     {
+        EndFrame = null;
         if (state == TransportState.Stopped)
         {
-            if (_lastState != TransportState.Stopped) _engine?.ReleaseTimeline();
             Frame = null;
+            if (ended)
+            {
+                // Its exact final look (the last update may have been a few ms before the end, mid-fade).
+                EndFrame = Evaluate(position, timeline);
+                if (_engine is not null && !timeline.Playback.ReleaseAtEnd)
+                {
+                    // Standalone (no manager to keep it): the engine keeps the final look until Stop or Play.
+                    _engine.SetTimelineLevels(EndFrame);
+                    _engineHolding = true;
+                    return;
+                }
+            }
+            if (_lastState != TransportState.Stopped || (_engineHolding && jumped))
+            {
+                _engine?.ReleaseTimeline();
+                _engineHolding = false;
+            }
             return;
         }
-        if (_frameTimeline != timeline)
+        _engineHolding = false;
+        var frame = Evaluate(position, timeline);
+        _engine?.SetTimelineLevels(frame);
+        Frame = frame;
+    }
+
+    LevelsFrame Evaluate(long position, CompiledTimeline timeline)
+    {
+        if (_frameTimeline != timeline || _frame is null)
         {
             _frame = timeline.CreateFrame();   // only when a new timeline is loaded, not per tick
             _frameTimeline = timeline;
         }
-        timeline.EvaluateLevels(position, _frame!);
-        _engine?.SetTimelineLevels(_frame!);
-        Frame = _frame;
+        timeline.EvaluateLevels(position, _frame);
+        return _frame;
     }
 
     /// <summary>

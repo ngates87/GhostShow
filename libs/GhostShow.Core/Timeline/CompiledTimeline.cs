@@ -90,8 +90,9 @@ public sealed class CompiledTimeline
 
     internal CompiledTimeline(LevelStep[] steps, IReadOnlyList<int> universes, IReadOnlyList<AudioCue> audio,
                               long length, bool loop, IReadOnlyList<TimelineIssue> issues,
-                              TimelinePlayback? playback = null, IReadOnlyList<TimelineCue>? cues = null)
+                              TimelinePlayback? playback = null, IReadOnlyList<TimelineCue>? cues = null, bool openEnded = false)
     {
+        OpenEnded = openEnded;
         Cues = cues ?? [];
         _steps = steps;
         Playback = playback ?? new TimelinePlayback();
@@ -119,6 +120,12 @@ public sealed class CompiledTimeline
 
     /// <summary>In ticks.</summary>
     public long Length { get; }
+
+    /// <summary>
+    /// Its end isn't known, so it doesn't end on its own: it has no set length and a sound whose end isn't known (its
+    /// file not measured yet, or a sound looping forever). Once the file is measured it's compiled again with its end.
+    /// </summary>
+    public bool OpenEnded { get; }
 
     public bool Loop { get; }
 

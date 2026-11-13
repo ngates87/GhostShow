@@ -101,9 +101,10 @@ public static class TimelineCompiler
         var finalSteps = ResolveFadeStarts(ordered);
         var universes = universeSlots.OrderBy(kv => kv.Value).Select(kv => kv.Key).ToArray();
         long length = timeline.Length?.Ticks ?? contentEnd;
+        bool openEnded = timeline.Length is null && audio.Any(a => a.End is null);
 
         return new CompiledTimeline(finalSteps, universes, audio.OrderBy(a => a.Start).ToArray(),
-                                    length, timeline.Loop, issues, timeline.Playback, cues.OrderBy(c => c.Time).ToArray());
+                                    length, timeline.Loop, issues, timeline.Playback, cues.OrderBy(c => c.Time).ToArray(), openEnded);
     }
 
     /// <summary>

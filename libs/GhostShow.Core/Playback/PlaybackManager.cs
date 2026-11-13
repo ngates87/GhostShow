@@ -6,7 +6,11 @@ namespace GhostShow.Core.Playback;
 
 /// <summary>A timeline that's playing or paused, for the "Playing" list.</summary>
 /// <param name="Id">What to stop or pause it by: the timeline's ID, or for a second (third, …) copy of it, the copy's.</param>
-public sealed record RunningTimeline(Guid Id, string Name, PlaybackStatus Status, int Priority, Guid TimelineId);
+public sealed record RunningTimeline(Guid Id, string Name, PlaybackStatus Status, int Priority, Guid TimelineId)
+{
+    /// <summary>The "Held lights" row: levels timelines left behind when they ended (stopping it releases them).</summary>
+    public bool IsHeld => Id == PlaybackManager.HeldLevelsId;
+}
 
 /// <summary>
 /// Plays any number of timelines at once (a room's ambient loop, scares on top of it): one <see cref="ShowPlayer"/>
@@ -20,6 +24,11 @@ public sealed record RunningTimeline(Guid Id, string Name, PlaybackStatus Status
 /// - Duck: while it plays, lower-priority timelines' sounds are scaled by its duck volume.
 /// - Release: when a timeline stops (or ends, if set to release), its channels fade from where it left them to
 ///   whatever is underneath (a lower timeline, or the manual level) over its release fade.
+///
+/// The end: a timeline that plays to its end (not looping) stops and leaves the list. Set to hold (the default), its
+/// channels stay at their last levels, as VenueMagic's "lamps remain at last level when playback ends": these
+/// <em>held levels</em> sit under every playing timeline until another timeline that sets the channel stops (then
+/// its own end decides), or Stop all / the "Held lights" row (<see cref="HeldLevelsId"/>) releases them.
 ///
 /// Event tracks: a timeline's commands (<see cref="CompiledTimeline.Cues"/>) run or stop other timelines when its
 /// playhead reaches them, the same way as a button: Run is a <see cref="Launch"/>, Stop a <see cref="StopTimeline"/>.
@@ -42,6 +51,9 @@ public sealed class PlaybackManager
 
     // Playback-thread state.
     readonly List<Release> _releases = new();
+    readonly Dictionary<(int Universe, int Index), (byte Level, long Fade)> _held = new();
+    volatile int _heldCount;
+    bool _releaseHeld;   // under _lock: release the held levels on the next update (with their fades)
     readonly Dictionary<int, byte[]> _manual = new();
     LevelsFrame? _merged;
     string _mergedKey = "";
@@ -52,6 +64,18 @@ public sealed class PlaybackManager
 
     /// <summary>The most copies of one timeline playing at once; launching another stops the oldest.</summary>
     public const int MaxCopies = 8;
+
+    /// <summary>The "Held lights" row of <see cref="Running"/>: stopping it (<see cref="Stop"/>) releases the held levels.</summary>
+    public static readonly Guid HeldLevelsId = new("4e1d0000-0000-4000-8000-000000000001");
+
+    /// <summary>How many channels timelines left at their last level when they ended.</summary>
+    public int HeldChannelCount => _heldCount;
+
+    /// <summary>Lets go of the held levels: each fades back to what's underneath with its timeline's release fade.</summary>
+    public void ReleaseHeld()
+    {
+        lock (_lock) _releaseHeld = true;
+    }
 
     /// <param name="timelineId">The timeline it plays; for its first copy, the same as the slot's ID.</param>
     sealed class Slot(Guid id, ShowPlayer player, Guid timelineId, long launched = 0)
@@ -178,15 +202,25 @@ public sealed class PlaybackManager
 
     public void Play(Guid id) => With(id, p => p.Play());
     public void Pause(Guid id) => With(id, p => p.Pause());
-    public void Stop(Guid id) => With(id, p => p.Stop());
+
+    /// <summary>Stops one player (a timeline or a copy); the "Held lights" row's ID releases the held levels.</summary>
+    public void Stop(Guid id)
+    {
+        if (id == HeldLevelsId) ReleaseHeld();
+        else With(id, p => p.Stop());
+    }
+
     public void Restart(Guid id) => With(id, p => p.Restart());
     public void Seek(Guid id, TimeSpan position) => With(id, p => p.Seek(position));
 
-    /// <summary>Stops every timeline (each releases its channels with its own fade).</summary>
+    /// <summary>Stops every timeline (each releases its channels with its own fade), and releases the held levels.</summary>
     public void StopAll()
     {
         lock (_lock)
+        {
             foreach (var slot in _slots.Values) slot.Player.Stop();
+            _releaseHeld = true;
+        }
     }
 
     /// <summary>Stops everything at once, without release fades (blackout, closing).</summary>
@@ -209,16 +243,24 @@ public sealed class PlaybackManager
         lock (_lock) return _slots.TryGetValue(id, out var slot) ? slot.Player.Status : default;
     }
 
-    /// <summary>Every timeline playing or paused, highest priority first.</summary>
+    /// <summary>
+    /// Every timeline playing or paused, highest priority first; then, while timelines that ended left levels behind,
+    /// a "Held lights" row (<see cref="RunningTimeline.IsHeld"/>; stop it to release them).
+    /// </summary>
     public IReadOnlyList<RunningTimeline> Running
     {
         get
         {
+            List<RunningTimeline> running;
             lock (_lock)
-                return _slots.Values.Select(s => new RunningTimeline(s.Id, s.Name, s.Player.Status, s.Timeline.Playback.Priority, s.TimelineId))
+                running = _slots.Values.Select(s => new RunningTimeline(s.Id, s.Name, s.Player.Status, s.Timeline.Playback.Priority, s.TimelineId))
                     .Where(r => r.Status.State != TransportState.Stopped)
                     .OrderByDescending(r => r.Priority).ThenBy(r => r.Name)
                     .ToList();
+            if (_heldCount is var held and > 0)
+                running.Add(new RunningTimeline(HeldLevelsId, held == 1 ? "Held lights (1 channel)" : $"Held lights ({held} channels)", new PlaybackStatus(TransportState.Paused, TimeSpan.Zero, TimeSpan.Zero, true, false),
+                                                int.MinValue, HeldLevelsId));
+            return running;
         }
     }
 
@@ -235,15 +277,22 @@ public sealed class PlaybackManager
     public void Tick()
     {
         Slot[] slots;
-        bool skipReleases;
+        bool skipReleases, releaseHeld;
         lock (_lock)
         {
             slots = _slots.Values.ToArray();
             skipReleases = _skipReleases;
             _skipReleases = false;
+            releaseHeld = _releaseHeld;
+            _releaseHeld = false;
         }
         long now = _clock.Now;
-        if (skipReleases) _releases.Clear();
+        if (skipReleases)
+        {
+            _releases.Clear();
+            _held.Clear();
+        }
+        else if (releaseHeld) ReleaseHeldLevels(now);
 
         // Made once per timeline rather than every update: this runs 100 times a second.
         _ticking = slots;
@@ -260,10 +309,14 @@ public sealed class PlaybackManager
         {
             var state = slot.Player.Status.State;
             bool wasRunning = slot.LastState != TransportState.Stopped, running = state != TransportState.Stopped;
+            // Played to its end in this update: its exact final look (rather than the last update's, a few ms before).
+            // It may have started in this same update too (a very short timeline, or a late update).
+            var end = slot.Player.EndFrame;
             if (running && !wasRunning) OnStarted(slot, slots);
-            if (!running && wasRunning)
+            if (!running && (wasRunning || end is not null))
             {
-                OnStopped(slot, slots, now, skipReleases);
+                if (end is not null) slot.LastFrame = Copy(end, slot.LastFrame);
+                OnStopped(slot, slots, now, skipReleases, ended: end is not null);
                 if (slot.IsCopy) _toRemove.Add(slot.Id);   // a copy is done once it stops
             }
             slot.LastState = state;
@@ -271,6 +324,7 @@ public sealed class PlaybackManager
         }
 
         Merge(slots, now);
+        _heldCount = _held.Count;
 
         while (_toRemove.TryTake(out var id))
             lock (_lock)
@@ -328,17 +382,31 @@ public sealed class PlaybackManager
         }
     }
 
-    /// <summary>A timeline stopped: its channels release (with its fade); what it paused resumes.</summary>
-    void OnStopped(Slot stopped, Slot[] slots, long now, bool skipReleases)
+    /// <summary>
+    /// A timeline stopped: what it paused resumes, and its channels either stay at their last levels (it played to its
+    /// end, set to hold) or release with its fade. Either way they replace what earlier timelines left held there.
+    /// </summary>
+    void OnStopped(Slot stopped, Slot[] slots, long now, bool skipReleases, bool ended)
     {
         var settings = stopped.Timeline.Playback;
-        if (!skipReleases && settings.ReleaseFade > TimeSpan.Zero && stopped.LastFrame is { } last)
+        if (!skipReleases && stopped.LastFrame is { } last)
         {
+            bool hold = ended && !settings.ReleaseAtEnd;
             var levels = new List<(int, int, byte)>();
             for (int u = 0; u < last.Universes.Count; u++)
                 for (int i = 0; i < DmxUniverse.ChannelCount; i++)
-                    if (last.Controlled[u][i]) levels.Add((last.Universes[u], i, last.Values[u][i]));
-            if (levels.Count > 0) _releases.Add(new Release(settings.Priority, levels, now, settings.ReleaseFade.Ticks));
+                {
+                    if (!last.Controlled[u][i]) continue;
+                    var channel = (last.Universes[u], i);
+                    if (hold) _held[channel] = (last.Values[u][i], settings.ReleaseFade.Ticks);
+                    else
+                    {
+                        _held.Remove(channel);
+                        levels.Add((channel.Item1, i, last.Values[u][i]));
+                    }
+                }
+            if (levels.Count > 0 && settings.ReleaseFade > TimeSpan.Zero)
+                _releases.Add(new Release(settings.Priority, levels, now, settings.ReleaseFade.Ticks));
         }
         stopped.LastFrame = null;
 
@@ -351,12 +419,23 @@ public sealed class PlaybackManager
         stopped.Paused.Clear();
     }
 
-    /// <summary>Every playing timeline's levels and every release in progress, merged into the engine's timeline layer.</summary>
+    /// <summary>The held levels fade back to what's underneath, each with its timeline's release fade, and are forgotten.</summary>
+    void ReleaseHeldLevels(long now)
+    {
+        foreach (var group in _held.GroupBy(h => h.Value.Fade).Where(g => g.Key > 0))
+            _releases.Add(new Release(int.MinValue, group.Select(h => (h.Key.Universe, h.Key.Index, h.Value.Level)).ToList(), now, group.Key));
+        _held.Clear();
+    }
+
+    /// <summary>
+    /// The held levels, every playing timeline's levels and every release in progress, merged into the engine's
+    /// timeline layer. Held levels are under every playing timeline.
+    /// </summary>
     void Merge(Slot[] slots, long now)
     {
         _releases.RemoveAll(r => now - r.StartedAt >= r.Fade);
         var frames = slots.Where(s => s.Player.Frame is not null).Select(s => (Slot: s, Frame: s.Player.Frame!)).ToList();
-        if (frames.Count == 0 && _releases.Count == 0)
+        if (frames.Count == 0 && _releases.Count == 0 && _held.Count == 0)
         {
             if (_layerSet) _engine.ReleaseTimeline();
             _layerSet = false;
@@ -364,6 +443,7 @@ public sealed class PlaybackManager
         }
 
         var universes = frames.SelectMany(f => f.Frame.Universes).Concat(_releases.SelectMany(r => r.Levels.Select(l => l.Universe)))
+            .Concat(_held.Keys.Select(k => k.Universe))
             .Distinct().Order().ToArray();
         var merged = MergedFrame(universes);
         merged.Clear();
@@ -371,6 +451,14 @@ public sealed class PlaybackManager
         {
             Array.Fill(_winnerPriority[u], int.MinValue);
             Array.Clear(_winnerStarted[u]);
+        }
+
+        // Held levels first, at the lowest priority: any playing timeline that sets the channel wins over them.
+        foreach (var ((universe, index), (level, _)) in _held)
+        {
+            int u = Array.IndexOf(universes, universe);
+            merged.Values[u][index] = level;
+            merged.Controlled[u][index] = true;
         }
 
         foreach (var (slot, frame) in frames)

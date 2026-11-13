@@ -51,6 +51,6 @@ earlier). Elsewhere each ID is followed by its channel's name.
 ## Limits
 
 - One universe (the project seen used one Enttec DMX USB Pro).
-- Timeline length and looping aren't read: a timeline ends when its last clip does and holds its last look.
+- Timeline length and looping aren't read: a timeline ends when its last clip does, and its lights hold their last level.
 - Channel functions are guesses from names: check fixture types with Fixtures → Edit… (they're custom types).
 - Custom fixture types are saved on this computer (see docs/fixture-profiles.md).
