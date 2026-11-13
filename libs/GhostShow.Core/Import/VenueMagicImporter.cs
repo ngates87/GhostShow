@@ -16,9 +16,13 @@ public sealed record ImportResult(Project Project, IReadOnlyList<FixtureProfile>
 ///   control tracks become lighting tracks (Level Control clips with their envelopes; the "Lightning Storm" and
 ///   "Brownout" expressions become the Lightning and Brown out effects), audio tracks keep their clips (files found
 ///   in the project's folder).
-/// - event tracks keep their Run Timeline events, each running the timeline of that name.
-/// What can't be converted (other expressions, volume envelopes, channels not in the patch, Run Timeline events whose
-/// timeline isn't found, timelines missing or saved by older VenueMagic versions) is left out and listed in the notes.
+/// - event tracks keep their Run Timeline events, each running the timeline of that name (looped, one only, as set),
+///   and their Cue List Commands that stop or end the loop of a cue-list item (also inside Multi-Events);
+/// - cue buttons become show buttons, in their groups' order: their colour, the key their caption marks ("&amp;"), and
+///   a Run timeline (looped, one only, as set), or their event's Stop all, Stop or End loop.
+/// What can't be converted (other expressions, volume envelopes, channels not in the patch, events and buttons whose
+/// timeline isn't found, other commands and kinds of button, timelines missing or saved by older VenueMagic versions)
+/// is left out and listed in the notes.
 /// </summary>
 public static class VenueMagicImporter
 {
@@ -68,7 +72,7 @@ public static class VenueMagicImporter
         }
 
         // Each timeline, in the same folders, so the tree matches VenueMagic's.
-        var runs = new List<(TimelineCommandEvent Event, string Target, ShowTimeline From, TimelineTrack Track)>();
+        var runs = new List<Pending>();
         foreach (var path in source.Timelines)
         {
             var timeline = new ShowTimeline { Name = Path.GetFileNameWithoutExtension(path), Folder = Path.GetDirectoryName(path)?.Replace('\\', '/') ?? "" };
@@ -104,18 +108,43 @@ public static class VenueMagicImporter
         }
         // Run Timeline events name their timeline: now every timeline is there, find it (by name; in the same folder
         // first, as names can repeat across rooms).
-        foreach (var (run, target, from, track) in runs)
+        foreach (var pending in runs.Where(p => !p.ByCueName))
         {
-            var named = project.Timelines.Where(t => string.Equals(t.Name, target, StringComparison.OrdinalIgnoreCase)).ToList();
-            var found = named.FirstOrDefault(t => t.Folder == from.Folder) ?? (named.Count == 1 ? named[0] : null);
+            var (run, target, from, track) = (pending.Event, pending.Target, pending.From, pending.Track);
+            var found = Named(project, target, from.Folder, out int count);
             if (found is not null) run.TimelineId = found.Id;
             else
             {
                 track.Events.Remove(run);
                 notes.Add($"{from.TreePath} · {track.Name}: runs \"{target}\" at {run.Start.TotalSeconds:0.##} s, "
-                          + (named.Count == 0 ? "which isn't in the project; left out." : "and more than one timeline has that name; left out."));
+                          + (count == 0 ? "which isn't in the project; left out." : "and more than one timeline has that name; left out."));
             }
         }
+        // Cue List Commands name a cue-list item: what a Run Timeline named it in the cue list, else a timeline's name.
+        var cueNames = runs.Where(p => !p.ByCueName && p.CueName is { Length: > 0 } && p.Event.TimelineId != Guid.Empty)
+            .GroupBy(p => p.CueName!, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.Select(p => p.Event.TimelineId).Distinct().ToList(), StringComparer.OrdinalIgnoreCase);
+        foreach (var button in source.Buttons.Where(b => b.Kind == VmCueButton.Timeline && b.CueName.Length > 0))
+            if (Named(project, button.Target, "", out _) is { } runByButton)
+                cueNames.TryAdd(button.CueName, [runByButton.Id]);
+        ShowTimeline? ByCueName(string item, string folder)
+        {
+            if (cueNames.TryGetValue(item, out var ids) && ids.Count == 1) return project.Timelines.FirstOrDefault(t => t.Id == ids[0]);
+            return Named(project, item.EndsWith(".vmt", StringComparison.OrdinalIgnoreCase) ? item[..^4] : item, folder, out _);
+        }
+        foreach (var pending in runs.Where(p => p.ByCueName))
+        {
+            var (e, item, from, track) = (pending.Event, pending.Target, pending.From, pending.Track);
+            if (ByCueName(item, from.Folder) is { } found) e.TimelineId = found.Id;
+            else
+            {
+                track.Events.Remove(e);
+                notes.Add($"{from.TreePath} · {track.Name}: a {(e.Command == TimelineCommand.Stop ? "Stop item" : "End loop")} of \"{item}\" at "
+                          + $"{e.Start.TotalSeconds:0.##} s, which no timeline here is called in the cue list; left out.");
+            }
+        }
+
+        ImportButtons(source.Buttons, project, ByCueName, notes);
         if (project.Timelines.Count == 0) project.Timelines.Add(Project.NewTimeline("Main"));
         // The same note many times (a missing file used by ten clips) once, with a count.
         var grouped = notes.GroupBy(n => n).Select(g => g.Count() == 1 ? g.Key : $"{g.Key} (×{g.Count()})").ToList();
@@ -124,8 +153,106 @@ public static class VenueMagicImporter
 
     static List<TimelineTrack> NewTracks() => Project.NewTimeline("").Tracks;
 
+    /// <summary>
+    /// An event to point at its timeline once every timeline is imported: by the timeline's name (a Run Timeline), or
+    /// by its name in the cue list (a Cue List Command's item). CueName: a Run Timeline's name for it in the cue list.
+    /// </summary>
+    sealed record Pending(TimelineCommandEvent Event, string Target, ShowTimeline From, TimelineTrack Track, bool ByCueName = false, string? CueName = null);
+
+    /// <summary>The timeline with that name: in the folder given first, else the only one. Count: how many have it.</summary>
+    static ShowTimeline? Named(Project project, string name, string folder, out int count)
+    {
+        var named = project.Timelines.Where(t => string.Equals(t.Name, name, StringComparison.OrdinalIgnoreCase)).ToList();
+        count = named.Count;
+        return named.FirstOrDefault(t => t.Folder == folder) ?? (named.Count == 1 ? named[0] : null);
+    }
+
+    /// <summary>
+    /// Cue buttons, group after group: a button for each that does something GhostShow can (a timeline, a Run Timeline,
+    /// or a Cue List Command's Stop all, Stop item or End loop), with its colour and the key its caption marks.
+    /// </summary>
+    static void ImportButtons(IReadOnlyList<VmCueButton> buttons, Project project, Func<string, string, ShowTimeline?> byCueName, List<string> notes)
+    {
+        int empty = 0;
+        foreach (var source in buttons)
+        {
+            string where = $"Cue button \"{source.Caption}\"" + (source.Group.Length > 0 ? $" ({source.Group})" : "");
+            ButtonAction? action = null;
+            string? problem = null;
+            switch (source.Kind)
+            {
+                case VmCueButton.Timeline when source.Target.Length == 0:
+                    empty++;
+                    continue;
+                case VmCueButton.Timeline:
+                    action = Run(source.Target, source.Loop, source.OneOnly);
+                    if (action is null) problem = NotFound(source.Target);
+                    break;
+                case VmCueButton.Event when source.Run is { } run:
+                    action = Run(run.Timeline, run.Loop, run.OneOnly);
+                    if (action is null) problem = NotFound(run.Timeline);
+                    break;
+                case VmCueButton.Event when source.Command is { } command:
+                    switch (command.Command)
+                    {
+                        case VmCueListCommand.StopAll:
+                            action = new StopAllAction();
+                            break;
+                        case VmCueListCommand.StopItem or VmCueListCommand.EndLoop:
+                            if (byCueName(command.Item, "") is not { } target)
+                                problem = $"its {command.Name} names \"{command.Item}\", which no timeline here is called in the cue list";
+                            else if (command.Command == VmCueListCommand.StopItem) action = new StopTimelineAction { TimelineId = target.Id };
+                            else action = new EndLoopAction { TimelineId = target.Id };
+                            break;
+                        default:
+                            problem = $"its event is a Cue List Command's {command.Name}, which GhostShow doesn't have";
+                            break;
+                    }
+                    break;
+                case VmCueButton.Event:
+                    problem = "its event isn't a Run Timeline or a Cue List Command";
+                    break;
+                default:
+                    problem = source.Kind == VmCueButton.Playlist ? "it plays a playlist" : "it plays an audio file, not a timeline";
+                    break;
+            }
+            if (action is null)
+            {
+                notes.Add($"{where}: {problem ?? "it does nothing GhostShow can do"}; left out.");
+                continue;
+            }
+            var button = new ShowButton
+            {
+                Name = source.Caption.Length > 0 ? source.Caption : "Button",
+                Color = source.Color == "#404040" ? null : source.Color,   // VenueMagic's default grey: the panel's own
+                Actions = [action],
+            };
+            if (source.Key is { } key && KeyName(key) is { } name)
+                button.Triggers.Add(new ButtonTrigger { Source = ButtonTrigger.Keyboard, Address = name });
+            project.Buttons.Add(button);
+        }
+        if (empty > 0) notes.Add(empty == 1 ? "A cue button that plays nothing was left out." : $"{empty} cue buttons that play nothing were left out.");
+
+        string NotFound(string timeline) => Named(project, timeline, "", out int count) is null && count > 1
+            ? $"more than one timeline is called \"{timeline}\"" : $"it runs \"{timeline}\", which isn't in the project";
+
+        RunTimelineAction? Run(string timeline, bool loop, bool oneOnly)
+        {
+            var target = Named(project, timeline, "", out _);
+            return target is null ? null : new RunTimelineAction { TimelineId = target.Id, Loop = loop, OneOnly = oneOnly };
+        }
+    }
+
+    /// <summary>A caption's "&amp;" key as GhostShow names keys: "Q", "D1" for the 1 key; null for other characters.</summary>
+    static string? KeyName(char key) => key switch
+    {
+        >= 'A' and <= 'Z' => key.ToString(),
+        >= '0' and <= '9' => $"D{key}",
+        _ => null,
+    };
+
     static TimelineTrack? ConvertTrack(VmTrack source, ShowTimeline owner, IReadOnlyDictionary<string, (VmFixture Source, FixtureInstance Fixture)> placed,
-                                       string projectFolder, List<(TimelineCommandEvent, string, ShowTimeline, TimelineTrack)> runs, List<string> notes)
+                                       string projectFolder, List<Pending> runs, List<string> notes)
     {
         string timeline = owner.TreePath;
         // A track left unnamed in VenueMagic shows its ID where the name would be.
@@ -212,13 +339,34 @@ public static class VenueMagicImporter
             }
             case "Event":
             {
-                // Run Timeline events: their timelines are found once every timeline is imported (see Import).
+                // Run Timeline events and Cue List Commands: their timelines are found once every timeline is imported (see Import).
                 var result = new TimelineTrack { Name = track.Name, Kind = TrackKind.Event };
-                foreach (var run in track.Items.OfType<VmRunTimeline>().OrderBy(r => r.Start))
+                foreach (var item in track.Items.OrderBy(r => r.Start))
                 {
-                    var e = new TimelineCommandEvent { Start = Seconds(run.Start), Command = TimelineCommand.Run };
-                    result.Events.Add(e);
-                    runs.Add((e, run.Timeline, owner, result));
+                    switch (item)
+                    {
+                        case VmRunTimeline run:
+                        {
+                            var e = new TimelineCommandEvent { Start = Seconds(run.Start), Command = TimelineCommand.Run, Loop = run.Loop, OneOnly = run.OneOnly };
+                            result.Events.Add(e);
+                            runs.Add(new Pending(e, run.Timeline, owner, result, CueName: run.CueName));
+                            break;
+                        }
+                        case VmCommandEvent { Command: { Command: VmCueListCommand.StopItem or VmCueListCommand.EndLoop } command } at:
+                        {
+                            var e = new TimelineCommandEvent
+                            {
+                                Start = Seconds(at.Start),
+                                Command = command.Command == VmCueListCommand.StopItem ? TimelineCommand.Stop : TimelineCommand.EndLoop,
+                            };
+                            result.Events.Add(e);
+                            runs.Add(new Pending(e, command.Item, owner, result, ByCueName: true));
+                            break;
+                        }
+                        case VmCommandEvent other:
+                            notes.Add($"{where}: a Cue List Command's {other.Command.Name} at {other.Start:0.##} s, which GhostShow's events don't have; left out.");
+                            break;
+                    }
                 }
                 return result;
             }

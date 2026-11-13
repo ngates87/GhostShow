@@ -20,8 +20,14 @@ public sealed record VmAudioClip(double Start, double Length, string Name, strin
 /// <summary>An expression effect (VenueMagic's built-in lamp effects, e.g. "Lightning Storm", "Brownout").</summary>
 public sealed record VmExpression(double Start, double Length, string Name) : VmItem(Start, Length);
 
-/// <summary>An event track's Run Timeline: plays another timeline (by name) at a time.</summary>
-public sealed record VmRunTimeline(double Start, string Timeline) : VmItem(Start, 0);
+/// <summary>
+/// An event track's Run Timeline: plays another timeline (by name) at a time, looped or once, and not while it's
+/// already playing if "Play one only". CueName: its name in the cue list (what a Cue List Command names it by).
+/// </summary>
+public sealed record VmRunTimeline(double Start, string Timeline, bool Loop = false, bool OneOnly = false, string? CueName = null) : VmItem(Start, 0);
+
+/// <summary>An event track's Cue List Command: stop, end the loop of, … a cue-list item, at a time.</summary>
+public sealed record VmCommandEvent(double Start, VmCueListCommand Command) : VmItem(Start, 0);
 
 /// <param name="Kind">"Lamp" or "Control" (lighting), "Audio" or "Event".</param>
 /// <param name="Channels">Lighting: the channels it controls, as "Fixture.Channel" (in first-seen order).</param>
@@ -48,6 +54,8 @@ public sealed class VenueMagicTimeline
     static readonly Regex ChannelRef = new(@"(GIID_\d+)\.Level([\x01-\x7f])", RegexOptions.Compiled);
     static readonly Regex Handle = new(@"([\x01-\x40])\x01([\s\S]{8})\x00{12}[\xdb\x7d]\x01\x00\x00\x00{4}[\s\S]{16}\x00", RegexOptions.Compiled);
     static readonly Regex Printable = new(@"[ -~]{3,}", RegexOptions.Compiled);
+    // A Multi-Event's events: their count, then the first one (a new class, or a reference to one, then version 475 twice).
+    static readonly Regex GroupCount = new(@"([\x01-\x7f])\x00(?:\xff\xff\x01\x00[\x01-\x7f]\x00CVMEvent_|[\s\S][\x80-\xff]\xdb\x01\x00\x00\xdb\x01\x00\x00)", RegexOptions.Compiled);
 
     public required IReadOnlyList<VmTrack> Tracks { get; init; }
 
@@ -64,8 +72,13 @@ public sealed class VenueMagicTimeline
 
         // Everything recognisable, in file order.
         var marks = new List<(int At, object What)>();
-        foreach (Match m in Header.Matches(text))
-            if (Item(text, m, D(data, m.Groups[1].Index), D(data, m.Groups[2].Index)) is { } item) marks.Add((m.Index, item));
+        var headers = Header.Matches(text);
+        for (int i = 0; i < headers.Count; i++)
+        {
+            var m = headers[i];
+            int next = i + 1 < headers.Count ? headers[i + 1].Index : text.Length;   // its record ends before the next one starts
+            if (Item(text, m, next, D(data, m.Groups[1].Index), D(data, m.Groups[2].Index)) is { } item) marks.Add((m.Index, item));
+        }
         foreach (Match m in LevelControl.Matches(text))
             if (m.Index >= 44) marks.Add((m.Index, new ClipMark(D(data, m.Index - 44), D(data, m.Index - 28))));
         // "GIID_n.Level" (VenueMagic's ID for a channel), then a channel name ("Fixture.Channel"): which channel the ID is.
@@ -100,9 +113,12 @@ public sealed class VenueMagicTimeline
         var items = new List<VmItem>();
         var envelopes = new List<(string? Channel, List<VmHandle> Handles)>();
         var loose = new List<VmHandle>();
+        double groupStart = 0;
+        int groupLeft = 0;   // events still to come of the Multi-Event before them
         void EndTrack()
         {
             if (kind is not null) tracks.Add(new VmTrack(kind, name ?? "", channels.ToList(), items.ToList()));
+            groupLeft = 0;
             channels.Clear();
             items.Clear();
             envelopes.Clear();
@@ -144,7 +160,19 @@ public sealed class VenueMagicTimeline
                     loose.Clear();
                     envelopes.Clear();
                     break;
+                case GroupMark group:
+                    (groupStart, groupLeft) = (group.Start, group.Count);
+                    break;
+                case OtherEventMark:
+                    if (groupLeft > 0) groupLeft--;
+                    break;
                 case VmItem item:
+                    if (item is VmRunTimeline or VmCommandEvent && groupLeft > 0)
+                    {
+                        // One of a Multi-Event's: its time is from the Multi-Event's.
+                        item = item with { Start = groupStart + item.Start };
+                        groupLeft--;
+                    }
                     items.Add(item);
                     loose.Clear();
                     break;
@@ -155,21 +183,44 @@ public sealed class VenueMagicTimeline
     }
 
     sealed record TrackMark(string Kind, string Name);
+    /// <summary>A Multi-Event: the next Count events are its, timed from its start.</summary>
+    sealed record GroupMark(double Start, int Count);
+    /// <summary>An event of a kind that isn't read (it still counts as one of a Multi-Event's).</summary>
+    sealed record OtherEventMark;
     sealed record ChannelMark(string Name);
     sealed record EnvelopeMark(string Id);
     sealed record ClipMark(double Start, double Length);
 
     /// <summary>What follows a common header: a track, an audio clip, an expression effect or a Run Timeline event.</summary>
-    static object? Item(string text, Match header, double start, double length)
+    static object? Item(string text, Match header, int next, double start, double length)
     {
         int from = header.Index + header.Length;
-        var runs = Printable.Matches(text.Substring(from, Math.Min(400, text.Length - from))).Select(r => r.Value).ToList();
+        // Its own record's text only (up to the next header), so nothing of the next record is taken for this one's.
+        var runs = Printable.Matches(text.Substring(from, Math.Max(0, Math.Min(400, next - from)))).Select(r => r.Value).ToList();
         if (runs.Count < 2) return null;
         // Each kind has its notes label at a fixed place: a track's first ("Lamp Track Notes", then its name); a clip's
         // or effect's second (after its name). Further on is the next record's text, so nothing else is looked at.
         if (runs[0].EndsWith("Track Notes", StringComparison.Ordinal)) return new TrackMark(runs[0].Split(' ')[0], runs[1]);
-        if (runs[0] == "Run Timeline" && runs[1] == "Event Notes" && runs.Count > 2)
-            return new VmRunTimeline(start, runs.Count > 3 ? runs[3] : runs[2]);
+        if (runs[1] == "Event Notes")
+        {
+            int end = Math.Min(next, from + 1200);
+            switch (runs[0])
+            {
+                case "Run Timeline" when runs.Count > 2:
+                    // Its settings follow its name; read by name alone if they can't be found.
+                    return VenueMagicRecords.FindRun(text, from, end) is { } run
+                        ? new VmRunTimeline(start, run.Timeline, run.Loop, run.OneOnly, run.CueName)
+                        : new VmRunTimeline(start, runs.Count > 3 ? runs[3] : runs[2]);
+                case "Cue List Command":
+                    return VenueMagicRecords.FindCommand(text, from, end) is { } command ? new VmCommandEvent(start, command) : new OtherEventMark();
+                case "Multi-Event":
+                    // Its events follow it, as an array: a count (a word), then each event's record.
+                    var count = GroupCount.Match(text, from);
+                    return count.Success && count.Index < from + 800 ? new GroupMark(start, count.Groups[1].Value[0]) : new OtherEventMark();
+                default:
+                    return new OtherEventMark();
+            }
+        }
         if (runs[1] == "Audio Clip Notes")
         {
             var file = runs.Skip(2).Take(3).Select(r => Regex.Match(r, @"[A-Za-z]:\\.*\.(mp3|wav|flac|ogg|aiff?)$", RegexOptions.IgnoreCase)).FirstOrDefault(m => m.Success)?.Value;

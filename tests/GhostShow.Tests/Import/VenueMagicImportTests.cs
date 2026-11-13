@@ -1,6 +1,7 @@
 using System.Text;
 using GhostShow.Core.Fixtures;
 using GhostShow.Core.Import;
+using GhostShow.Core.Model;
 using GhostShow.Core.Timeline;
 
 namespace GhostShow.Tests.Import;
@@ -75,6 +76,71 @@ public class VenueMagicImportTests : IDisposable
         return w.ToArray();
     }
 
+    /// <summary>
+    /// A cue button as VenueMagic 4 writes it: [len]caption, [len]what it plays, caption and face colours, volume,
+    /// cueing mode, kind, Play looped, Play one only, …, lamp level, font, its name in the cue list, notes.
+    /// </summary>
+    static Writer Button(Writer w, string caption, string target, (byte R, byte G, byte B) face, int kind = 0, bool loop = false, bool oneOnly = false,
+                         string cueName = "", int? command = null, string item = "")
+    {
+        w.Bytes(0xdb, 1, 0, 0).Text(caption).Text(target).Bytes(0xff, 0xff, 0x80, 0, face.R, face.G, face.B, 0).Double(100)
+         .Bytes(0, (byte)kind, (byte)(loop ? 1 : 0), (byte)(oneOnly ? 1 : 0), 0, 0x6c).Zeros(19).Double(100)
+         .Int(-16).Zeros(12).Int(700).Zeros(8).Bytes(3, 2, 1).Text("Century Gothic").Zeros(12)
+         .Bytes(0xff, 0xff, 0x80, 0).Text(cueName).Bytes(0).Text("Cue Button Notes").Zeros(20);
+        if (command is { } c)
+            w.Bytes(1, 0, 0xff, 0xff, 1, 0, 0x13, 0).Raw("CVMEvent_CueListCmd").Bytes(0xdb, 1, 0, 0, 0xdb, 1, 0, 0).Zeros(20)
+             .Text("Cue List Command").Zeros(8).Text("Event Notes").Zeros(8).Text("Cue List Command").Zeros(8)
+             .Bytes(0xff, 0xff, 0xff, 0xff, 0xdb, 1, 0, 0).Int(c).Text(item).Zeros(8);
+        return w.Bytes(0xdb, 1, 0, 0, 0, 0, 0x3b, 0x86);
+    }
+
+    /// <summary>The group the buttons before it are in: its name, its colours and so on (16 bytes), its notes.</summary>
+    static Writer Group(Writer w, string name) =>
+        w.Bytes(0xdb, 1, 0, 0, 0, 0).Text(name).Bytes(0x40, 0x40, 0x40, 0, 0xc3, 0xc3, 0xc3, 0, 6, 0, 0, 0, 1, 0, 1, 1).Text("Cue Button Group Notes").Zeros(8);
+
+    byte[] SampleWithButtons()
+    {
+        var w = new Writer().Bytes(Sample()).Raw("CCueButtonList").Bytes(0xdb, 1, 0, 0, 3, 0, 0xff, 0xff, 1, 0, 10, 0).Raw("CCueButton");
+        Button(w, "&Start Show", "SartShow", (0, 0x80, 0), oneOnly: true, cueName: "SartShow");
+        Button(w, "Stop All", "", (0xff, 0, 0), kind: 3, loop: true, command: 6);
+        Button(w, "Cue #2", "", (0x40, 0x40, 0x40));
+        Group(w, "New Group 1");
+        Button(w, "Cages", "cage-lights", (0x40, 0x40, 0x40), loop: true, oneOnly: true, cueName: "cage lights cue");
+        Button(w, "Calm the cages", "", (0x40, 0x40, 0x40), kind: 3, command: 5, item: "cage lights cue");
+        Button(w, "Mute", "", (0x40, 0x40, 0x40), kind: 3, command: 10);
+        Button(w, "Thunder", @"C:\audio\thunder.wav", (0x40, 0x40, 0x40), kind: 2);
+        Group(w, "Zone 2");
+        return w.Bytes(0xdb, 1, 0, 0, 0x0e, 0, 0xff, 0xff, 1, 0, 0x12, 0).Raw("CVMSupportedDevice").Bytes(0xdb, 1, 0, 0).Text("VM-USBDMX-01").ToArray();
+    }
+
+    [Fact]
+    public void Cue_buttons_become_show_buttons_with_their_colour_key_and_what_they_do()
+    {
+        var source = VenueMagicProject.Read(Write(SampleWithButtons()));
+        Assert.Equal([("Start Show", "New Group 1"), ("Stop All", "New Group 1"), ("Cue #2", "New Group 1"), ("Cages", "Zone 2"),
+                      ("Calm the cages", "Zone 2"), ("Mute", "Zone 2"), ("Thunder", "Zone 2")],
+                     source.Buttons.Select(b => (b.Caption, b.Group)));
+
+        var result = VenueMagicImporter.Import(source, "Haunt 2024");
+        var project = result.Project;
+        Guid Id(string path) => project.FindTimeline(path)!.Id;
+
+        Assert.Equal(["Start Show", "Stop All", "Cages", "Calm the cages"], project.Buttons.Select(b => b.Name));
+        var start = project.Buttons[0];
+        var key = Assert.Single(start.Triggers);
+        Assert.Equal(("#008000", ButtonTrigger.Keyboard, "S"), (start.Color, key.Source, key.Address));   // "&Start Show": the S key
+        var run = Assert.IsType<RunTimelineAction>(Assert.Single(start.Actions));
+        Assert.Equal((Id("SartShow"), false, true), (run.TimelineId, run.Loop, run.OneOnly));
+        Assert.Equal("#FF0000", project.Buttons[1].Color);
+        Assert.IsType<StopAllAction>(Assert.Single(project.Buttons[1].Actions));
+        var cages = Assert.IsType<RunTimelineAction>(Assert.Single(project.Buttons[2].Actions));
+        Assert.Equal((Id("Zone 2/cages/cage-lights"), true, true, (string?)null), (cages.TimelineId, cages.Loop, cages.OneOnly, project.Buttons[2].Color));   // the default grey: the panel's own
+        Assert.Equal(Id("Zone 2/cages/cage-lights"), Assert.IsType<EndLoopAction>(Assert.Single(project.Buttons[3].Actions)).TimelineId);   // by its name in the cue list
+        Assert.Contains(result.Notes, n => n.Contains("\"Mute\"") && n.Contains("Mute all"));
+        Assert.Contains(result.Notes, n => n.Contains("\"Thunder\"") && n.Contains("audio file"));
+        Assert.Contains(result.Notes, n => n.Contains("plays nothing"));
+    }
+
     [Fact]
     public void The_patch_and_the_timeline_files_are_read()
     {
@@ -119,6 +185,20 @@ public class VenueMagicImportTests : IDisposable
         w.Header(3, 6.5).Text("scream").Zeros(4).Text("Audio Clip Notes").Zeros(4).Text($@"C:\Users\x\VenueMagic\Projects\{project}\audio\scream.wav").Zeros(8);
         w.Header(0, 35).Text("Event Track Notes").Zeros(4).Text("Events").Zeros(8);
         w.Header(1.5, 0).Text("Run Timeline").Zeros(4).Text("Event Notes").Zeros(4).Text("Go").Text("cage-lights").Zeros(8);
+        // As VenueMagic 4 writes one: its name, then (FF×4, version 475) the timeline, its name in the cue list, master
+        // volume and lamp level, Play looped and Play one only.
+        w.Header(4, 0).Text("Run Timeline").Zeros(4).Text("Event Notes").Zeros(8).Text("Again").Zeros(8)
+         .Bytes(0xff, 0xff, 0xff, 0xff, 0xdb, 1, 0, 0).Text("cage-lights").Text("cage lights cue").Double(100).Double(100).Bytes(1, 1).Zeros(8);
+        // A Multi-Event at 8 s: two events (a count, then each), timed from it: Stop item, and End loop.
+        w.Header(8, 0).Text("Multi-Event").Zeros(4).Text("Event Notes").Zeros(8).Bytes(0x41, 2, 0, 0xff, 0xff, 1, 0, 0x13, 0).Raw("CVMEvent_CueListCmd")
+         .Bytes(0xdb, 1, 0, 0, 0xdb, 1, 0, 0, 0, 0);
+        w.Header(0.5, 0).Text("Cue List Command").Zeros(4).Text("Event Notes").Zeros(8).Text("stop the lights").Zeros(8)
+         .Text("Cue List Command").Zeros(8).Bytes(0xff, 0xff, 0xff, 0xff, 0xdb, 1, 0, 0).Int(2).Text("cage lights cue").Zeros(8);
+        w.Bytes(0x3c, 0x80, 0xdb, 1, 0, 0, 0xdb, 1, 0, 0, 0, 0);
+        w.Header(0, 0).Text("Cue List Command").Zeros(4).Text("Event Notes").Zeros(8).Text("calm").Zeros(8)
+         .Text("Cue List Command").Zeros(8).Bytes(0xff, 0xff, 0xff, 0xff, 0xdb, 1, 0, 0).Int(5).Text("SartShow").Zeros(8);
+        w.Header(9, 0).Text("Cue List Command").Zeros(4).Text("Event Notes").Zeros(8).Text("hush").Zeros(8)
+         .Text("Cue List Command").Zeros(8).Bytes(0xff, 0xff, 0xff, 0xff, 0xdb, 1, 0, 0).Int(10).Text("").Zeros(8);   // Mute all: left out
         return w.ToArray();
     }
 
@@ -136,8 +216,13 @@ public class VenueMagicImportTests : IDisposable
 
         var timeline = result.Project.FindTimeline("Zone 2/cages/cage-lights")!;
         Assert.Equal([("Room lights", TrackKind.Lighting), ("Screams", TrackKind.Audio), ("Events", TrackKind.Event)], timeline.Tracks.Select(t => (t.Name, t.Kind)));
-        var run = Assert.IsType<TimelineCommandEvent>(Assert.Single(timeline.Tracks[2].Events));
-        Assert.Equal((TimeSpan.FromSeconds(1.5), TimelineCommand.Run, timeline.Id), (run.Start, run.Command, run.TimelineId));   // it runs "cage-lights": itself, here
+        var events = timeline.Tracks[2].Events.Cast<TimelineCommandEvent>().ToList();
+        // It runs "cage-lights" (itself, here): once, then looped and one only; at 8 s it stops it (by its name in the
+        // cue list) and ends SartShow's loop, and at 8.5 s.
+        Assert.Equal([(1.5, TimelineCommand.Run, timeline.Id, false, false), (4, TimelineCommand.Run, timeline.Id, true, true),
+                      (8, TimelineCommand.EndLoop, result.Project.FindTimeline("SartShow")!.Id, false, false), (8.5, TimelineCommand.Stop, timeline.Id, false, false)],
+                     events.Select(e => (e.Start.TotalSeconds, e.Command, e.TimelineId, e.Loop, e.OneOnly)));
+        Assert.Contains(result.Notes, n => n.Contains("Mute all") && n.Contains("9 s"));
         var lights = timeline.Tracks[0];
         var dimmer = result.Project.Fixtures.Single(f => f.Name == "Zone_1_Area_1_Dim_1");
         Assert.Equal((LaneTarget.FixtureChannel(dimmer.Id, 2), (byte)51), (Assert.Single(lights.Channels).Target, lights.Channels[0].StartLevel));   // 20%: where the first clip starts

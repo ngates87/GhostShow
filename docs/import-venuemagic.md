@@ -16,13 +16,21 @@ File → Import VenueMagic Project… (a `.vmp`, or its `.vmp.bak` backup) makes
      and Explosion effects, with GhostShow's usual settings;
    - audio tracks keep their clips (start, length, volume); files are looked for in the project's folder, by their
      path under it, else by name.
-   - event tracks keep their Run Timeline events; each runs the timeline of that name (in the same folder first).
-     Their "Play looped" and "Play one only" aren't read from the file yet: each imports as playing once, so tick
-     them on the events that need them.
-   Left out, and listed in the notes: Run Timeline events whose timeline isn't in the project, other
+   - event tracks keep their Run Timeline events, each running the timeline of that name (in the same folder first),
+     with its Play looped and Play one only;
+   - Cue List Commands on event tracks (also inside a Multi-Event, timed from it) that **stop** or **end the loop of**
+     an item become Stop and End loop events. They name the item as it's called in the cue list: the "name in cue
+     list" a Run Timeline or cue button gave it, else the timeline's own name.
+   Left out, and listed in the notes: Run Timeline events whose timeline isn't in the project, Cue List Commands
+   GhostShow's events don't have (stop all, pause, mute, …) or whose item nothing is called, other
    expressions ("Chaos", "Flash", "Electric Short", …), volume fades and pan, channels not in the patch, timelines
    whose file is missing, and timelines saved by older VenueMagic versions (record version 381).
-3. **Cue buttons** and what else turns up (not yet).
+3. **Cue buttons** (done): each becomes a show button, group after group in VenueMagic's order (GhostShow has one
+   panel, no groups), with its caption, its face colour (VenueMagic's default grey becomes the panel's own), and the
+   key its caption marks with "&" ("&Scare": the S key). What it does: a timeline button runs it with its Play looped
+   and Play one only; an event button runs its Run Timeline, or its Cue List Command's Stop all, Stop item or End
+   loop. Left out, and listed in the notes: buttons that play nothing, a playlist or an audio file, other commands,
+   and external triggers (MIDI, VCS), which aren't read. Buttons saved by older VenueMagic versions aren't read.
 
 ## The file format (what's known)
 
@@ -39,6 +47,18 @@ writes its fields in its own order. What the importer relies on:
   each channel: VenueMagic's own channel number (not a DMX address), …, "Channel Group Notes", `$`ID, the channel's
   name. Grouping channels ("RGB", grouping red, green and blue) have no DMX slot and an out-of-range number.
 - **Timeline files** are listed by absolute Windows path; they're made relative to the project's folder.
+- **Run Timeline** (an event, or an event button's): after its name, FF×4, version 475, [len]timeline, [len]name in
+  the cue list, master volume and lamp level (doubles, percent), then a byte each: Play looped, Play one only. Checked
+  on a real show: rooms' ambients run looped and one only, zone starters once and one only.
+- **Cue List Command:** after its second "Cue List Command" label, FF×4, version 475, the command (an int: 0 Stop
+  this, 1 Pause this, 2 Stop item, 3 Pause item, 4 Resume item, 5 End loop, 6 Stop all, 7 Pause all, 8 Resume all,
+  9 End all loops, 10 Mute all, 11 Unmute all, 12 Disable control, 13 Enable control: the order of VenueMagic's
+  setup page), [len]item name. A **Multi-Event** is followed by a count (a word) and that many events, each timed from it.
+- **Cue buttons** (after `CCueButtonList`): each group's buttons, then the group (its name, 16 bytes, "Cue Button
+  Group Notes"). A button: version 475, [len]caption, [len]timeline (or file), caption and face colours (COLORREF:
+  R, G, B, 0), master volume (double), then bytes: cueing mode, kind (0 timeline, 1 playlist, 2 audio file, 3 event),
+  Play looped, Play one only, …; master lamp level 41 bytes after the colours; its font (LOGFONT); [len]name in cue
+  list, 0, "Cue Button Notes"; then an event button's event record.
 - Levels are stored as doubles in percent. Timelines (`.vmt`) use `CDeviceControllerTrack`, `CVMDimmer` (Level
   Control), `CEnvelope`/`CCurveFitPointDraw` (handles), `CAudioTrack`/`CVMSound`, `CEventTrack`/
   `CVMEvent_RunTimeline` and `CVMExpressionDeviceControl` (expression effects such as "Lightning Storm").

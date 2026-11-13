@@ -11,6 +11,20 @@ public sealed record VmFixtureType(string Id, string Name, IReadOnlyList<string>
 public sealed record VmFixture(string Id, string Name, string TypeId, int Address, IReadOnlyList<string> Channels);
 
 /// <summary>
+/// A cue button (VenueMagic's show buttons, in groups). Kind is what it plays: 0 a timeline (Target, by name), 1 a
+/// playlist, 2 an audio file, 3 an event (<see cref="Run"/> or <see cref="Command"/>, when it's one of those).
+/// </summary>
+/// <param name="Caption">As shown, without the "&amp;" that marks its key.</param>
+/// <param name="Key">The key that presses it (the character after "&amp;" in its caption), or null.</param>
+/// <param name="Color">Its face colour, "#RRGGBB".</param>
+/// <param name="CueName">Its name in the cue list (what a Cue List Command names it by); empty: the timeline's.</param>
+public sealed record VmCueButton(string Caption, char? Key, string Group, int Kind, string Target, string Color, bool Loop, bool OneOnly,
+                                 string CueName, VmRun? Run, VmCueListCommand? Command)
+{
+    public const int Timeline = 0, Playlist = 1, AudioFile = 2, Event = 3;
+}
+
+/// <summary>
 /// What GhostShow reads from a VenueMagic 3/4 project file (.vmp, or its .vmp.bak backup): the patch, and the
 /// timeline files it lists. VenueMagic saves with Windows MFC serialization, which isn't self-describing and isn't
 /// documented, so this reads the records it needs by their recognisable shapes (length-prefixed names next to
@@ -30,6 +44,9 @@ public sealed class VenueMagicProject
     /// <summary>The project's timeline files, as paths relative to the project's folder ("Zone 2/cages/cage-lights.vmt").</summary>
     public required IReadOnlyList<string> Timelines { get; init; }
 
+    /// <summary>The cue buttons, group by group (VenueMagic 4 projects, record version 475; empty for older ones).</summary>
+    public IReadOnlyList<VmCueButton> Buttons { get; init; } = [];
+
     /// <summary>The folder the project file is in (its timeline and audio files are under it).</summary>
     public string Folder { get; init; } = "";
 
@@ -42,7 +59,105 @@ public sealed class VenueMagicProject
         var fixtures = ReadFixtures(data, text);
         var types = ReadTypes(text, fixtures);
         var folder = Path.GetDirectoryName(Path.GetFullPath(path)) ?? "";
-        return new VenueMagicProject { FixtureTypes = types, Fixtures = fixtures, Timelines = ReadTimelines(text, Path.GetFileName(folder)), Folder = folder };
+        return new VenueMagicProject
+        {
+            FixtureTypes = types, Fixtures = fixtures, Timelines = ReadTimelines(text, Path.GetFileName(folder)), Folder = folder,
+            Buttons = ReadButtons(text),
+        };
+    }
+
+    static readonly Regex ButtonHead = new(@"\xdb\x01\x00\x00([\x01-\x7f])", RegexOptions.Compiled);
+    static readonly Regex GroupName = new(@"([\x01-\x7f])([ -~]{1,127}?)[\s\S]{16}\x16Cue Button Group Notes", RegexOptions.Compiled);
+
+    /// <summary>
+    /// Cue buttons (after "CCueButtonList"; VenueMagic 4's layout, record version 475): each group's buttons, then the
+    /// group (its name, 16 bytes, "Cue Button Group Notes"). A button: version 475, [len]caption, [len]what it plays,
+    /// its caption and face colours (COLORREF), master volume (a double, percent), then bytes: cueing mode, kind, Play
+    /// looped, Play one only, …; its master lamp level (a double) 41 bytes after the colours; its font; its name in the
+    /// cue list, just before "Cue Button Notes"; and, for an event button, the event's record.
+    /// </summary>
+    static List<VmCueButton> ReadButtons(string text)
+    {
+        int start = text.IndexOf("CCueButtonList\u00db\u0001\u0000\u0000", StringComparison.Ordinal);
+        if (start < 0) return [];
+        int end = text.IndexOf("CVMSupportedDevice", start, StringComparison.Ordinal);
+        if (end < 0) end = text.Length;
+
+        var heads = new List<(int At, string Caption, string Target, int Fields)>();
+        for (var m = ButtonHead.Match(text, start); m.Success && m.Index < end; m = m.NextMatch())
+        {
+            int at = m.Groups[1].Index, length = text[at], targetAt = at + 1 + length;
+            if (targetAt >= end || !Printable(text, at + 1, length)) continue;
+            int targetLength = text[targetAt], fields = targetAt + 1 + targetLength;
+            if (targetLength > 127 || !Printable(text, targetAt + 1, targetLength) || fields + 49 > end) continue;
+            if (text[fields + 3] != 0 || text[fields + 7] != 0) continue;   // two colours (R, G, B, 0)
+            double volume = VenueMagicRecords.Double(text, fields + 8), lamp = VenueMagicRecords.Double(text, fields + 41);
+            if (volume is < 0 or > 100 || lamp is < 0 or > 100) continue;
+            if (text.IndexOf("\u0010Cue Button Notes", fields, Math.Min(400, end - fields), StringComparison.Ordinal) < 0) continue;
+            heads.Add((m.Index, text.Substring(at + 1, length), text.Substring(targetAt + 1, targetLength), fields));
+        }
+        var groups = GroupName.Matches(text[start..end]).Where(g => g.Groups[2].Length == g.Groups[1].Value[0])
+            .Select(g => (At: start + g.Index, Name: g.Groups[2].Value)).ToList();
+
+        var buttons = new List<VmCueButton>();
+        for (int i = 0; i < heads.Count; i++)
+        {
+            var (at, caption, target, fields) = heads[i];
+            int next = i + 1 < heads.Count ? heads[i + 1].At : end;
+            string group = groups.FirstOrDefault(g => g.At > at).Name ?? "";
+            int kind = text[fields + 17];
+            bool loop = text[fields + 18] == 1, oneOnly = text[fields + 19] == 1;
+            string color = $"#{(int)text[fields + 4]:X2}{(int)text[fields + 5]:X2}{(int)text[fields + 6]:X2}";
+            int notes = text.IndexOf("\u0010Cue Button Notes", fields, StringComparison.Ordinal);
+            string cueName = CueNameBefore(text, notes);
+            VmRun? run = null;
+            VmCueListCommand? command = null;
+            if (kind == VmCueButton.Event)
+            {
+                run = text.IndexOf("Run Timeline", notes, next - notes, StringComparison.Ordinal) >= 0 ? VenueMagicRecords.FindRun(text, notes, next) : null;
+                command = run is null ? VenueMagicRecords.FindCommand(text, notes, next) : null;
+            }
+            var (shown, key) = Caption(caption);
+            buttons.Add(new VmCueButton(shown, key, group, kind, target, color, loop, oneOnly, cueName, run, command));
+        }
+        return buttons;
+    }
+
+    /// <summary>The name in the cue list: the length-prefixed text that ends one byte before "Cue Button Notes".</summary>
+    static string CueNameBefore(string text, int notes)
+    {
+        for (int length = 0; length < 128 && notes - 2 - length >= 0; length++)
+        {
+            int at = notes - 2 - length;
+            if (text[at] == length && Printable(text, at + 1, length)) return text.Substring(at + 1, length);
+            if (length > 0 && text[at + 1] is < ' ' or > '~') break;
+        }
+        return "";
+    }
+
+    /// <summary>"&amp;Scare" → ("Scare", 'S'); "&amp;&amp;" is a plain "&amp;".</summary>
+    static (string Caption, char? Key) Caption(string caption)
+    {
+        var shown = new StringBuilder();
+        char? key = null;
+        for (int i = 0; i < caption.Length; i++)
+        {
+            if (caption[i] == '&' && i + 1 < caption.Length)
+            {
+                i++;
+                if (caption[i] != '&') key ??= char.ToUpperInvariant(caption[i]);
+            }
+            shown.Append(caption[i]);
+        }
+        return (shown.ToString(), key);
+    }
+
+    static bool Printable(string text, int at, int length)
+    {
+        if (at + length > text.Length) return false;
+        for (int i = at; i < at + length; i++)
+            if (text[i] is < ' ' or > '~') return false;
+        return true;
     }
 
     /// <summary>
