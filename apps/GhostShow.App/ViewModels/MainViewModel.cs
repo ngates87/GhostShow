@@ -80,6 +80,7 @@ public sealed partial class MainViewModel : ObservableObject
         AudioDevices = new AudioDeviceList(services.Audio);
         Timeline = new TimelineEditorViewModel(session, Playback, PickAudioFileAsync, MarkDirty, AudioDevices);
         Buttons = new ButtonsViewModel(session, Playback, Blackout, MarkDirty);
+        Timeline.TriggersOf = Buttons.TriggersFor;
         _serial = services.SerialInputs ?? new SerialInputs(logger);
         Inputs = new InputsViewModel(session, _serial, settings, SaveSettingsAsync,
             // Only adapters that have their port open: one that's missing keeps the name of the port it was last on, and

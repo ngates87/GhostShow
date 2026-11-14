@@ -1,8 +1,12 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:GhostShow.App.ViewModels"
+             xmlns:controls="using:GhostShow.App.Controls"
+             xmlns:dmx="using:GhostShow.Core.Dmx"
              x:Class="GhostShow.App.Views.OutputsView"
              x:DataType="vm:OutputsViewModel">
+  <!-- DMX setup: the show's universes (left) and the adapters on the show computer (right), drawn with the same device
+       cards as the Inputs screen. -->
   <Grid ColumnDefinitions="1.5*,16,*" Margin="0,12">
     <DockPanel>
       <StackPanel DockPanel.Dock="Top" Spacing="6" Margin="0,0,0,8">
@@ -17,25 +21,32 @@
       </StackPanel>
       <ScrollViewer>
         <ItemsControl ItemsSource="{Binding Universes}">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate><StackPanel Spacing="6" /></ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
           <ItemsControl.ItemTemplate>
             <DataTemplate x:DataType="vm:UniverseRowViewModel">
-              <Border Classes="card">
-                <StackPanel Spacing="6">
-                  <Grid ColumnDefinitions="Auto,8,*,8,Auto" RowDefinitions="Auto,Auto">
-                    <TextBlock Text="Number" Opacity="0.7" />
-                    <TextBlock Grid.Column="2" Text="Name" Opacity="0.7" />
-                    <NumericUpDown Grid.Row="1" Width="130" Minimum="1" Maximum="63999" Increment="1" FormatString="0"
-                                   Value="{Binding Number}" />
-                    <TextBox Grid.Row="1" Grid.Column="2" Text="{Binding Name}" />
-                    <Button Grid.Row="1" Grid.Column="4" Content="Remove"
-                            Command="{Binding $parent[ItemsControl].((vm:OutputsViewModel)DataContext).RemoveUniverseCommand}"
-                            CommandParameter="{Binding}" />
-                  </Grid>
-                  <TextBlock Text="Output device (on the show computer)" Opacity="0.7" />
-                  <ComboBox ItemsSource="{Binding Choices}" SelectedItem="{Binding SelectedDevice}" HorizontalAlignment="Stretch" />
-                  <TextBlock Text="{Binding Status}" Classes.fault="{Binding IsFaulted}" TextWrapping="Wrap" />
-                </StackPanel>
-              </Border>
+              <controls:DeviceCard Icon="{StaticResource Icon.Dmx}" Kind="{Binding Summary}" State="{Binding State}" StatusText="{Binding Status}"
+                                   IsExpanded="{Binding IsExpanded}">
+                <controls:DeviceCard.Title>
+                  <TextBox Classes="deviceName" Text="{Binding Name}" ToolTip.Tip="The universe's name. Click to rename." />
+                </controls:DeviceCard.Title>
+                <controls:DeviceCard.Actions>
+                  <Button Content="Remove"
+                          Command="{Binding $parent[ItemsControl].((vm:OutputsViewModel)DataContext).RemoveUniverseCommand}"
+                          CommandParameter="{Binding}" />
+                </controls:DeviceCard.Actions>
+                <!-- Settings, behind the card's expander -->
+                <Grid ColumnDefinitions="Auto,12,*" RowDefinitions="Auto,6,Auto">
+                  <TextBlock Text="Number" VerticalAlignment="Center" Opacity="0.7" />
+                  <NumericUpDown Grid.Column="2" Width="130" HorizontalAlignment="Left" Minimum="1" Maximum="63999" Increment="1" FormatString="0"
+                                 Value="{Binding Number}" />
+                  <TextBlock Grid.Row="2" Text="Output device" VerticalAlignment="Center" Opacity="0.7"
+                             ToolTip.Tip="On the show computer: this machine's setting, not the show's" />
+                  <ComboBox Grid.Row="2" Grid.Column="2" ItemsSource="{Binding Choices}" SelectedItem="{Binding SelectedDevice}" HorizontalAlignment="Stretch"
+                            ToolTip.Tip="The adapter this universe goes out on, on the show computer" />
+                </Grid>
+              </controls:DeviceCard>
             </DataTemplate>
           </ItemsControl.ItemTemplate>
         </ItemsControl>
@@ -53,13 +64,20 @@
         </StackPanel>
         <TextBlock Text="{Binding DetectStatus}" TextWrapping="Wrap" />
       </StackPanel>
-      <ListBox ItemsSource="{Binding Adapters}" IsVisible="{Binding !!Adapters.Count}" VerticalAlignment="Top">
-        <ListBox.ItemTemplate>
-          <DataTemplate x:DataType="x:Object">
-            <TextBlock Text="{Binding}" TextWrapping="Wrap" />
-          </DataTemplate>
-        </ListBox.ItemTemplate>
-      </ListBox>
+      <ScrollViewer>
+        <ItemsControl ItemsSource="{Binding Adapters}">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate><StackPanel Spacing="2" /></ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="dmx:AdapterRow">
+              <controls:DeviceCard Classes="compact" Icon="{StaticResource Icon.Dmx}" Title="{Binding Name}" Kind="{Binding Summary}"
+                                   StatusText="{Binding Assignment}" State="{Binding InUse, Converter={x:Static vm:Converters.FoundState}}"
+                                   ToolTip.Tip="{Binding Description}" />
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </ScrollViewer>
     </DockPanel>
   </Grid>
 </UserControl>

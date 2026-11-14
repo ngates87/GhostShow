@@ -131,7 +131,7 @@ public class ButtonsTests : IDisposable
 
     void Learn(ShowButtonViewModel button, string key, bool withModifier = false)
     {
-        if (!button.IsLearningKey) button.LearnKeyCommand.Execute(null);
+        if (!button.Triggers.IsLearning) button.Triggers.LearnCommand.Execute(null);
         _buttons.LearnKey(key, withModifier);
     }
 
@@ -221,7 +221,7 @@ public class ButtonsTests : IDisposable
         var monitor = new InputMonitorViewModel(_buttons);
         var trigger = ScareOnKey("F5").Triggers.Single();
         trigger.RearmSeconds = 5;
-        void Key(string key, bool pressed = true) => _buttons.Input(ButtonTrigger.Keyboard, key, pressed);
+        void Key(string key, bool pressed = true) => _buttons.Input(InputTrigger.Keyboard, key, pressed);
 
         Key("F5");
         Key("F5", pressed: false);
@@ -240,9 +240,9 @@ public class ButtonsTests : IDisposable
             ("F5", "pressed", "Pressed Scare"),
             ("F5", "released", ""),
             ("F5", "pressed", "Scare: re-arms in 4.0 s"),
-            ("Q", "pressed", "No button uses it"),
+            ("Q", "pressed", "Nothing uses it"),
             ("F5", "pressed", "Scare: this trigger is turned off"),
-            ("Num 1", "pressed", "No button uses it"),
+            ("Num 1", "pressed", "Nothing uses it"),
             ("F5", "pressed", "Triggers are off"),
         ], monitor.Rows.Reverse().Select(r => (r.Address, r.Change, r.Outcome)));
         var first = monitor.Rows[^1];
@@ -260,7 +260,7 @@ public class ButtonsTests : IDisposable
         _buttons.PressKey("F5");
         Assert.Equal("Scare: waiting for its timelines to finish", monitor.Rows[0].Outcome);
 
-        for (int i = 0; i < InputMonitorViewModel.Capacity + 5; i++) _buttons.Input(ButtonTrigger.Keyboard, $"F{i % 12 + 1}", isPressed: false);
+        for (int i = 0; i < InputMonitorViewModel.Capacity + 5; i++) _buttons.Input(InputTrigger.Keyboard, $"F{i % 12 + 1}", isPressed: false);
         Assert.Equal(InputMonitorViewModel.Capacity, monitor.Rows.Count);
         Assert.Equal("F1", monitor.Rows[0].Address);   // the newest: i = 204
 
@@ -325,7 +325,7 @@ public class ButtonsTests : IDisposable
 
         Assert.True(_buttons.IsEditing);
         Assert.Same(button, _buttons.Selected);
-        Assert.True(button.IsLearningKey);
+        Assert.True(button.Triggers.IsLearning);
 
         _buttons.LearnKey("F5", withModifier: false);
         Assert.Equal("F5", button.KeyLabel);
@@ -359,8 +359,8 @@ public class ButtonsTests : IDisposable
 
         var second = AddButton();
         Learn(second, "LeftCtrl");   // on the way to a combination: nothing to say yet
-        Assert.Equal("", second.KeyProblem);
-        Assert.True(second.IsLearningKey);
+        Assert.Equal("", second.Triggers.Problem);
+        Assert.True(second.Triggers.IsLearning);
 
         foreach (var (key, withModifier, problem) in new[]
         {
@@ -372,14 +372,14 @@ public class ButtonsTests : IDisposable
         })
         {
             Learn(second, key, withModifier);
-            Assert.Contains(problem, second.KeyProblem);
-            Assert.True(second.IsLearningKey);
+            Assert.Contains(problem, second.Triggers.Problem);
+            Assert.True(second.Triggers.IsLearning);
             Assert.Equal("", second.KeyLabel);
         }
 
         Learn(second, "Q");
         Assert.Equal("Q", second.KeyLabel);
-        Assert.False(second.IsLearningKey);
+        Assert.False(second.Triggers.IsLearning);
     }
 
     [Fact]
@@ -389,11 +389,11 @@ public class ButtonsTests : IDisposable
         var second = AddButton();
 
         Learn(first, "Escape");
-        Assert.False(first.IsLearningKey);
+        Assert.False(first.Triggers.IsLearning);
         Assert.Equal("", first.KeyLabel);
 
         _buttons.Selected = first;
-        first.LearnKeyCommand.Execute(null);
+        first.Triggers.LearnCommand.Execute(null);
         Assert.True(_buttons.IsLearningKey);
         _buttons.Selected = second;
         Assert.False(_buttons.IsLearningKey);
@@ -521,7 +521,7 @@ public class ButtonsTests : IDisposable
 
     /// <summary>Gives a button a trigger for a device's command, as an edit (another device could have made it).</summary>
     void Listen(ShowButtonViewModel button, Guid device, string command) =>
-        _rig.Session.Document.Record("Add trigger", () => button.Button.Triggers.Add(new ButtonTrigger { Source = ButtonTrigger.Serial, Input = device, Address = command }), [button.Button]);
+        _rig.Session.Document.Record("Add trigger", () => button.Button.Triggers.Add(new InputTrigger { Source = InputTrigger.Serial, Input = device, Address = command }), [button.Button]);
 
     [Fact]
     public void A_serial_command_is_learned_while_a_button_waits_then_presses_it()
@@ -531,13 +531,13 @@ public class ButtonsTests : IDisposable
         var scare = Button("Scare", new RunTimelineAction { TimelineId = _scare.Id });
         var other = Button("Other");
         scare = _buttons.Buttons[0];
-        void Serial(string command) => _buttons.Input(ButtonTrigger.Serial, command, isPressed: true, ethereal);
+        void Serial(string command) => _buttons.Input(InputTrigger.Serial, command, isPressed: true, ethereal);
 
-        Assert.Equal("Add key", scare.LearnKeyLabel);
+        Assert.Equal("Add key", scare.Triggers.LearnLabel);
         _buttons.IsSerialListening = true;   // the Inputs screen says a serial device is being listened to
-        Assert.Equal("Add key or command", scare.LearnKeyLabel);
-        scare.LearnKeyCommand.Execute(null);
-        Assert.Equal("Press a key or send a command… (Esc cancels)", scare.LearnKeyLabel);
+        Assert.Equal("Add key or command", scare.Triggers.LearnLabel);
+        scare.Triggers.LearnCommand.Execute(null);
+        Assert.Equal("Press a key or send a command… (Esc cancels)", scare.Triggers.LearnLabel);
 
         Serial("BTN24");
         Assert.False(_buttons.IsLearningKey);
@@ -551,17 +551,17 @@ public class ButtonsTests : IDisposable
         Assert.Equal(1, Copies);
 
         // One command, one button.
-        other.LearnKeyCommand.Execute(null);
+        other.Triggers.LearnCommand.Execute(null);
         Serial("BTN24");
-        Assert.True(other.IsLearningKey);
-        Assert.Equal("Ethereal FX “BTN24” is already on Scare.", other.KeyProblem);
+        Assert.True(other.Triggers.IsLearning);
+        Assert.Equal("Ethereal FX “BTN24” is already on Scare.", other.Triggers.Problem);
         Assert.Empty(other.Triggers);
 
         Assert.Equal(
         [
             ("Ethereal FX", "BTN24", "received", "Learned by Scare"),
             ("Ethereal FX", "BTN24", "received", "Pressed Scare"),
-            ("Ethereal FX", "BTN25", "received", "No button uses it"),
+            ("Ethereal FX", "BTN25", "received", "Nothing uses it"),
             ("Ethereal FX", "BTN24", "received", "Not learned: it's already on Scare"),
         ], monitor.Rows.Reverse().Select(r => (r.Source, r.Address, r.Change, r.Outcome)));
     }
@@ -576,8 +576,8 @@ public class ButtonsTests : IDisposable
         Listen(hallScare, hall, "GO");
         Listen(wardScare, ward, "GO");
 
-        Assert.Equal("Ward scare", _buttons.Input(ButtonTrigger.Serial, "GO", isPressed: true, ward)?.Name);
-        Assert.Equal("Hall scare", _buttons.Input(ButtonTrigger.Serial, "GO", isPressed: true, hall)?.Name);
+        Assert.Equal("Ward scare", _buttons.Input(InputTrigger.Serial, "GO", isPressed: true, ward)?.Name);
+        Assert.Equal("Hall scare", _buttons.Input(InputTrigger.Serial, "GO", isPressed: true, hall)?.Name);
         Assert.Equal("Ward box “GO”", _buttons.Buttons.Single(b => b.Name == "Ward scare").Triggers.Single().Label);
     }
 
@@ -602,8 +602,193 @@ public class ButtonsTests : IDisposable
     {
         var monitor = new InputMonitorViewModel(_buttons);
         var box = Device("Box");
-        _buttons.Input(ButtonTrigger.Serial, "GO\u001b1", isPressed: true, box);
+        _buttons.Input(InputTrigger.Serial, "GO\u001b1", isPressed: true, box);
         Assert.Equal("GO[1B]1", monitor.Rows.Single().Address);
-        Assert.Equal("Box “GO[1B]1”", _buttons.Describe(ButtonTrigger.Serial, box, "GO\u001b1"));
+        Assert.Equal("Box “GO[1B]1”", _buttons.Describe(InputTrigger.Serial, box, "GO\u001b1"));
+    }
+
+    // ---- triggers with states, how they behave, and timelines' triggers ----
+
+    void Released(string key) => _buttons.Input(InputTrigger.Keyboard, key, isPressed: false);
+
+    [Fact]
+    public void A_sensor_s_on_and_off_are_one_input_learned_from_its_on_and_a_momentary_trigger_stops_the_scare_at_rest()
+    {
+        var monitor = new InputMonitorViewModel(_buttons);
+        var ethereal = Device("Ethereal FX");
+        var scare = Button("Scare", new RunTimelineAction { TimelineId = _scare.Id });
+        scare.Triggers.LearnCommand.Execute(null);
+
+        _buttons.Command(ethereal, "BTN24=Off");   // let go just as Learn was clicked: that's its rest, not what trips it
+        Assert.Empty(scare.Triggers);
+        _buttons.Command(ethereal, "BTN24=On");
+        var trigger = Assert.Single(scare.Triggers);
+        Assert.Equal(("BTN24", "On"), (trigger.Trigger.Address, trigger.Trigger.Value));
+        Assert.Equal("Ethereal FX “BTN24=On”", trigger.Label);
+
+        trigger.Preset = TriggerViewModel.Momentary;
+        Assert.Equal((WhileActive.Repeat, OnRest.Stop, IfPlaying.Ignore), (trigger.Trigger.WhileActive, trigger.Trigger.OnRest, trigger.Trigger.IfPlaying));
+        _buttons.Command(ethereal, "BTN24=On");
+        _buttons.Command(ethereal, "BTN24=On");   // sent again while still tripped: not another trip
+        Assert.Equal(1, Copies);
+        _buttons.Command(ethereal, "BTN24=Off");
+        _rig.Manager.Tick();
+        Assert.False(_rig.Manager.IsRunning(_scare.Id));
+
+        Assert.Equal(
+        [
+            ("BTN24=Off", "Not learned: Off looks like it's at rest; trip it"),
+            ("BTN24=On", "Learned by Scare"),
+            ("BTN24=On", "Pressed Scare"),
+            ("BTN24=On", ""),
+            ("BTN24=Off", "Stopped Scare"),
+        ], monitor.Rows.Reverse().Select(r => (r.Address, r.Outcome)));
+    }
+
+    [Fact]
+    public void Loop_while_held_plays_the_scare_again_each_time_it_finishes_until_the_sensor_rests()
+    {
+        var box = Device("Box");
+        var scare = Button("Scare", new RunTimelineAction { TimelineId = _scare.Id });
+        Listen(scare, box, "BTN24");
+        var trigger = scare.Triggers.Single();
+        trigger.ActiveValue = "On";
+        trigger.Preset = TriggerViewModel.LoopWhileHeld;
+
+        _buttons.Command(box, "BTN24=On");
+        StopScare();   // it finished, still tripped: again
+        Assert.Equal(1, Copies);
+        Assert.StartsWith("Active · last fired", trigger.State);
+
+        _buttons.Command(box, "BTN24=Off");
+        StopScare();   // finished at rest: that's all
+        Assert.Equal(0, Copies);
+    }
+
+    [Fact]
+    public void A_normally_closed_sensor_is_inverted_and_a_bare_command_offers_only_what_a_pulse_can_do()
+    {
+        var box = Device("Box");
+        var scare = Button("Scare", new RunTimelineAction { TimelineId = _scare.Id });
+        Listen(scare, box, "DOOR");
+        var trigger = scare.Triggers.Single();
+        Assert.False(trigger.HasStates);
+        Assert.DoesNotContain(TriggerViewModel.Momentary, trigger.Presets);
+
+        trigger.ActiveValue = "Closed";
+        trigger.Invert = true;
+        Assert.Equal("Box “DOOR” not Closed", trigger.Label);
+        Assert.True(trigger.HasStates);
+        Assert.Contains(TriggerViewModel.Momentary, trigger.Presets);
+
+        Assert.Null(_buttons.Command(box, "DOOR=Closed"));
+        Assert.Equal("Scare", _buttons.Command(box, "DOOR=Open")?.Name);
+    }
+
+    [Fact]
+    public void A_toggle_starts_the_scare_and_stops_it_and_a_retrigger_starts_it_again()
+    {
+        var trigger = ScareOnKey("F5").Triggers.Single();
+        trigger.Preset = TriggerViewModel.Toggle;
+
+        _buttons.PressKey("F5");
+        Released("F5");
+        Assert.False(_buttons.PressKey("F5"));
+        _rig.Manager.Tick();
+        Assert.Equal(0, Copies);
+
+        Released("F5");
+        trigger.Preset = TriggerViewModel.Retrigger;
+        _buttons.PressKey("F5");
+        Released("F5");
+        Assert.True(_buttons.PressKey("F5"));
+        _rig.Manager.Tick();
+        Assert.Equal(1, Copies);   // the first stopped, it started again
+    }
+
+    [Fact]
+    public void Run_once_waits_for_its_reset_input_or_for_the_triggers_to_be_armed_again()
+    {
+        var monitor = new InputMonitorViewModel(_buttons);
+        var trigger = ScareOnKey("F5").Triggers.Single();
+        trigger.RunOnce = true;
+        trigger.LearnResetCommand.Execute(null);
+        Assert.Equal("Press a key or send a command… (Esc cancels)", trigger.LearnResetLabel);
+        _buttons.LearnKey("F6", withModifier: false);
+        Assert.Equal("Key F6", trigger.ResetLabel);
+        Assert.Contains("once until reset", trigger.Summary);
+
+        Assert.True(_buttons.PressKey("F5"));
+        Released("F5");
+        Assert.False(_buttons.PressKey("F5"));
+        Assert.True(trigger.IsSpent);
+        Assert.StartsWith("Ran once: waiting for its reset", trigger.State);
+
+        _buttons.PressKey("F6");
+        Assert.Equal("Reset Scare", monitor.Rows[0].Outcome);
+        Assert.True(_buttons.PressKey("F5"));
+
+        _buttons.TriggersArmed = false;
+        _buttons.TriggersArmed = true;
+        Assert.False(trigger.IsSpent);
+    }
+
+    [Fact]
+    public void A_timeline_has_triggers_of_its_own_that_run_it_saved_with_it_and_undone_like_its_other_edits()
+    {
+        var monitor = new InputMonitorViewModel(_buttons);
+        var button = Button("Other");   // (as if the show was opened with it: before the timeline's trigger is made)
+        var triggers = _buttons.TriggersFor(_scare)!;
+        Assert.True(triggers.IsTimeline);
+        triggers.LearnCommand.Execute(null);
+        _buttons.LearnKey("F7", withModifier: false);
+
+        var trigger = Assert.Single(triggers);
+        Assert.Equal("F7", Assert.Single(_scare.Triggers).Address);
+        Assert.Null(_buttons.PressKey("F7") ? "a button" : null);   // no button: the timeline itself
+        Assert.Equal(1, Copies);
+        Assert.Equal("Ran Scare", monitor.Rows[0].Outcome);
+        Assert.True(monitor.Rows[0].PressedAButton);
+        Assert.True(_buttons.HasKey("F7"));
+
+        trigger.Loop = true;
+        Released("F7");
+        _rig.Manager.StopTimeline(_scare.Id);
+        _rig.Manager.Tick();
+        _buttons.PressKey("F7");
+        Assert.True(_rig.Manager.Running.Single(r => r.TimelineId == _scare.Id).Status.Loop);
+
+        // One input, one thing: a button can't have it too.
+        button.Triggers.LearnCommand.Execute(null);
+        _buttons.LearnKey("F7", withModifier: false);
+        Assert.Equal("F7 is already on Scare.", button.Triggers.Problem);
+        _buttons.CancelLearningKey();
+
+        var document = _rig.Session.Document;
+        document.Undo(_scare.Id);   // Play looped
+        document.Undo(_scare.Id);   // the trigger
+        Assert.Empty(_scare.Triggers);
+        Assert.Empty(triggers);
+        Assert.False(_buttons.HasKey("F7"));
+    }
+
+    [Fact]
+    public void Reloading_the_panel_keeps_a_timeline_s_trigger_list_that_Timeline_properties_may_be_showing()
+    {
+        _scare.Triggers.Add(new InputTrigger { Address = "F7" });
+        var shown = _buttons.TriggersFor(_scare)!;
+
+        _buttons.Reload();
+
+        Assert.Same(shown, _buttons.TriggersFor(_scare));
+        Assert.Equal(1, _buttons.PressKey("F7") ? 0 : Copies);
+    }
+
+    [Fact]
+    public void A_duplicated_timeline_takes_none_of_its_triggers()
+    {
+        _scare.Triggers.Add(new InputTrigger { Address = "F7" });
+
+        Assert.Empty(_scare.Clone("Scare copy").Triggers);
     }
 }

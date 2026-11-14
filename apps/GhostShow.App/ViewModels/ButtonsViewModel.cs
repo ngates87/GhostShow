@@ -38,7 +38,11 @@ public sealed partial class ButtonsViewModel : ObservableObject
         session.Document.Changed += change =>
         {
             if (change.Ops.Any(o => o.Path == "buttons" || o.Path.StartsWith("buttons/", StringComparison.Ordinal))) Sync();
-            if (change.Ops.Any(o => o.Path.StartsWith("timelines", StringComparison.Ordinal))) RefreshTimelines();
+            if (change.Ops.Any(o => o.Path.StartsWith("timelines", StringComparison.Ordinal)))
+            {
+                RefreshTimelines();
+                SyncTimelineTriggers();   // a timeline's triggers edited, undone, or the timeline added or removed
+            }
             if (change.Touches("inputs")) RefreshTriggerLabels();   // an input was renamed, removed or put back
         };
     }
@@ -90,7 +94,7 @@ public sealed partial class ButtonsViewModel : ObservableObject
     {
         oldValue?.IsSelected = false;
         newValue?.IsSelected = true;
-        LearningKeyFor = null;   // waiting for a key belongs to the button being edited
+        LearningFor = null;   // waiting for a key belongs to the button being edited
     }
 
     partial void OnIsEditingChanged(bool value)
@@ -135,10 +139,13 @@ public sealed partial class ButtonsViewModel : ObservableObject
     /// <summary>A new or opened show: its buttons.</summary>
     public void Reload()
     {
-        LearningKeyFor = null;
+        LearningFor = null;
         TriggersArmed = true;   // a show opens armed, so its Start Show key simply works
         Buttons.Clear();
         foreach (var button in _session.Project.Buttons) Buttons.Add(new ShowButtonViewModel(button, this));
+        // Another show has other timelines, so they get new lists (every trigger ready); one still in the show keeps its
+        // list, which Timeline properties may already be showing.
+        SyncTimelineTriggers();
         Selected = null;
         IsOpen = Buttons.Count > 0;   // a show without buttons keeps the room for the timeline (the strip brings them up)
         OnPropertyChanged(nameof(HasButtons));
@@ -179,50 +186,80 @@ public sealed partial class ButtonsViewModel : ObservableObject
         Tick();
     }
 
-    // ---- inputs: keys now, sensors and Stream Deck keys later, all pressing buttons the same way ----
+    // ---- inputs: keys and serial commands now, Stream Deck keys later, setting off buttons' and timelines' triggers ----
 
     /// <summary>Every input event, with what came of it in a few words, for the input monitor.</summary>
     public event Action<InputEvent, string>? InputReceived;
 
+    internal DateTimeOffset Now => _time.GetLocalNow();
+
     /// <summary>
-    /// An input event from any source. A press presses the button with a live trigger (armed and on) for that input, if
-    /// the trigger is ready (not still re-arming); a release does nothing yet. Returns the button it pressed, or null. A
-    /// click on the button always works, whatever its triggers.
+    /// An input event from any source, handed to every trigger listening to that input, on buttons and timelines alike:
+    /// each decides what to do as its settings say (see <see cref="TriggerRunner"/>), e.g. fire when its input becomes
+    /// active, stop what it started when it rests. Returns the button it pressed, or null. A click on the button always
+    /// works, whatever its triggers.
     ///
-    /// While a button waits for a key, a serial command is learned instead: it becomes that button's trigger, listening
-    /// to the device it came from. (Keys being learned never get here: the window hands them to <see cref="LearnKey"/>.)
+    /// While a button or timeline waits for a trigger, a serial command is learned instead: it becomes its trigger,
+    /// listening to the device it came from. (Keys being learned never get here: the window hands them to <see cref="LearnKey"/>.)
     /// </summary>
     /// <param name="device">The show's input device it came from (<see cref="Project.Inputs"/>); null for the keyboard.</param>
-    public ShowButtonViewModel? Input(string source, string address, bool isPressed, Guid? device = null)
+    /// <param name="value">A serial command's value (On, for BTN24=On, whose address is BTN24); null for one without.</param>
+    public ShowButtonViewModel? Input(string source, string address, bool isPressed, Guid? device = null, string? value = null)
     {
-        var input = new InputEvent(source, address, isPressed, _time.GetLocalNow(), device);
-        var (pressed, outcome) = !isPressed ? (null, "")
-                               : LearningKeyFor is { } learning && source != ButtonTrigger.Keyboard ? (null, Learn(learning, input))
-                               : PressFor(input);
+        var input = new InputEvent(source, address, isPressed, Now, device, value);
+        var (pressed, outcome) = LearningFor is not null && source != InputTrigger.Keyboard ? (null, Learn(input)) : Dispatch(input);
         InputReceived?.Invoke(input, outcome);
         return pressed;
     }
 
-    /// <summary>A serial command (or later input) arriving while a button waits for its trigger. Returns what came of it.</summary>
-    string Learn(ShowButtonViewModel button, InputEvent input)
+    /// <summary>A serial command, as it arrived: BTN24=On is input BTN24 at On (see <see cref="InputEvent.SplitCommand"/>).</summary>
+    public ShowButtonViewModel? Command(Guid device, string command)
     {
-        if (ButtonWith(input.Source, input.Input, input.Address) is { } other)
+        var (address, value) = InputEvent.SplitCommand(command);
+        return Input(InputTrigger.Serial, address, isPressed: true, device, value);
+    }
+
+    /// <summary>Every trigger, on every button and timeline.</summary>
+    IEnumerable<TriggerViewModel> AllTriggers => Buttons.SelectMany(b => b.Triggers).Concat(_timelineTriggers.Values.SelectMany(l => l));
+
+    (ShowButtonViewModel? Pressed, string Outcome) Dispatch(InputEvent input)
+    {
+        // A run-once trigger's reset input resets it, whatever else the input does.
+        var resets = AllTriggers.Where(t => t.Trigger.RunOnce && t.Trigger.ResetBy?.IsSetOffBy(input) == true).ToList();
+        foreach (var trigger in resets) trigger.ResetCommand.Execute(null);
+
+        var matches = AllTriggers.Where(t => t.Trigger.Matches(input)).ToList();
+        if (matches.Count == 0)
+            return (null, resets.Count > 0 ? $"Reset {string.Join(", ", resets.Select(t => t.Owner.Name).Distinct())}"
+                        : input.Source == InputTrigger.Keyboard && !input.IsPressed ? "" : "Nothing uses it");
+
+        ShowButtonViewModel? pressed = null;
+        var outcomes = new List<string>();
+        foreach (var trigger in matches)
         {
-            button.KeyProblem = $"{Describe(input.Source, input.Input, input.Address)} is already on {other.Name}.";
-            return $"Not learned: it's already on {other.Name}";
+            var (fired, outcome) = trigger.Handle(input, TriggersArmed);
+            if (fired) pressed ??= trigger.Owner as ShowButtonViewModel;
+            if (outcome.Length > 0 && !outcomes.Contains(outcome)) outcomes.Add(outcome);
+            if (outcome.StartsWith("Ran ", StringComparison.Ordinal) || outcome.StartsWith("Stopped ", StringComparison.Ordinal)) Status = outcome;
         }
-        LearningKeyFor = null;
-        button.AddTrigger(input.Source, input.Address, input.Input);
-        return $"Learned by {button.Name}";
+        if (outcomes.Count > 0 || resets.Count > 0) Tick();
+        return (pressed, string.Join("; ", outcomes));
     }
 
     /// <summary>An input in words: "Key F5", "Ethereal FX “BTN24”" (the device's name in the show).</summary>
-    public string Describe(string source, Guid? device, string address) => source switch
+    public string Describe(string source, Guid? device, string address, string? value = null) => source switch
     {
-        ButtonTrigger.Keyboard => $"Key {TriggerKeys.Label(address)}",
-        ButtonTrigger.Serial => $"{InputName(device)} “{InputText.Visible(address)}”",
+        InputTrigger.Keyboard => $"Key {TriggerKeys.Label(address)}",
+        InputTrigger.Serial => $"{InputName(device)} “{InputText.Visible(value is null ? address : $"{address}={value}")}”",
         _ => $"{source} {address}",
     };
+
+    /// <summary>A trigger's input in words: "Key F5", "Ethereal FX “BTN24=On”", "Ethereal FX “BTN24” not On" (inverted).</summary>
+    public string Describe(InputTrigger trigger) => trigger is { Invert: true, Value: { } value }
+        ? $"{Describe(trigger.Source, trigger.Input, trigger.Address)} not {InputText.Visible(value)}"
+        : Describe(trigger.Source, trigger.Input, trigger.Address, trigger.Value);
+
+    public string Describe(InputAddress input) => Describe(input.Source, input.Input, input.Address, input.Value);
 
     /// <summary>The show's name for an input device: "Ethereal FX", or "Keyboard"; "A removed input" once it's gone.</summary>
     public string InputName(Guid? device) =>
@@ -230,8 +267,7 @@ public sealed partial class ButtonsViewModel : ObservableObject
 
     void RefreshTriggerLabels()
     {
-        foreach (var button in Buttons)
-            foreach (var trigger in button.Triggers) trigger.Refresh();
+        foreach (var trigger in AllTriggers) trigger.Refresh();
     }
 
     /// <summary>
@@ -242,62 +278,98 @@ public sealed partial class ButtonsViewModel : ObservableObject
 
     partial void OnIsSerialListeningChanged(bool value)
     {
-        foreach (var button in Buttons) button.RefreshLearnLabel();
+        foreach (var list in Buttons.Select(b => b.Triggers).Concat(_timelineTriggers.Values)) list.RefreshLearnLabel();
     }
 
     /// <summary>A key pressed anywhere (see <see cref="Input"/>). Returns whether it pressed a button.</summary>
-    public bool PressKey(string key) => Input(ButtonTrigger.Keyboard, key, isPressed: true) is not null;
+    public bool PressKey(string key) => Input(InputTrigger.Keyboard, key, isPressed: true) is not null;
 
-    (ShowButtonViewModel? Pressed, string Outcome) PressFor(InputEvent input)
+    /// <summary>Whether a live trigger uses this key: then the key is the trigger's, even while it's re-arming.</summary>
+    public bool HasKey(string key) => TriggersArmed && AllTriggers.Any(t => t.IsOn && t.IsKey(key));
+
+    /// <summary>What has this input as a trigger, on or off (for learning: one input, one button or timeline).</summary>
+    ITriggerOwner? OwnerWith(string source, Guid? device, string address) =>
+        AllTriggers.FirstOrDefault(t => t.Trigger.Matches(source, device, address))?.Owner;
+
+    // ---- timelines' triggers ----
+
+    readonly Dictionary<Guid, TriggerListViewModel> _timelineTriggers = [];
+
+    /// <summary>A timeline's triggers, for its Timeline properties (and to keep them listening when it isn't open).</summary>
+    public TriggerListViewModel? TriggersFor(ShowTimeline? timeline)
     {
-        var matches = Buttons.SelectMany(b => b.Triggers.Where(t => t.Trigger.Matches(input.Source, input.Input, input.Address)).Select(t => (Button: b, Trigger: t))).ToList();
-        if (matches.Count == 0) return (null, "No button uses it");
-        if (!TriggersArmed) return (null, "Triggers are off");
-        var live = matches.Where(m => m.Trigger.IsOn).ToList();
-        if (live.Count == 0) return (null, $"{matches[0].Button.Name}: this trigger is turned off");
-        var (button, trigger) = live[0];
-        if (!trigger.IsReady(input.Time)) return (null, $"{button.Name}: {trigger.WhyNotReady(input.Time)}");
-        trigger.Fired(input.Time);
-        Press(button);
-        return (button, $"Pressed {button.Name}");
+        if (timeline is null) return null;
+        if (!_timelineTriggers.TryGetValue(timeline.Id, out var list))
+            _timelineTriggers[timeline.Id] = list = new TriggerListViewModel(new TimelineTriggerOwner(timeline, this), this);
+        return list;
     }
 
-    /// <summary>Whether a live trigger uses this key: then the key is the button's, even while it's re-arming.</summary>
-    public bool HasKey(string key) => LiveKeyTrigger(key) is not null;
-
-    (ShowButtonViewModel Button, ButtonTriggerViewModel Trigger)? LiveKeyTrigger(string key)
+    /// <summary>After a change to the timelines: lists for those with triggers, none for removed ones, each matching its timeline.</summary>
+    void SyncTimelineTriggers()
     {
-        if (!TriggersArmed) return null;
-        foreach (var button in Buttons)
-            foreach (var trigger in button.Triggers)
-                if (trigger.IsOn && trigger.IsKey(key)) return (button, trigger);
-        return null;
+        var timelines = _session.Project.Timelines.ToDictionary(t => t.Id);
+        foreach (var (id, list) in _timelineTriggers.ToList())
+        {
+            if (timelines.TryGetValue(id, out var timeline) && ((TimelineTriggerOwner)list.Owner).Timeline == timeline) continue;
+            if (LearningFor == list || list.Any(t => t == LearningFor)) LearningFor = null;
+            _timelineTriggers.Remove(id);
+        }
+        foreach (var timeline in timelines.Values.Where(t => t.Triggers.Count > 0)) TriggersFor(timeline);
+        foreach (var list in _timelineTriggers.Values) list.Sync();
+        OnPropertyChanged(nameof(ShowFocusWarning));
     }
 
-    /// <summary>The button with this input as a trigger, on or off (for learning: one input, one button).</summary>
-    ShowButtonViewModel? ButtonWith(string source, Guid? device, string address) =>
-        Buttons.FirstOrDefault(b => b.Triggers.Any(t => t.Trigger.Matches(source, device, address)));
+    /// <summary>A timeline as what its triggers set off: they run it.</summary>
+    sealed class TimelineTriggerOwner(ShowTimeline timeline, ButtonsViewModel hub) : ITriggerOwner
+    {
+        public ShowTimeline Timeline => timeline;
+        public string Name => timeline.Name;
+        public List<InputTrigger> TriggerModels => timeline.Triggers;
+        public bool IsTimeline => true;
+        public bool CanPlay => true;
+        public bool IsPlaying => hub._playback.IsRunning(timeline.Id);
 
-    // ---- learning a key: the next key pressed becomes a trigger of the button ----
+        public string Fire(InputTrigger trigger)
+        {
+            hub._playback.Launch(timeline, new RunOptions(trigger.Loop));
+            return $"Ran {timeline.Name}";
+        }
 
-    /// <summary>The button waiting for a key to be pressed; null when none is.</summary>
+        public void Stop() => hub._playback.StopTimeline(timeline);
+        public void FinishPass() => hub._playback.EndLoop(timeline);
+
+        public void EditTriggers(string description, Action change, InputTrigger? only = null) =>
+            hub._session.Document.Record(description, change, [only ?? ShowDocument.Shallow(timeline)], within: timeline);
+    }
+
+    // ---- learning: the next key pressed (or command sent) becomes a trigger, or a run-once trigger's reset ----
+
+    /// <summary>What's waiting for a key: a button's or timeline's triggers (to add one), or a trigger (its reset input); null when nothing is.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsLearningKey))]
-    public partial ShowButtonViewModel? LearningKeyFor { get; private set; }
+    public partial object? LearningFor { get; private set; }
 
-    partial void OnLearningKeyForChanged(ShowButtonViewModel? oldValue, ShowButtonViewModel? newValue)
+    partial void OnLearningForChanged(object? oldValue, object? newValue)
     {
-        oldValue?.IsLearningKey = false;
-        newValue?.IsLearningKey = true;
-        newValue?.KeyProblem = "";
+        if (oldValue is TriggerListViewModel oldList) oldList.IsLearning = false;
+        if (oldValue is TriggerViewModel oldTrigger) oldTrigger.IsLearningReset = false;
+        if (newValue is TriggerListViewModel newList) newList.IsLearning = true;
+        if (newValue is TriggerViewModel newTrigger) newTrigger.IsLearningReset = true;
     }
 
-    public bool IsLearningKey => LearningKeyFor is not null;
+    public bool IsLearningKey => LearningFor is not null;
 
-    /// <summary>Starts waiting for a key for this button, or stops if it already was.</summary>
-    internal void ToggleLearningKey(ShowButtonViewModel button) => LearningKeyFor = LearningKeyFor == button ? null : button;
+    /// <summary>Starts waiting for a key for these triggers or this reset, or stops if it already was.</summary>
+    internal void ToggleLearning(object what) => LearningFor = LearningFor == what ? null : what;
 
-    public void CancelLearningKey() => LearningKeyFor = null;
+    public void CancelLearningKey() => LearningFor = null;
+
+    /// <summary>Says what's wrong with the key or command just given, where the one waiting shows it.</summary>
+    void Problem(string problem)
+    {
+        if (LearningFor is TriggerListViewModel list) list.Problem = problem;
+        else Status = problem;
+    }
 
     /// <summary>
     /// The key pressed while waiting, whatever has focus. A key that can't be used says why and keeps waiting, so the next
@@ -306,28 +378,59 @@ public sealed partial class ButtonsViewModel : ObservableObject
     /// </summary>
     public void LearnKey(string key, bool withModifier)
     {
-        if (LearningKeyFor is not { } button || TriggerKeys.IsModifier(key)) return;
+        if (LearningFor is null || TriggerKeys.IsModifier(key)) return;
         string label = TriggerKeys.Label(key);
-        if (key == "Escape") LearningKeyFor = null;
-        else if (withModifier) button.KeyProblem = "Press the key on its own, without Ctrl, Shift or Alt.";
-        else if (!TriggerKeys.CanUse(key)) button.KeyProblem = $"GhostShow uses {label} itself: try a letter, a number or an F key.";
-        else if (ButtonWith(ButtonTrigger.Keyboard, null, key) is { } other) button.KeyProblem = $"{label} is already on {other.Name}.";
-        else
+        if (key == "Escape") LearningFor = null;
+        else if (withModifier) Problem("Press the key on its own, without Ctrl, Shift or Alt.");
+        else if (!TriggerKeys.CanUse(key)) Problem($"GhostShow uses {label} itself: try a letter, a number or an F key.");
+        else if (LearningFor is TriggerViewModel trigger)
         {
-            LearningKeyFor = null;
-            button.AddTrigger(ButtonTrigger.Keyboard, key);
+            LearningFor = null;
+            trigger.SetReset(new InputAddress { Source = InputTrigger.Keyboard, Address = key });
+        }
+        else if (OwnerWith(InputTrigger.Keyboard, null, key) is { } other) Problem($"{label} is already on {other.Name}.");
+        else if (LearningFor is TriggerListViewModel list)
+        {
+            LearningFor = null;
+            list.AddTrigger(InputTrigger.Keyboard, key);
         }
     }
 
-    /// <summary>From the UI's refresh timer: which buttons are lit (a timeline they run is playing), and how their triggers stand.</summary>
+    /// <summary>Values a sensor box sends when its input rests: one of these arriving first isn't learned as the active value.</summary>
+    static readonly HashSet<string> RestValues = new(["off", "0", "low", "false", "released", "up", "open"], StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>A serial command (or later input) arriving while something waits for a trigger. Returns what came of it.</summary>
+    string Learn(InputEvent input)
+    {
+        if (input.Value is { } value && RestValues.Contains(value))
+            return $"Not learned: {value} looks like it's at rest; trip it";
+        if (LearningFor is TriggerViewModel trigger)
+        {
+            LearningFor = null;
+            trigger.SetReset(new InputAddress { Source = input.Source, Input = input.Input, Address = input.Address, Value = input.Value });
+            return $"Learned as {trigger.Owner.Name}'s reset";
+        }
+        var list = (TriggerListViewModel)LearningFor!;
+        if (OwnerWith(input.Source, input.Input, input.Address) is { } other)
+        {
+            list.Problem = $"{Describe(input.Source, input.Input, input.Address)} is already on {other.Name}.";
+            return $"Not learned: it's already on {other.Name}";
+        }
+        LearningFor = null;
+        list.AddTrigger(input.Source, input.Address, input.Input, input.Value);
+        return $"Learned by {list.Owner.Name}";
+    }
+
+    /// <summary>
+    /// From the UI's refresh timer: which buttons are lit (a timeline they run is playing), and how triggers stand:
+    /// re-arming, and firing again while their input is held.
+    /// </summary>
     public void Tick()
     {
-        var now = _time.GetLocalNow();
-        foreach (var button in Buttons)
-        {
-            button.IsLit = button.Button.Actions.OfType<RunTimelineAction>().Any(r => _playback.IsRunning(r.TimelineId));
-            foreach (var trigger in button.Triggers) trigger.Tick(now, timelinesPlaying: button.IsLit);
-        }
+        var now = Now;
+        foreach (var button in Buttons) button.IsLit = button.IsPlaying;
+        foreach (var trigger in AllTriggers.ToList())
+            if (trigger.Tick(now, TriggersArmed) is { } did) Status = did;
     }
 
     // ---- arming: triggers can be turned off while working on the show ----
@@ -342,6 +445,13 @@ public sealed partial class ButtonsViewModel : ObservableObject
 
     public string ArmedLabel => TriggersArmed ? "Triggers armed" : "Triggers off: click to arm";
 
+    /// <summary>Arming the triggers again resets the run-once ones, ready for the next group.</summary>
+    partial void OnTriggersArmedChanged(bool value)
+    {
+        if (!value) return;
+        foreach (var trigger in AllTriggers.Where(t => t.IsSpent)) trigger.ResetCommand.Execute(null);
+    }
+
     [RelayCommand]
     void ToggleArmed() => TriggersArmed = !TriggersArmed;
 
@@ -351,7 +461,7 @@ public sealed partial class ButtonsViewModel : ObservableObject
     public partial bool IsAppFocused { get; set; } = true;
 
     /// <summary>Armed key triggers that can't work because another window has the keyboard: worth a loud warning.</summary>
-    public bool ShowFocusWarning => TriggersArmed && !IsAppFocused && Buttons.Any(b => b.Triggers.Count > 0);
+    public bool ShowFocusWarning => TriggersArmed && !IsAppFocused && AllTriggers.Any();
 
     internal ShowTimeline? Find(Guid id) => _session.Project.Timelines.FirstOrDefault(t => t.Id == id);
 
@@ -385,7 +495,7 @@ public sealed partial class ButtonsViewModel : ObservableObject
     internal void StartLearningKey(ShowButtonViewModel button)
     {
         OpenEditor(button);
-        LearningKeyFor = button;   // after selecting, which stops any waiting
+        LearningFor = button.Triggers;   // after selecting, which stops any waiting
     }
 
     internal void Remove(ShowButtonViewModel button)
@@ -430,7 +540,7 @@ public sealed record TimelineChoice(Guid Id, string Path)
 }
 
 /// <summary>One button: what it shows, and (in edit mode) its name, colour, triggers and actions.</summary>
-public sealed partial class ShowButtonViewModel : ObservableObject
+public sealed partial class ShowButtonViewModel : ObservableObject, ITriggerOwner
 {
     readonly ButtonsViewModel _owner;
 
@@ -439,7 +549,7 @@ public sealed partial class ShowButtonViewModel : ObservableObject
         Button = button;
         _owner = owner;
         foreach (var action in button.Actions) Actions.Add(new ButtonActionViewModel(action, this, owner));
-        foreach (var trigger in button.Triggers) Triggers.Add(new ButtonTriggerViewModel(trigger, this));
+        Triggers = new TriggerListViewModel(this, owner);
     }
 
     /// <summary>After a change to the show: its actions' rows match its actions, and every field shows the model.</summary>
@@ -451,13 +561,7 @@ public sealed partial class ShowButtonViewModel : ObservableObject
             Actions.Clear();
             foreach (var row in rows) Actions.Add(row);
         }
-        if (!Triggers.Select(t => t.Trigger).SequenceEqual(Button.Triggers))
-        {
-            var rows = Button.Triggers.Select(t => Triggers.FirstOrDefault(r => r.Trigger == t) ?? new ButtonTriggerViewModel(t, this)).ToList();
-            Triggers.Clear();
-            foreach (var row in rows) Triggers.Add(row);
-        }
-        foreach (var trigger in Triggers) trigger.Refresh();
+        Triggers.Sync();
         OnPropertyChanged(nameof(Name));
         OnPropertyChanged(nameof(Color));
         OnPropertyChanged(nameof(KeyLabel));
@@ -491,34 +595,17 @@ public sealed partial class ShowButtonViewModel : ObservableObject
         }
     }
 
-    // ---- triggers ----
+    // ---- triggers: they press it ----
 
-    public ObservableCollection<ButtonTriggerViewModel> Triggers { get; } = new();
+    /// <summary>Its triggers, and Add key (or command).</summary>
+    public TriggerListViewModel Triggers { get; }
 
-    IEnumerable<string> Keys => Button.Triggers.Where(t => t.Source == ButtonTrigger.Keyboard).Select(t => t.Address);
+    IEnumerable<string> Keys => Button.Triggers.Where(t => t.Source == InputTrigger.Keyboard).Select(t => t.Address);
 
     internal bool HasKey(string key) => Keys.Contains(key);
 
     /// <summary>Its keys, shown in the button's corner ("F5", "1 · Q"); empty for none.</summary>
     public string KeyLabel => string.Join(" · ", Keys.Select(TriggerKeys.Label));
-
-    /// <summary>Waiting for a key to be pressed, to add it as a trigger.</summary>
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(LearnKeyLabel))]
-    public partial bool IsLearningKey { get; set; }
-
-    public string LearnKeyLabel => !IsLearningKey ? (_owner.IsSerialListening ? "Add key or command" : "Add key")
-                                 : _owner.IsSerialListening ? "Press a key or send a command… (Esc cancels)"
-                                 : "Press a key… (Esc cancels)";
-
-    internal void RefreshLearnLabel() => OnPropertyChanged(nameof(LearnKeyLabel));
-
-    /// <summary>Why the key just pressed couldn't be added; empty when there's nothing to say.</summary>
-    [ObservableProperty]
-    public partial string KeyProblem { get; set; } = "";
-
-    [RelayCommand]
-    void LearnKey() => _owner.ToggleLearningKey(this);
 
     [RelayCommand]
     void OpenEditor() => _owner.OpenEditor(this);
@@ -530,18 +617,34 @@ public sealed partial class ShowButtonViewModel : ObservableObject
     [RelayCommand]
     void AddKeyFromMenu() => _owner.StartLearningKey(this);
 
-    internal void AddTrigger(string source, string address, Guid? device = null)
+    IEnumerable<ShowTimeline> RunsTimelines => Button.Actions.OfType<RunTimelineAction>().Select(r => _owner.Find(r.TimelineId)).OfType<ShowTimeline>();
+
+    /// <summary>A timeline it runs is playing (any copy).</summary>
+    internal bool IsPlaying => Button.Actions.OfType<RunTimelineAction>().Any(r => _owner.Playback.IsRunning(r.TimelineId));
+
+    List<InputTrigger> ITriggerOwner.TriggerModels => Button.Triggers;
+    bool ITriggerOwner.IsTimeline => false;
+    bool ITriggerTarget.CanPlay => Button.Actions.OfType<RunTimelineAction>().Any();
+    bool ITriggerTarget.IsPlaying => IsPlaying;
+
+    string ITriggerTarget.Fire(InputTrigger trigger)
     {
-        var trigger = new ButtonTrigger { Source = source, Input = device, Address = address };
-        Edit(source == ButtonTrigger.Keyboard ? "Add key" : "Add trigger", () => Button.Triggers.Add(trigger));
+        _owner.Press(this);
+        return $"Pressed {Name}";
     }
 
-    internal void RemoveTrigger(ButtonTriggerViewModel trigger) =>
-        Edit(trigger.Trigger.Source == ButtonTrigger.Keyboard ? "Remove key" : "Remove trigger", () => Button.Triggers.Remove(trigger.Trigger));
+    void ITriggerTarget.Stop()
+    {
+        foreach (var timeline in RunsTimelines) _owner.Playback.StopTimeline(timeline);
+    }
 
-    /// <summary>A change to one of its triggers' settings (only that trigger is compared).</summary>
-    internal void EditTrigger(ButtonTrigger trigger, string description, Action change) =>
-        _owner.Edit(description, change, null, ButtonsViewModel.Only(trigger));
+    void ITriggerTarget.FinishPass()
+    {
+        foreach (var timeline in RunsTimelines) _owner.Playback.EndLoop(timeline);
+    }
+
+    void ITriggerOwner.EditTriggers(string description, Action change, InputTrigger? only) =>
+        _owner.Edit(description, change, null, only ?? ButtonsViewModel.Only(Button));
 
     public ObservableCollection<ButtonActionViewModel> Actions { get; } = new();
 
@@ -605,107 +708,6 @@ public sealed partial class ShowButtonViewModel : ObservableObject
     /// <summary>A change to one of its actions (only that action is compared).</summary>
     internal void EditAction(ButtonAction action, string description, Action change) =>
         _owner.Edit(description, change, null, ButtonsViewModel.Only(action));
-}
-
-/// <summary>
-/// One trigger of a button: its settings (saved with the show), and while the show runs, whether it's on, re-arming, and
-/// when it last fired (not saved).
-/// </summary>
-public sealed partial class ButtonTriggerViewModel(ButtonTrigger trigger, ShowButtonViewModel button) : ObservableObject
-{
-    public ButtonTrigger Trigger { get; } = trigger;
-
-    /// <summary>"Key F5", "Ethereal FX “BTN24”".</summary>
-    public string Label => button.Owner.Describe(Trigger.Source, Trigger.Input, Trigger.Address);
-
-    internal bool IsKey(string key) => Trigger.Matches(ButtonTrigger.Keyboard, null, key);
-
-    [RelayCommand]
-    void Remove() => button.RemoveTrigger(this);
-
-    // ---- settings ----
-
-    public decimal RearmSeconds
-    {
-        get => (decimal)Trigger.RearmSeconds;
-        set
-        {
-            double seconds = Math.Max(0, (double)value);
-            if (seconds == Trigger.RearmSeconds) return;
-            button.EditTrigger(Trigger, "Change re-arm time", () => Trigger.RearmSeconds = seconds);
-        }
-    }
-
-    public bool RearmAfterTimelines
-    {
-        get => Trigger.RearmAfterTimelines;
-        set
-        {
-            if (value == Trigger.RearmAfterTimelines) return;
-            button.EditTrigger(Trigger, value ? "Re-arm after its timelines" : "Re-arm from firing", () => Trigger.RearmAfterTimelines = value);
-        }
-    }
-
-    /// <summary>The re-arm settings in a few words, for the folded settings: "Re-arms at once", "Re-arms 3 s after its timelines".</summary>
-    public string RearmSummary => (Trigger.RearmSeconds, Trigger.RearmAfterTimelines) switch
-    {
-        (0, false) => "Re-arms at once",
-        (0, true) => "Re-arms when its timelines finish",
-        (var s, false) => $"Re-arms {s:0.##} s after firing",
-        (var s, true) => $"Re-arms {s:0.##} s after its timelines finish",
-    };
-
-    /// <summary>After a change to the show: every setting shows the model.</summary>
-    internal void Refresh()
-    {
-        OnPropertyChanged(nameof(Label));
-        OnPropertyChanged(nameof(RearmSeconds));
-        OnPropertyChanged(nameof(RearmAfterTimelines));
-        OnPropertyChanged(nameof(RearmSummary));
-    }
-
-    // ---- while the show runs (none of this is saved) ----
-
-    /// <summary>Off: does nothing until turned back on or the show is reopened. For a sensor that misbehaves mid-show.</summary>
-    [ObservableProperty]
-    public partial bool IsOn { get; set; } = true;
-
-    DateTimeOffset? _lastFired;
-    DateTimeOffset? _readyAt;     // re-arming until then
-    bool _waitingForTimelines;    // re-arming until the button's timelines have finished (then the re-arm time)
-
-    internal bool IsReady(DateTimeOffset now) => !_waitingForTimelines && (_readyAt is null || now >= _readyAt);
-
-    /// <summary>While it isn't ready, why: "re-arms in 2.5 s", "waiting for its timelines to finish".</summary>
-    internal string WhyNotReady(DateTimeOffset now) =>
-        _waitingForTimelines ? "waiting for its timelines to finish" : $"re-arms in {((_readyAt ?? now) - now).TotalSeconds:0.0} s";
-
-    internal void Fired(DateTimeOffset now)
-    {
-        _lastFired = now;
-        _waitingForTimelines = Trigger.RearmAfterTimelines;
-        _readyAt = _waitingForTimelines ? null : now.AddSeconds(Trigger.RearmSeconds);
-        Tick(now, timelinesPlaying: true);
-    }
-
-    /// <summary>From the panel's refresh: the re-arm time starts once its timelines have finished, if it waits for them.</summary>
-    internal void Tick(DateTimeOffset now, bool timelinesPlaying)
-    {
-        if (_waitingForTimelines && !timelinesPlaying)
-        {
-            _waitingForTimelines = false;
-            _readyAt = now.AddSeconds(Trigger.RearmSeconds);
-        }
-        string state = !IsOn ? "Off"
-            : _waitingForTimelines ? "Waiting for its timelines to finish"
-            : _readyAt is { } ready && now < ready ? $"Re-arms in {(ready - now).TotalSeconds:0.0} s"
-            : "Ready";
-        State = _lastFired is { } fired ? $"{state} · last fired {fired:HH:mm:ss}" : state;
-    }
-
-    /// <summary>"Ready", "Re-arms in 2.5 s", "Off", with when it last fired.</summary>
-    [ObservableProperty]
-    public partial string State { get; private set; } = "Ready";
 }
 
 /// <summary>One action of a button, in the editor.</summary>

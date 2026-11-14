@@ -134,13 +134,24 @@ public class ProjectStoreTests : IDisposable
     }
 
     [Fact]
+    public void Version_8_show_s_triggers_learned_from_a_command_with_a_value_listen_to_its_input_at_that_value()
+    {
+        var project = ProjectStore.FromJson("""
+            { "version": 8, "buttons": [ { "name": "Scare", "triggers": [
+              { "source": "serial", "address": "BTN24=On" }, { "source": "serial", "address": "GO" }, { "source": "keyboard", "address": "F5" } ] } ] }
+            """).Project!;
+
+        Assert.Equal([("BTN24", "On"), ("GO", null), ("F5", null)], project.Buttons[0].Triggers.Select(t => (t.Address, t.Value)));
+    }
+
+    [Fact]
     public void Input_devices_and_the_device_a_trigger_listens_to_are_saved()
     {
         var device = new SerialInputDevice { Name = "Ethereal FX", BaudRate = 57600 };
         var project = new Project
         {
             Inputs = [device],
-            Buttons = [new ShowButton { Name = "Scare", Triggers = [new ButtonTrigger { Source = ButtonTrigger.Serial, Input = device.Id, Address = "BTN24" }] }],
+            Buttons = [new ShowButton { Name = "Scare", Triggers = [new InputTrigger { Source = InputTrigger.Serial, Input = device.Id, Address = "BTN24" }] }],
         };
 
         var loaded = ProjectStore.FromJson(ProjectStore.ToJson(project)).Project!;

@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
+using GhostShow.App.Controls;
 using GhostShow.Core.Dmx;
 using GhostShow.Core.Model;
 
@@ -54,7 +55,19 @@ public sealed partial class UniverseRowViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(Number));
         OnPropertyChanged(nameof(Name));
+        OnPropertyChanged(nameof(Summary));
     }
+
+    /// <summary>"DMX Output · Universe 1 · COM3  (USB Pro, S/N EN123456)": what it is and where it goes out.</summary>
+    public string Summary => SelectedDevice is { } device ? $"DMX Output · Universe {Model.Number} · {device}" : $"DMX Output · Universe {Model.Number}";
+
+    /// <summary>The status light: whether the output is really running, not just which device is picked.</summary>
+    [ObservableProperty]
+    public partial DeviceState State { get; set; } = DeviceState.Inactive;
+
+    /// <summary>Its settings are showing. They open by themselves when there's an adapter to pick and it's still on the simulator.</summary>
+    [ObservableProperty]
+    public partial bool IsExpanded { get; set; }
 
     [ObservableProperty]
     public partial string? SelectedDevice { get; set; }
@@ -67,6 +80,7 @@ public sealed partial class UniverseRowViewModel : ObservableObject
 
     partial void OnSelectedDeviceChanged(string? value)
     {
+        OnPropertyChanged(nameof(Summary));
         // The ComboBox clears its selection while Choices is rebuilt; that isn't the user picking something.
         if (_showingState || value is null) return;
         _devicePicked(this, value);
@@ -81,6 +95,16 @@ public sealed partial class UniverseRowViewModel : ObservableObject
         {
             Status = output.Status;
             IsFaulted = output.IsFaulted;
+            State = output.IsFaulted ? DeviceState.Error : output.Health switch
+            {
+                OutputHealth.Connected => DeviceState.Healthy,
+                OutputHealth.Connecting => DeviceState.Connecting,
+                OutputHealth.Faulted => DeviceState.Error,
+                _ => DeviceState.Inactive,
+            };
+            // The first choice is always the simulator: an adapter just appeared (or was there on opening) and isn't used yet.
+            bool adapterToPick = output.Choices.Count > 1 && Choices.Count <= 1 && output.Selected == output.Choices[0];
+            if (adapterToPick) IsExpanded = true;
             if (!Choices.SequenceEqual(output.Choices))
             {
                 Choices.Clear();

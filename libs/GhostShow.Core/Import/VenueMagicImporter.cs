@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using GhostShow.Core.Fixtures;
+using GhostShow.Core.Inputs;
 using GhostShow.Core.Model;
 using GhostShow.Core.Timeline;
 
@@ -228,7 +229,7 @@ public static class VenueMagicImporter
                 Actions = [action],
             };
             if (source.Key is { } key && KeyName(key) is { } name)
-                button.Triggers.Add(new ButtonTrigger { Source = ButtonTrigger.Keyboard, Address = name });
+                button.Triggers.Add(new InputTrigger { Source = InputTrigger.Keyboard, Address = name });
             project.Buttons.Add(button);
         }
         if (empty > 0) notes.Add(empty == 1 ? "A cue button that plays nothing was left out." : $"{empty} cue buttons that play nothing were left out.");

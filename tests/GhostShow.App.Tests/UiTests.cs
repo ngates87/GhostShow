@@ -312,7 +312,7 @@ public class UiTests
         var button = rig.ViewModel.Buttons.Buttons.Single();
         button.AddActionCommand.Execute("run");
         button.Actions[0].Timeline = rig.ViewModel.Buttons.Timelines.Single(t => t.Id == scare.Id);
-        Assert.True(button.IsLearningKey);   // a new button goes straight on to its key
+        Assert.True(button.Triggers.IsLearning);   // a new button goes straight on to its key
         rig.Key(Key.F5);   // the key is learned: this press doesn't run anything
         Assert.Equal("F5", button.KeyLabel);
         Assert.False(rig.Manager.IsRunning(scare.Id));
@@ -411,7 +411,7 @@ public class UiTests
         WindowRig.Pump();
         Assert.True(buttons.IsEditing);
         Assert.Same(button, buttons.Selected);
-        Assert.False(button.IsLearningKey);
+        Assert.False(button.Triggers.IsLearning);
 
         // The name's field has focus, as it would after renaming: the key still goes to the button.
         var name = rig.Window.GetVisualDescendants().OfType<TextBox>().First(t => t.Text == button.Name);
@@ -433,17 +433,17 @@ public class UiTests
         var tile = rig.Window.GetVisualDescendants().OfType<Button>().Single(b => b.Classes.Contains("showButton"));
 
         rig.Click(rig.CenterOf(tile));   // the panel: still waiting
-        Assert.True(button.IsLearningKey);
+        Assert.True(button.Triggers.IsLearning);
 
         var name = rig.Window.GetVisualDescendants().OfType<TextBox>().First(t => t.Text == button.Name);
         rig.Click(rig.CenterOf(name));
-        Assert.False(button.IsLearningKey);
+        Assert.False(button.Triggers.IsLearning);
         rig.Key(Key.F5);   // typing: goes to the field
         Assert.Equal("", button.KeyLabel);
 
-        button.LearnKeyCommand.Execute(null);
+        button.Triggers.LearnCommand.Execute(null);
         rig.Click(rig.CenterOf(rig.Find<Controls.TimelineCanvas>()));
-        Assert.False(button.IsLearningKey);
+        Assert.False(button.Triggers.IsLearning);
     });
 
     [Fact]
@@ -523,7 +523,7 @@ public class UiTests
         [
             ("F5", "pressed", "Pressed Button 1"),
             ("F5", "released", ""),
-            ("Q", "pressed", "No button uses it"),
+            ("Q", "pressed", "Nothing uses it"),
             ("Q", "released", ""),
         ], rig.ViewModel.Inputs.Monitor.Rows.Reverse().Select(r => (r.Address, r.Change, r.Outcome)));
         var list = rig.Find<ListBox>(l => l.Name == "InputRows");
@@ -564,13 +564,13 @@ public class UiTests
         PumpUntil(() => rig.ViewModel.Inputs.IsListening);
         rig.Key(Key.D4, RawInputModifiers.Control);
         WindowRig.Pump();
-        var status = rig.Find<TextBlock>(t => t.Name == "InputStatus");
+        var status = rig.Find<TextBlock>(t => t.Name == "PART_Status" && t.DataContext is InputDeviceRowViewModel);   // on its card, without opening it
         Assert.True(status.IsEffectivelyVisible);
         Assert.Equal("Listening on COM3 at 57600 baud.", status.Text);
 
         rig.ViewModel.Buttons.AddCommand.Execute(null);   // a new button waits for its trigger: a key or a command
         var button = rig.ViewModel.Buttons.Buttons.Single();
-        Assert.Equal("Press a key or send a command… (Esc cancels)", button.LearnKeyLabel);
+        Assert.Equal("Press a key or send a command… (Esc cancels)", button.Triggers.LearnLabel);
         link.Send("BTN24\r");
         PumpUntil(() => button.Triggers.Count == 1);
         Assert.Equal("Ethereal FX “BTN24”", button.Triggers[0].Label);

@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using GhostShow.App.Controls;
 using GhostShow.Core.Editing;
 using GhostShow.Core.Engine;
 using GhostShow.Core.Inputs;
@@ -19,10 +20,22 @@ public sealed record SerialPortChoice(string Label, string? Port)
 
 /// <summary>A serial port this computer has, in the list of what can be added: "COM5 · FTDI FT232R USB UART".</summary>
 /// <param name="UsedBy">What already has it ("DMX universe 1", "Ethereal FX"); null if it's free to add.</param>
-public sealed record FoundPort(string Port, string Label, string? UsedBy)
+/// <param name="Hardware">The USB device on it, "FTDI FT232R USB UART", when the computer says.</param>
+/// <param name="IsUsb">It's a USB device's port (the computer knows the device), not a built-in or unknown one.</param>
+public sealed record FoundPort(string Port, string Label, string? UsedBy, string? Hardware = null, bool IsUsb = false)
 {
     public bool CanAdd => UsedBy is null;
+    public bool InUse => UsedBy is not null;
     public string Note => UsedBy is null ? "" : $"In use by {UsedBy}";
+
+    /// <summary>The hardware's own name if the computer knows it, else the port: port names alone don't say which is which.</summary>
+    public string Title => Hardware ?? Port;
+
+    public string Summary => $"{(IsUsb ? "USB Serial" : "Serial Port")} · {Port}";
+
+    public string Icon => IsUsb ? "Usb" : "SerialPort";
+
+    public string Assignment => UsedBy is null ? "Available" : $"In use by {UsedBy}";
 }
 
 /// <summary>
@@ -153,11 +166,14 @@ public sealed partial class InputsViewModel : ObservableObject
         _ = _saveSettings();
     }
 
-    /// <summary>Adds a device on this port, named after it (rename it on its card), and listens to it.</summary>
+    /// <summary>
+    /// Adds a device on this port, named after the USB device on it, or the port if the computer won't say (rename it on
+    /// its card), and listens to it.
+    /// </summary>
     [RelayCommand]
     void Add(FoundPort found)
     {
-        var device = new SerialInputDevice { Name = UniqueName(found.Port) };
+        var device = new SerialInputDevice { Name = UniqueName(found.Hardware ?? found.Port) };
         SetBinding(device.Id, new InputPortBinding(device.Id, found.Port, _describePort(found.Port)?.Serial));
         _session.Document.Record("Add input", () => _session.Project.Inputs.Add(device), [ShowDocument.Shallow(_session.Project)]);
     }
@@ -233,7 +249,11 @@ public sealed partial class InputsViewModel : ObservableObject
 
     void RefreshFound()
     {
-        var found = _ports.Select(p => new FoundPort(p, PortLabel(p), UsedBy(p, except: null))).ToList();
+        var found = _ports.Select(p =>
+        {
+            var usb = _describePort(p);
+            return new FoundPort(p, PortLabel(p), UsedBy(p, except: null), HardwareName(usb), usb is not null);
+        }).ToList();
         if (!found.SequenceEqual(Found))
         {
             Found.Clear();
@@ -256,12 +276,18 @@ public sealed partial class InputsViewModel : ObservableObject
     /// "COM5 · FTDI FT232R USB UART": the USB device's maker and product name, when the computer can say. Port names alone
     /// don't say which device is which.
     /// </summary>
-    string PortLabel(string port)
+    string PortLabel(string port) => HardwareName(_describePort(port)) is { } name ? $"{port} · {name}" : port;
+
+    /// <summary>"FTDI FT232R USB UART": the USB device's maker and product, or null if the computer won't say.</summary>
+    static string? HardwareName(UsbPortInfo? usb)
     {
-        if (_describePort(port) is not { } usb) return port;
+        if (usb is null) return null;
         var name = string.Join(" ", new[] { usb.Manufacturer, usb.Product }.Where(s => !string.IsNullOrWhiteSpace(s)));
-        return name.Length > 0 ? $"{port} · {name}" : port;
+        return name.Length > 0 ? name : null;
     }
+
+    /// <summary>What a device's card says about the hardware on its port: its name, and whether it's USB.</summary>
+    internal (string? Name, bool IsUsb) HardwareOn(string port) => _describePort(port) is { } usb ? (HardwareName(usb), true) : (null, false);
 
     /// <summary>What already has this port: "DMX universe 1" (an adapter has it open) or another input of the show.</summary>
     string? UsedBy(string port, Guid? except)
@@ -309,17 +335,21 @@ public sealed partial class InputsViewModel : ObservableObject
         _buttons.IsSerialListening = IsListening;
     }
 
-    (string Label, bool Faulted, bool Listening) Status(InputDevice device)
+    /// <summary>
+    /// How a device stands, in words and for its status light. In the show but on no port here is grey rather than red:
+    /// nothing is wrong with any hardware, a port just needs picking (it's still among the toolbar's warnings).
+    /// </summary>
+    (string Label, bool Faulted, bool Listening, DeviceState State) Status(InputDevice device)
     {
-        if (BindingOf(device.Id) is not { } binding) return ("Not on a port on this computer: pick the port it's plugged into.", true, false);
-        if (!binding.Enabled) return ($"Off: {binding.Port} isn't being listened to.", false, false);
-        if (Blocked(device, binding.Port) is { } why) return (why, true, false);
+        if (BindingOf(device.Id) is not { } binding) return ("Not on a port on this computer: pick the port it's plugged into.", true, false, DeviceState.Inactive);
+        if (!binding.Enabled) return ($"Off: {binding.Port} isn't being listened to.", false, false, DeviceState.Inactive);
+        if (Blocked(device, binding.Port) is { } why) return (why, true, false, DeviceState.Error);
         var status = _serial.Status(device.Id);
         return status.State switch
         {
-            SerialInputState.Listening => ($"Listening on {binding.Port} at {status.BaudRate} baud.", false, true),
-            SerialInputState.Retrying => ($"{status.Problem} Trying again every few seconds.", true, false),
-            _ => ($"Opening {binding.Port}…", false, false),
+            SerialInputState.Listening => ($"Listening on {binding.Port} at {status.BaudRate} baud.", false, true, DeviceState.Healthy),
+            SerialInputState.Retrying => ($"{status.Problem} Trying again every few seconds.", true, false, DeviceState.Error),
+            _ => ($"Opening {binding.Port}…", false, false, DeviceState.Connecting),
         };
     }
 
@@ -327,7 +357,7 @@ public sealed partial class InputsViewModel : ObservableObject
     public void OnCommand(Guid device, string command)
     {
         Devices.FirstOrDefault(d => d.Model.Id == device)?.Received(command, _time.GetLocalNow());
-        _buttons.Input(ButtonTrigger.Serial, command, isPressed: true, device);
+        _buttons.Command(device, command);
     }
 
     /// <summary>
@@ -375,11 +405,38 @@ public sealed partial class InputDeviceRowViewModel : ObservableObject
 
     public string DeviceKey => InputMonitorRow.KeyOf(Model.Id);
 
+    /// <summary>"USB Serial Input": what it is, as far as this computer can tell from its port.</summary>
     public string KindLabel => Model switch
     {
-        SerialInputDevice => "Serial",
+        SerialInputDevice => _hardware.IsUsb ? "USB Serial Input" : "Serial Input",
         _ => "Input",
     };
+
+    /// <summary>"USB Serial Input · COM4 · 9600 baud": what it is and where, under its name.</summary>
+    public string Summary => Model is SerialInputDevice serial
+        ? $"{KindLabel} · {Port ?? "No port on this computer"} · {serial.BaudRate} baud"
+        : KindLabel;
+
+    public string Icon => _hardware.IsUsb ? "Usb" : "SerialPort";
+
+    /// <summary>The port it's on, on this computer, or null.</summary>
+    public string? Port => _owner.BindingOf(Model.Id)?.Port;
+
+    /// <summary>The USB device on its port, "FTDI FT232R USB UART", if the computer says.</summary>
+    public string HardwareLabel => _hardware.Name ?? (Port is null ? "—" : "Not reported by this computer");
+
+    /// <summary>The USB serial number it was found by, which lets it be followed to another port if it moves.</summary>
+    public string UsbSerialLabel => _owner.BindingOf(Model.Id)?.UsbSerial ?? "—";
+
+    /// <summary>The framing every serial input uses (see SerialLink): only the speed is the device's own.</summary>
+    public static string SerialFormat => "8 data bits · no parity · 1 stop bit";
+
+    (string? Name, bool IsUsb) _hardware;
+    bool _shownOnce;
+
+    /// <summary>Its settings are showing. They open by themselves for a device with no port on this computer, to pick one.</summary>
+    [ObservableProperty]
+    public partial bool IsExpanded { get; set; }
 
     public string Name
     {
@@ -408,6 +465,7 @@ public sealed partial class InputDeviceRowViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(Name));
         OnPropertyChanged(nameof(BaudRate));
+        OnPropertyChanged(nameof(Summary));
     }
 
     // ---- this computer ----
@@ -448,8 +506,24 @@ public sealed partial class InputDeviceRowViewModel : ObservableObject
         {
             _settingPorts = false;
         }
+        if (!_shownOnce)
+        {
+            _shownOnce = true;
+            IsExpanded = Port is null && IsSerial;
+        }
+        var hardware = Port is { } boundPort ? _owner.HardwareOn(boundPort) : (null, false);
+        if (hardware != _hardware)
+        {
+            _hardware = hardware;
+            OnPropertyChanged(nameof(KindLabel));
+            OnPropertyChanged(nameof(Icon));
+            OnPropertyChanged(nameof(HardwareLabel));
+        }
         OnPropertyChanged(nameof(IsEnabled));
         OnPropertyChanged(nameof(HasPort));
+        OnPropertyChanged(nameof(Port));
+        OnPropertyChanged(nameof(UsbSerialLabel));
+        OnPropertyChanged(nameof(Summary));
     }
 
     // ---- how it stands ----
@@ -465,8 +539,12 @@ public sealed partial class InputDeviceRowViewModel : ObservableObject
     [ObservableProperty]
     public partial bool IsListening { get; private set; }
 
-    internal void ShowStatus((string Label, bool Faulted, bool Listening) status) =>
-        (StatusLabel, IsFaulted, IsListening) = status;
+    /// <summary>The status light: listening (green), opening (amber), failing (red), or off / on no port here (grey).</summary>
+    [ObservableProperty]
+    public partial DeviceState State { get; private set; } = DeviceState.Inactive;
+
+    internal void ShowStatus((string Label, bool Faulted, bool Listening, DeviceState State) status) =>
+        (StatusLabel, IsFaulted, IsListening, State) = status;
 
     /// <summary>"Last: “BTN24” 4 s ago", so it's clear at a glance whether the device is talking at all.</summary>
     [ObservableProperty]

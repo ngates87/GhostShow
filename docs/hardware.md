@@ -49,10 +49,12 @@ confusion.
 3. If the adapter appears in `lsusb` but no `/dev/ttyUSB*` exists, check `dmesg`. On some Ubuntu-based systems the
    `brltty` package claims USB-serial devices; remove it if you don't use a braille display.
 
-### Windows (not yet tested)
+### Windows (tested: the same FT232R adapter, FTDI VCP driver, Windows 11)
 Install FTDI's **VCP** driver (usually automatic via Windows Update), so the adapter appears as a COM port. The
 D2XX-only driver mode is not supported. Detection reads the adapter's serial number from the FTDI driver's registry
-entries. Note: Windows' default timer resolution (~15.6 ms) may make frame timing less regular than on Linux;
+entries. The break is made differently here: Windows' `Flush` returns once bytes reach the chip, not once they've
+left it, so the 90 kbaud trick garbles the break and fixtures ignore every frame (status still says Connected).
+Instead GhostShow waits out the previous frame's wire time and holds the line low with `BreakState`. Note: Windows' default timer resolution (~15.6 ms) may make frame timing less regular than on Linux;
 measure with `ghostshow soak` before relying on it.
 
 ### macOS (not yet tested)

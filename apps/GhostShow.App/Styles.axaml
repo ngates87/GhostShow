@@ -1,6 +1,136 @@
 <!-- GhostShow's own styles, shared by the desktop app and the browser build (GhostShow.Browser). -->
 <Styles xmlns="https://github.com/avaloniaui"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="using:GhostShow.App.Controls">
+
+    <!-- Devices (Inputs, DMX setup): see Controls/DeviceCard.cs. Status colours are kept few and muted: green working,
+         amber on its way, red needs attention, grey off; a ring is hardware that's free, a grey dot hardware that's taken. -->
+    <Styles.Resources>
+      <ControlTheme x:Key="{x:Type controls:DeviceCard}" TargetType="controls:DeviceCard">
+        <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}" />
+        <Setter Property="Padding" Value="10,8" />
+        <Setter Property="CornerRadius" Value="6" />
+        <Setter Property="Template">
+          <ControlTemplate>
+            <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
+                    CornerRadius="{TemplateBinding CornerRadius}" Padding="{TemplateBinding Padding}">
+              <Grid RowDefinitions="Auto,Auto">
+                <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="10">
+                  <Border Name="PART_Badge" VerticalAlignment="Top">
+                    <PathIcon Name="PART_Icon" Data="{TemplateBinding Icon}" />
+                  </Border>
+                  <StackPanel Name="PART_Text" Grid.Column="1" Spacing="1" VerticalAlignment="Center">
+                    <ContentPresenter Name="PART_Title" Content="{TemplateBinding Title}" FontWeight="SemiBold" FontSize="14" />
+                    <TextBlock Name="PART_Kind" Text="{TemplateBinding Kind}" TextWrapping="Wrap" Opacity="0.7"
+                               IsVisible="{TemplateBinding Kind, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                    <Grid Name="PART_StatusRow" ColumnDefinitions="Auto,*"
+                          IsVisible="{TemplateBinding StatusText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                      <Ellipse Name="PART_Dot" Width="8" Height="8" Margin="1,5,7,0" VerticalAlignment="Top" />
+                      <TextBlock Name="PART_Status" Grid.Column="1" Text="{TemplateBinding StatusText}" TextWrapping="Wrap" />
+                    </Grid>
+                    <TextBlock Name="PART_Detail" Text="{TemplateBinding Detail}" TextWrapping="Wrap" Opacity="0.55" FontSize="12"
+                               IsVisible="{TemplateBinding Detail, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                  </StackPanel>
+                  <ContentPresenter Grid.Column="2" Content="{TemplateBinding Actions}" VerticalAlignment="Top" />
+                  <Button Name="PART_Expand" Grid.Column="3" VerticalAlignment="Top" ToolTip.Tip="Settings and details"
+                          IsVisible="{TemplateBinding Content, Converter={x:Static ObjectConverters.IsNotNull}}">
+                    <PathIcon Data="M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z" />
+                  </Button>
+                </Grid>
+                <Border Name="PART_Details" Grid.Row="1" Margin="0,8,0,0" Padding="0,8,0,0" BorderThickness="0,1,0,0"
+                        IsVisible="{TemplateBinding IsExpanded}">
+                  <ContentPresenter Name="PART_ContentPresenter" Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}" />
+                </Border>
+              </Grid>
+            </Border>
+          </ControlTemplate>
+        </Setter>
+
+        <Style Selector="^ /template/ Border#PART_Badge">
+          <Setter Property="Width" Value="34" />
+          <Setter Property="Height" Value="34" />
+          <Setter Property="CornerRadius" Value="5" />
+          <Setter Property="BorderThickness" Value="1" />
+          <Setter Property="BorderBrush" Value="#3A4048" />
+          <Setter Property="Background" Value="#1C1F24" />
+        </Style>
+        <Style Selector="^ /template/ PathIcon#PART_Icon">
+          <Setter Property="Width" Value="18" />
+          <Setter Property="Height" Value="18" />
+          <Setter Property="Foreground" Value="#AEB9C5" />
+        </Style>
+        <Style Selector="^ /template/ Border#PART_Details">
+          <Setter Property="BorderBrush" Value="#30FFFFFF" />
+        </Style>
+        <Style Selector="^ /template/ Button#PART_Expand">
+          <Setter Property="Padding" Value="6,5" />
+          <Setter Property="MinWidth" Value="0" />
+          <Setter Property="Background" Value="Transparent" />
+          <Setter Property="BorderThickness" Value="0" />
+        </Style>
+        <Style Selector="^ /template/ Button#PART_Expand PathIcon">
+          <Setter Property="Width" Value="14" />
+          <Setter Property="Height" Value="14" />
+          <Setter Property="Opacity" Value="0.75" />
+        </Style>
+        <Style Selector="^:expanded /template/ Button#PART_Expand PathIcon">
+          <Setter Property="RenderTransform" Value="rotate(180deg)" />
+          <Setter Property="Opacity" Value="1" />
+        </Style>
+
+        <!-- the status light -->
+        <Style Selector="^ /template/ Ellipse#PART_Dot">
+          <Setter Property="Fill" Value="#6B7078" />
+          <Setter Property="StrokeThickness" Value="1.5" />
+        </Style>
+        <Style Selector="^:healthy /template/ Ellipse#PART_Dot">
+          <Setter Property="Fill" Value="#5BB974" />
+        </Style>
+        <Style Selector="^:connecting /template/ Ellipse#PART_Dot">
+          <Setter Property="Fill" Value="#D9A23A" />
+        </Style>
+        <Style Selector="^:error /template/ Ellipse#PART_Dot">
+          <Setter Property="Fill" Value="#E5533D" />
+        </Style>
+        <Style Selector="^:error /template/ TextBlock#PART_Status">
+          <Setter Property="Foreground" Value="OrangeRed" />
+        </Style>
+        <Style Selector="^:error /template/ Border#PART_Badge">
+          <Setter Property="BorderBrush" Value="#7A3A30" />
+        </Style>
+        <Style Selector="^:available /template/ Ellipse#PART_Dot">
+          <Setter Property="Fill" Value="Transparent" />
+          <Setter Property="Stroke" Value="#8C96A0" />
+        </Style>
+        <Style Selector="^:inactive /template/ TextBlock#PART_Status, ^:inuse /template/ TextBlock#PART_Status">
+          <Setter Property="Opacity" Value="0.75" />
+        </Style>
+
+        <!-- compact: a line in a list of hardware found on this computer -->
+        <Style Selector="^.compact">
+          <Setter Property="Background" Value="Transparent" />
+          <Setter Property="Padding" Value="4,5" />
+          <Setter Property="CornerRadius" Value="4" />
+        </Style>
+        <Style Selector="^.compact:pointerover">
+          <Setter Property="Background" Value="#14FFFFFF" />
+        </Style>
+        <Style Selector="^.compact /template/ Border#PART_Badge">
+          <Setter Property="Width" Value="28" />
+          <Setter Property="Height" Value="28" />
+        </Style>
+        <Style Selector="^.compact /template/ PathIcon#PART_Icon">
+          <Setter Property="Width" Value="15" />
+          <Setter Property="Height" Value="15" />
+        </Style>
+        <Style Selector="^.compact /template/ ContentPresenter#PART_Title">
+          <Setter Property="FontSize" Value="13" />
+        </Style>
+        <Style Selector="^.compact:inuse /template/ StackPanel#PART_Text, ^.compact:inuse /template/ Border#PART_Badge">
+          <Setter Property="Opacity" Value="0.6" />
+        </Style>
+      </ControlTheme>
+    </Styles.Resources>
 
     <!-- Two levels of tabs: big department tabs (Show, Lighting, Audio), smaller screen tabs within each. -->
     <Style Selector="TabStrip.sections > TabStripItem">
@@ -30,6 +160,31 @@
       <Setter Property="Margin" Value="0,0,0,8" />
       <Setter Property="CornerRadius" Value="6" />
       <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}" />
+    </Style>
+
+
+    <!-- A device's name, renamed in place: reads as a title until pointed at or clicked into. -->
+    <Style Selector="TextBox.deviceName">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="Padding" Value="4,2" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="Margin" Value="-5,0,0,0" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="FontSize" Value="14" />
+    </Style>
+    <Style Selector="TextBox.deviceName:pointerover /template/ Border#PART_BorderElement">
+      <Setter Property="Background" Value="#14FFFFFF" />
+      <Setter Property="BorderBrush" Value="#4A515A" />
+    </Style>
+    <!-- Labels down the left of a device's details, values to their right. -->
+    <Style Selector="Grid.deviceFacts > TextBlock">
+      <Setter Property="TextWrapping" Value="Wrap" />
+      <Setter Property="Margin" Value="0,1" />
+    </Style>
+    <Style Selector="Grid.deviceFacts > TextBlock.label">
+      <Setter Property="Opacity" Value="0.6" />
+      <Setter Property="Margin" Value="0,1,14,1" />
     </Style>
     <Style Selector="Button.tile">
       <Setter Property="Width" Value="190" />

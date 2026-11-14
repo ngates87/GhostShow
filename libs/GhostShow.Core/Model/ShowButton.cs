@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using GhostShow.Core.Inputs;
 using GhostShow.Core.Timeline;
 
 namespace GhostShow.Core.Model;
@@ -18,7 +19,7 @@ public sealed class ShowButton
     public string? Color { get; set; }
 
     /// <summary>What presses it, apart from a click. A trigger does exactly what clicking the button does.</summary>
-    public List<ButtonTrigger> Triggers { get; set; } = [];
+    public List<InputTrigger> Triggers { get; set; } = [];
 
     public List<ButtonAction> Actions { get; set; } = [];
 
@@ -27,44 +28,6 @@ public sealed class ShowButton
         Name = Name, Color = Color,   // a copy doesn't take the triggers: one input presses one button
         Actions = Actions.Select(a => a.Clone()).ToList(),
     };
-}
-
-/// <summary>
-/// An input that presses a show button: where it comes from and which one it is. Every kind of input is described this
-/// way, so a new kind only has to supply these two (see docs/plan-triggers.md).
-/// </summary>
-public sealed class ButtonTrigger
-{
-    public const string Keyboard = "keyboard";
-
-    /// <summary>A command (one line of text) from one of the show's serial devices (<see cref="Input"/>).</summary>
-    public const string Serial = "serial";
-
-    public string Source { get; set; } = Keyboard;
-
-    /// <summary>The show's input device it listens to (<see cref="Project.Inputs"/>); null for the keyboard.</summary>
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public Guid? Input { get; set; }
-
-    /// <summary>
-    /// Which input of that source. Keyboard: the key's name ("F5", "D1" for the 1 key, "Q"). Serial: the whole command,
-    /// without its line ending ("BTN24").
-    /// </summary>
-    public string Address { get; set; } = "";
-
-    /// <summary>Whether it listens for this input.</summary>
-    public bool Matches(string source, Guid? input, string address) => Source == source && Input == input && Address == address;
-
-    /// <summary>
-    /// After firing, it does nothing for this many seconds, so a flickering sensor or a crowd walking past doesn't fire
-    /// it over and over. 0: it can fire again as soon as it's let go (a held key or closed contact fires once).
-    /// </summary>
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public double RearmSeconds { get; set; }
-
-    /// <summary>The re-arm time starts once the timelines the button started have finished (release fade included), not when it fires.</summary>
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public bool RearmAfterTimelines { get; set; }
 }
 
 /// <summary>Something a show button does when pressed.</summary>

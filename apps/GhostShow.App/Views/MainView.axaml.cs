@@ -1,3 +1,4 @@
+using GhostShow.Core.Inputs;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -102,7 +103,7 @@ public partial class MainView : UserControl
         if (!isRepeat)
         {
             _inputKeys.Add(e.Key);
-            buttons.Input(ButtonTrigger.Keyboard, key, isPressed: true);
+            buttons.Input(InputTrigger.Keyboard, key, isPressed: true);
         }
         if (buttons.HasKey(key)) e.Handled = true;   // the button's, even while it re-arms
         else if (e.Key == Key.Escape && buttons.IsEditing && !typing)
@@ -118,7 +119,7 @@ public partial class MainView : UserControl
     {
         _heldKeys.Remove(e.Key);
         if (_inputKeys.Remove(e.Key) && DataContext is MainViewModel viewModel)
-            viewModel.Buttons.Input(ButtonTrigger.Keyboard, e.Key.ToString(), isPressed: false);
+            viewModel.Buttons.Input(InputTrigger.Keyboard, e.Key.ToString(), isPressed: false);
     }
 
     /// <summary>

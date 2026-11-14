@@ -138,10 +138,13 @@ public sealed class LocalOutputSetup : IOutputSetup
     /// <summary>Works out what the screens should show, and tells them if it changed.</summary>
     public void Refresh()
     {
-        // Free adapters from probing, plus the ones running outputs have open (which can't be probed).
-        var adapters = _adapters.Select(a => new AdapterRow(a.ToString(), "Available")).ToList();
+        // Free adapters from probing, plus the ones running outputs have open (which can't be probed). Probe results are
+        // kept, so an adapter found while free and then given to a universe is still among them: leave those out here.
+        var adapters = _adapters.Where(a => !_outputs.Services.Any(s => IsUsing(s, a)))
+                                .Select(a => new AdapterRow(a.ToString(), "Available", a.KindLabel, a.Port, a.Details)).ToList();
         foreach (var service in _outputs.Services.Where(s => s.Device.Port is not null && s.Status == DmxOutputStatus.Connected))
-            adapters.Add(new AdapterRow(service.Device.ToString(), $"In use: universe {service.Universe}"));
+            adapters.Add(new AdapterRow(service.Device.ToString(), $"In use: universe {service.Universe}", service.Device.Kind, service.Device.Port,
+                                        service.Device.SerialNumber is { } serial ? $"S/N {serial}" : null, service.Universe));
 
         string detectStatus = _problem
             ?? (_checkingNewPorts ? "Checking newly connected USB serial ports…"
@@ -160,9 +163,10 @@ public sealed class LocalOutputSetup : IOutputSetup
     {
         var assigned = _settings.FindOutput(universe) ?? Simulator;
         var choices = ChoicesFor(universe, assigned);
-        var (status, isFaulted) = DescribeStatus(_outputs.Find(universe));
+        var service = _outputs.Find(universe);
+        var (status, isFaulted) = DescribeStatus(service);
         string selected = choices.First(c => SameDevice(c.Config, assigned)).Label;
-        return new UniverseOutput(universe, status, isFaulted, [.. choices.Select(c => c.Label)], selected);
+        return new UniverseOutput(universe, status, isFaulted, [.. choices.Select(c => c.Label)], selected, HealthOf(service));
     }
 
     /// <summary>
@@ -187,6 +191,21 @@ public sealed class LocalOutputSetup : IOutputSetup
             var other => other.ToString(),
         }, service.Status == DmxOutputStatus.Faulted);
     }
+
+    static OutputHealth HealthOf(DmxOutputService? service) => service?.Status switch
+    {
+        DmxOutputStatus.Connecting => OutputHealth.Connecting,
+        DmxOutputStatus.Connected => OutputHealth.Connected,
+        DmxOutputStatus.Faulted => OutputHealth.Faulted,
+        _ => OutputHealth.Off,
+    };
+
+    /// <summary>Whether a running output has this adapter: the same USB serial number, or without one the same port.</summary>
+    static bool IsUsing(DmxOutputService service, DmxAdapterInfo adapter) =>
+        service.Device.Port is not null
+        && (adapter.SerialNumber is not null && service.Device.SerialNumber is not null
+            ? adapter.SerialNumber == service.Device.SerialNumber
+            : string.Equals(adapter.Port, service.Device.Port, StringComparison.OrdinalIgnoreCase));
 
     async void OnShowChanged(ShowChange change)
     {

@@ -112,6 +112,7 @@ public static class ProjectStore
             LegacyRunSettings.Apply(project, new HashSet<Guid>());   // a show folder's are applied once its timelines are read
         }
         if (version < 8) LegacySerialTriggers.Apply(project);
+        if (version < 9) LegacySerialTriggers.SplitValues(project);
         project.Version = Project.CurrentSchemaVersion;
         return new ProjectLoadResult(project, null, migratedOutputs, version);
     }

@@ -27,7 +27,7 @@ public class LocalOutputSetupTests : IAsyncDisposable
         _outputs = new OutputManager(_session.Engine, new ListLogger(), new DmxOutputOptions { BlackoutOnStop = TimeSpan.Zero }, config =>
         {
             _devicesStarted.Add(config);
-            return new FakeDevice();
+            return config is OpenDmxDeviceConfig open ? new FakeDevice { Info = new("Open DMX", "Fake adapter", open.Port, open.SerialNumber) } : new FakeDevice();
         });
         _setup = new LocalOutputSetup(_session, _outputs, _settings, () =>
         {
@@ -123,6 +123,21 @@ public class LocalOutputSetupTests : IAsyncDisposable
         Assert.Equal(OpenDmx.ToString(), _setup.State.Universes.Single().Selected);
         Assert.Equal(new OutputDeviceConfig[] { new SimulatorDeviceConfig(), new OpenDmxDeviceConfig(OpenDmx.Port, "SN1") }, _devicesStarted);
         Assert.Equal(1, _saves);
+    }
+
+    [Fact]
+    public async Task An_adapter_given_to_a_universe_is_listed_once_as_in_use()
+    {
+        _finder.Plug(OpenDmx.Port, OpenDmx);
+        await WatchAsync("the first look is done");
+        int universe = _setup.State.Universes.Single().Universe;
+
+        Assert.Null(await _setup.AssignAsync(universe, OpenDmx.ToString()));
+        await Eventually.True(() => _outputs.Find(universe)?.Status == DmxOutputStatus.Connected, "the output is running");
+        _setup.Refresh();
+
+        var row = Assert.Single(_setup.State.Adapters);
+        Assert.Equal(universe, row.Universe);
     }
 
     [Fact]

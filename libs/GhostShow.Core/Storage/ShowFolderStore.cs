@@ -44,6 +44,13 @@ public static class ShowFolderStore
         public bool Loop { get; set; }
         public TimelinePlayback? Playback { get; set; }
         public List<TimelineTrack> Tracks { get; set; } = [];
+
+        /// <summary>
+        /// Its triggers (<see cref="ShowTimeline.Triggers"/>); null, and not written, when it has none. Added within
+        /// version 5: only shows from version 9 have them, which an older GhostShow won't open.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+        public List<Inputs.InputTrigger>? Triggers { get; set; }
     }
 
     /// <summary>Whether a folder holds a show (has a show.json).</summary>
@@ -132,7 +139,7 @@ public static class ShowFolderStore
             var timeline = new ShowTimeline
             {
                 Id = content.Id, Name = name, Folder = folder, Length = content.Length, Loop = content.Loop, Tracks = content.Tracks,
-                Playback = content.Playback ?? new TimelinePlayback(),
+                Playback = content.Playback ?? new TimelinePlayback(), Triggers = content.Triggers ?? [],
                 SavedPath = relative, HasUnsavedChanges = false,
             };
             // Older lighting becomes clips with envelopes; the file is rewritten in the new form on the next save.
@@ -180,7 +187,7 @@ public static class ShowFolderStore
         var writes = project.Timelines
             .Where(t => t.HasUnsavedChanges || t.SavedPath is null || !PathsEqual(t.SavedPath, FileOf(t)))
             .Select(t => (Timeline: t, Path: FileOf(t), Json: JsonSerializer.Serialize(
-                new TimelineFile { Id = t.Id, Length = t.Length, Loop = t.Loop, Playback = t.Playback, Tracks = t.Tracks }, Json.Options)))
+                new TimelineFile { Id = t.Id, Length = t.Length, Loop = t.Loop, Playback = t.Playback, Tracks = t.Tracks, Triggers = t.Triggers.Count > 0 ? t.Triggers : null }, Json.Options)))
             .ToList();
 
         await AtomicFile.WriteAllTextAsync(Path.Combine(folder, ShowFileName), showJson, cancellationToken);

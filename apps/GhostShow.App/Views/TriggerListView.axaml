@@ -1,0 +1,108 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:GhostShow.App.ViewModels"
+             x:Class="GhostShow.App.Views.TriggerListView"
+             x:DataType="vm:TriggerListViewModel">
+  <!-- A button's or a timeline's triggers: the same editor in the Buttons panel and in Timeline properties. Each trigger
+       says how it behaves, as a prop controller's trigger modes do: a preset, or each setting under it. -->
+  <UserControl.Styles>
+    <Style Selector="TextBlock.setting">
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+      <Setter Property="Margin" Value="0,0,6,0" />
+    </Style>
+    <Style Selector="ComboBox.setting">
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="FontSize" Value="12" />
+    </Style>
+  </UserControl.Styles>
+  <StackPanel Spacing="2">
+    <DockPanel>
+      <Button DockPanel.Dock="Right" Classes="small" Classes.accent="{Binding IsLearning}" Content="{Binding LearnLabel}" Command="{Binding LearnCommand}"
+              ToolTip.Tip="Then press the key, or trip the sensor. Pressing it anywhere in GhostShow sets this off (not while typing in a field)." />
+      <TextBlock Text="Triggers" FontWeight="SemiBold" VerticalAlignment="Center" />
+    </DockPanel>
+    <TextBlock Text="{Binding EmptyLabel}" Opacity="0.6" FontSize="12" TextWrapping="Wrap" IsVisible="{Binding !Count}" />
+    <ItemsControl ItemsSource="{Binding}">
+      <ItemsControl.ItemTemplate>
+        <DataTemplate x:DataType="vm:TriggerViewModel">
+          <Border Background="#22FFFFFF" CornerRadius="4" Padding="6,3" Margin="0,0,0,4">
+            <StackPanel Spacing="2">
+              <DockPanel>
+                <Button DockPanel.Dock="Right" Classes="small" Content="×" Command="{Binding RemoveCommand}" ToolTip.Tip="Remove this trigger" />
+                <CheckBox DockPanel.Dock="Right" Content="On" IsChecked="{Binding IsOn}" MinHeight="0" Margin="0,0,6,0"
+                          ToolTip.Tip="Off: this trigger does nothing until it's turned back on or the show is reopened (not saved). For a sensor that misbehaves mid-show." />
+                <TextBlock Text="{Binding Label}" VerticalAlignment="Center" TextWrapping="Wrap" />
+              </DockPanel>
+              <DockPanel>
+                <Button DockPanel.Dock="Right" Classes="small" Content="Reset" Command="{Binding ResetCommand}" IsVisible="{Binding IsSpent}"
+                        ToolTip.Tip="Let it fire again (as its reset input, or arming the triggers, would)" />
+                <TextBlock Text="{Binding State}" FontSize="11" Opacity="0.7" TextWrapping="Wrap" VerticalAlignment="Center" />
+              </DockPanel>
+              <Expander HorizontalAlignment="Stretch" Padding="4" MinHeight="0" FontSize="12">
+                <Expander.Header>
+                  <TextBlock Text="{Binding Summary}" TextWrapping="Wrap" />
+                </Expander.Header>
+                <StackPanel Spacing="6">
+                  <Grid ColumnDefinitions="Auto,*">
+                    <TextBlock Classes="setting" Text="Behaves" />
+                    <ComboBox Grid.Column="1" Classes="setting" ItemsSource="{Binding Presets}" SelectedItem="{Binding Preset}"
+                              ToolTip.Tip="How it behaves, as prop controllers name it. Custom: as set below." />
+                  </Grid>
+                  <TextBlock Text="{Binding PresetDescription}" Opacity="0.7" TextWrapping="Wrap" />
+
+                  <Grid ColumnDefinitions="Auto,*,Auto" IsVisible="{Binding HasValue}">
+                    <TextBlock Classes="setting" Text="Active at" />
+                    <TextBox Grid.Column="1" Text="{Binding ActiveValue}" MinHeight="0" FontSize="12"
+                             ToolTip.Tip="The value the device sends when tripped (On, for BTN24=On). Any other value for the same command is its rest. Empty: every one of its commands is a pulse." />
+                    <CheckBox Grid.Column="2" Content="Inverted" IsChecked="{Binding Invert}" MinHeight="0" Margin="6,0,0,0"
+                              ToolTip.Tip="Active when it isn't at that value: for a normally closed sensor, whose contact opens when tripped" />
+                  </Grid>
+
+                  <StackPanel Spacing="2" IsVisible="{Binding HasStates}">
+                    <TextBlock Text="Still active when it finishes" Opacity="0.8" />
+                    <ComboBox Classes="setting" ItemsSource="{x:Static vm:TriggerViewModel.WhileActiveChoices}" SelectedItem="{Binding WhileActiveChoice}"
+                              ToolTip.Tip="If the input is still active (held, tripped) when what it started finishes: nothing more, or play it again, for as long as it stays active" />
+                    <TextBlock Text="When the input rests" Opacity="0.8" />
+                    <ComboBox Classes="setting" ItemsSource="{x:Static vm:TriggerViewModel.OnRestChoices}" SelectedItem="{Binding OnRestChoice}"
+                              ToolTip.Tip="When the key is let go or the sensor rests (BTN24=Off): what it started keeps playing, finishes its loop, or stops now (with its release fade)" />
+                  </StackPanel>
+                  <TextBlock Text="Set off again while playing" Opacity="0.8" />
+                  <ComboBox Classes="setting" ItemsSource="{x:Static vm:TriggerViewModel.IfPlayingChoices}" SelectedItem="{Binding IfPlayingChoice}"
+                            ToolTip.Tip="Run it again: as a click would (a button's actions say whether a timeline plays another copy). Ignore it: wait until it's finished. Restart it: from the beginning. Stop it: a toggle." />
+
+                  <CheckBox Content="Play looped" IsChecked="{Binding Loop}" IsVisible="{Binding IsTimeline}" MinHeight="0"
+                            ToolTip.Tip="The timeline plays in a loop until it's stopped: by the trigger at rest or set off again, a button, or Stop all" />
+
+                  <CheckBox Content="Run once until reset" IsChecked="{Binding RunOnce}" MinHeight="0"
+                            ToolTip.Tip="It fires once, then does nothing until it's reset: by its reset input, its Reset button, or arming the triggers again" />
+                  <StackPanel Spacing="2" IsVisible="{Binding RunOnce}" Margin="16,0,0,0">
+                    <DockPanel>
+                      <Button DockPanel.Dock="Right" Classes="small" Content="×" Command="{Binding ClearResetCommand}" IsVisible="{Binding HasResetInput}"
+                              ToolTip.Tip="No reset input" />
+                      <TextBlock Classes="setting" Text="Reset by" />
+                      <TextBlock Text="{Binding ResetLabel}" VerticalAlignment="Center" TextWrapping="Wrap" />
+                    </DockPanel>
+                    <Button Classes="small" Classes.accent="{Binding IsLearningReset}" Content="{Binding LearnResetLabel}" Command="{Binding LearnResetCommand}"
+                            ToolTip.Tip="Then press the key or trip the input that resets it, e.g. a button at the room's exit" />
+                  </StackPanel>
+
+                  <DockPanel>
+                    <NumericUpDown DockPanel.Dock="Right" Width="110" Value="{Binding RearmSeconds}" Minimum="0" Increment="0.5" FormatString="0.##"
+                                   ToolTip.Tip="After firing it does nothing for this long, so a flickering sensor or a passing crowd doesn't fire it again and again. 0: as soon as it's rested." />
+                    <TextBlock Classes="setting" Text="Re-arm time (s)" />
+                  </DockPanel>
+                  <CheckBox Content="Count from when its timelines finish" IsChecked="{Binding RearmAfterTimelines}" MinHeight="0"
+                            ToolTip.Tip="On: it waits until the timelines it started have finished (release fade included), then the re-arm time. Off: the re-arm time counts from when it fires." />
+                </StackPanel>
+              </Expander>
+            </StackPanel>
+          </Border>
+        </DataTemplate>
+      </ItemsControl.ItemTemplate>
+    </ItemsControl>
+    <TextBlock Text="{Binding Problem}" Classes="fault" TextWrapping="Wrap" FontSize="12"
+               IsVisible="{Binding Problem, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+  </StackPanel>
+</UserControl>

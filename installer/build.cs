@@ -1,8 +1,8 @@
 // Builds the Windows installer: artifacts/GhostShow-Setup-<version>.exe, one file to copy to the show computer. Works the
 // same on Windows and Linux, from the top of the repo:
 //
-//     dotnet run installer/build.cs                 version 0.1.0
-//     dotnet run installer/build.cs -- 1.2.0        any other version: three numbers
+//     dotnet run installer/build.cs                 auto-incremented version 0.1.<build>
+//     dotnet run installer/build.cs -- 1.2.0        explicit release version
 //
 // It needs:
 //   - NSIS, which makes the installer. On Windows: winget install NSIS.NSIS (or https://nsis.sourceforge.io). On Linux:
@@ -20,8 +20,31 @@ using System.Text.RegularExpressions;
 string installerFolder = FolderOfThisFile();
 string root = Path.GetDirectoryName(installerFolder)!;
 
-string version = args.FirstOrDefault() ?? "0.1.0";
-if (args.Length > 1 || !Regex.IsMatch(version, @"^\d+\.\d+\.\d+$"))
+if (args.Length > 1)
+    return Stop($"Pass at most one version (got: {string.Join(" ", args)})");
+
+string workFolder = Path.Combine(root, "artifacts", "installer");
+string buildNumberFile = Path.Combine(workFolder, "build-number.txt");
+bool autoVersion = args.Length == 0;
+int nextBuildNumber = 0;
+string version;
+if (autoVersion)
+{
+    int previousBuildNumber = File.Exists(buildNumberFile)
+        ? int.Parse(File.ReadAllText(buildNumberFile).Trim())
+        : 0;
+    nextBuildNumber = previousBuildNumber + 1;
+    if (nextBuildNumber > 65535)
+        return Stop("The automatic build number reached 65535. Supply an explicit version or reset artifacts/installer/build-number.txt.");
+    version = $"0.1.{nextBuildNumber}";
+}
+else
+{
+    version = args[0];
+}
+
+if (!Regex.IsMatch(version, @"^\d+\.\d+\.\d+$") ||
+    version.Split('.').Any(part => !int.TryParse(part, out int component) || component > 65535))
     return Stop($"The version must be three numbers, like 1.2.0 (got: {string.Join(" ", args)})");
 
 string? makensis = FindMakensis();
@@ -30,7 +53,6 @@ if (makensis is null)
         ? "NSIS wasn't found, and it makes the installer. Install it with\n    winget install NSIS.NSIS\nor from https://nsis.sourceforge.io, then try again."
         : "NSIS wasn't found, and it makes the installer. Install it with\n    sudo apt install nsis\nthen try again.");
 
-string workFolder = Path.Combine(root, "artifacts", "installer");
 string appFolder = Path.Combine(workFolder, "app");
 string vcRedist = Path.Combine(workFolder, "VC_redist.x64.exe");
 string setupFile = Path.Combine(root, "artifacts", $"GhostShow-Setup-{version}.exe");
@@ -71,6 +93,9 @@ Console.WriteLine("== The installer");
 result = Run(makensis, installerFolder, "-V2", $"-DVERSION={version}", $"-DAPP_DIR={appFolder}",
     $"-DVC_REDIST={vcRedist}", $"-DSETUP_FILE={setupFile}", "ghostshow.nsi");
 if (result != 0) return result;
+
+if (autoVersion)
+    await File.WriteAllTextAsync(buildNumberFile, nextBuildNumber.ToString());
 
 Console.WriteLine();
 Console.WriteLine($"Built: {setupFile}");

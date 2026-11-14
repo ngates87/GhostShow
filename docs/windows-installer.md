@@ -1,8 +1,10 @@
 # The Windows installer
 
-`dotnet run installer/build.cs -- 1.2.0`, from the top of the repo, writes `artifacts/GhostShow-Setup-1.2.0.exe`: one
-file to copy to the show computer. Without a version it's 0.1.0. In VS Code it's also a build task (Terminal → Run Build
-Task → "build the Windows installer"), which asks for the version.
+`dotnet run installer/build.cs`, from the top of the repo, builds the current source with an automatically incremented
+build number and writes `artifacts/GhostShow-Setup-0.1.<build>.exe`: one
+file to copy to the show computer. The counter is local to this checkout and lives under `artifacts/installer/`.
+For a specific release version, pass it as an optional argument, such as `-- 1.2.0`. In VS Code it's also a build task
+(Terminal → Run Build Task → "build the Windows installer").
 
 It works the same on Windows and Linux. It needs NSIS, which makes the installer (Windows: `winget install NSIS.NSIS`;
 Linux: `sudo apt install nsis`), and what `dev.cs` needs for the full app for browsers. The rest is listed at the top of

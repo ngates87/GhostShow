@@ -1,3 +1,4 @@
+using GhostShow.Core.Inputs;
 using GhostShow.Core.Fixtures;
 using GhostShow.Core.Model;
 using GhostShow.Core.Storage;
@@ -82,7 +83,7 @@ public class ShowFolderStoreTests : IDisposable
         project.AddFolder("Empty for now");
         project.Buttons =
         [
-            new ShowButton { Name = "Scare 1", Color = "#C62828", Triggers = [new ButtonTrigger { Address = "F5", RearmSeconds = 2.5, RearmAfterTimelines = true }, new ButtonTrigger { Address = "NumPad1" }], Actions = [new StopTimelineAction { TimelineId = lightning.Id }, new RunTimelineAction { TimelineId = lightning.Id }] },
+            new ShowButton { Name = "Scare 1", Color = "#C62828", Triggers = [new InputTrigger { Address = "F5", RearmSeconds = 2.5, RearmAfterTimelines = true }, new InputTrigger { Address = "NumPad1" }], Actions = [new StopTimelineAction { TimelineId = lightning.Id }, new RunTimelineAction { TimelineId = lightning.Id }] },
             new ShowButton { Name = "Panic", Actions = [new StopAllAction(), new BlackoutAction()] },
         ];
 
@@ -99,7 +100,7 @@ public class ShowFolderStoreTests : IDisposable
         Assert.Equal([1, 3], loaded.Universes.Select(u => u.Number));
         Assert.Equal([("Scare 1", "#C62828", "F5,NumPad1"), ("Panic", null, "")],
                      loaded.Buttons.Select(b => (b.Name, b.Color, string.Join(",", b.Triggers.Select(t => t.Address)))));
-        Assert.Equal(ButtonTrigger.Keyboard, loaded.Buttons[0].Triggers[0].Source);
+        Assert.Equal(InputTrigger.Keyboard, loaded.Buttons[0].Triggers[0].Source);
         Assert.Equal((2.5, true), (loaded.Buttons[0].Triggers[0].RearmSeconds, loaded.Buttons[0].Triggers[0].RearmAfterTimelines));
         Assert.Equal((0.0, false), (loaded.Buttons[0].Triggers[1].RearmSeconds, loaded.Buttons[0].Triggers[1].RearmAfterTimelines));
         var run = Assert.IsType<RunTimelineAction>(loaded.Buttons[0].Actions[1]);
@@ -440,5 +441,36 @@ public class ShowFolderStoreTests : IDisposable
     public void Unique_names_count_up_ignoring_case()
     {
         Assert.Equal("New timeline 3", TimelineNames.Unique("New timeline", ["new timeline", "New timeline 2"]));
+    }
+
+    [Fact]
+    public async Task A_timeline_s_triggers_are_saved_in_its_file_with_how_they_behave()
+    {
+        var box = Guid.NewGuid();
+        var hallway = Timeline("Hallway", "Rooms");
+        hallway.Triggers =
+        [
+            new InputTrigger
+            {
+                Source = InputTrigger.Serial, Input = box, Address = "BTN24", Value = "On", Invert = true, WhileActive = WhileActive.Repeat,
+                OnRest = OnRest.FinishPass, IfPlaying = IfPlaying.Restart, Loop = true, RunOnce = true, RearmSeconds = 1.5,
+                ResetBy = new InputAddress { Source = InputTrigger.Serial, Input = box, Address = "BTN25", Value = "On" },
+            },
+            new InputTrigger { Address = "F7" },
+        ];
+        await Save(Show(hallway), previous: null);
+
+        var loaded = (await Load()).Project!.FindTimeline("Rooms/Hallway")!;
+
+        var sensor = loaded.Triggers[0];
+        Assert.Equal((InputTrigger.Serial, box, "BTN24", "On", true), (sensor.Source, sensor.Input, sensor.Address, sensor.Value, sensor.Invert));
+        Assert.Equal((WhileActive.Repeat, OnRest.FinishPass, IfPlaying.Restart, true, true, 1.5),
+                     (sensor.WhileActive, sensor.OnRest, sensor.IfPlaying, sensor.Loop, sensor.RunOnce, sensor.RearmSeconds));
+        Assert.Equal(("BTN25", "On", box), (sensor.ResetBy!.Address, sensor.ResetBy.Value, sensor.ResetBy.Input));
+        var key = loaded.Triggers[1];
+        Assert.Equal(("F7", null, WhileActive.PlayOnce, OnRest.KeepPlaying, IfPlaying.RunAgain, (InputAddress?)null),
+                     (key.Address, key.Value, key.WhileActive, key.OnRest, key.IfPlaying, key.ResetBy));
+        string file = File.ReadAllText(TimelineFile("Rooms/Hallway.timeline.json"));
+        Assert.Contains("\"onRest\": \"FinishPass\"", file);   // by name, readable and safe from reordering
     }
 }

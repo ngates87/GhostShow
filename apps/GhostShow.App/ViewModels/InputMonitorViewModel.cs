@@ -95,20 +95,22 @@ public sealed partial class InputMonitorViewModel : ObservableObject
 public sealed class InputMonitorRow(InputEvent input, string source, string outcome)
 {
     /// <summary>Which device's monitor shows it: the device's id, or "keyboard".</summary>
-    public static string KeyOf(Guid? device) => device?.ToString() ?? ButtonTrigger.Keyboard;
+    public static string KeyOf(Guid? device) => device?.ToString() ?? InputTrigger.Keyboard;
 
     public InputEvent Input { get; } = input;
     public string DeviceKey => KeyOf(Input.Input);
     public string Time => Input.Time.ToString("HH:mm:ss.ff");
     public string Source { get; } = source;
 
-    public string Address => Input.Source == ButtonTrigger.Keyboard ? TriggerKeys.Label(Input.Address) : InputText.Visible(Input.Address);
+    /// <summary>"F5", "BTN24", "BTN24=On": a command as it was sent, with its value.</summary>
+    public string Address => Input.Source == InputTrigger.Keyboard ? TriggerKeys.Label(Input.Address) : InputText.Visible(Input.Command);
 
     /// <summary>Keys are pressed and released; a serial command just arrives.</summary>
-    public string Change => Input.Source == ButtonTrigger.Serial ? "received" : Input.IsPressed ? "pressed" : "released";
+    public string Change => Input.Source == InputTrigger.Serial ? "received" : Input.IsPressed ? "pressed" : "released";
 
-    /// <summary>"Pressed Scare 1", or why nothing happened: "No button uses it", "Scare 1: re-arms in 2.0 s".</summary>
+    /// <summary>"Pressed Scare 1", "Ran Hallway", or why nothing happened: "Nothing uses it", "Scare 1: re-arms in 2.0 s".</summary>
     public string Outcome { get; } = outcome;
 
-    public bool PressedAButton => Outcome.StartsWith("Pressed ", StringComparison.Ordinal);
+    /// <summary>It set something off: pressed a button or ran a timeline.</summary>
+    public bool PressedAButton => Outcome.StartsWith("Pressed ", StringComparison.Ordinal) || Outcome.StartsWith("Ran ", StringComparison.Ordinal);
 }

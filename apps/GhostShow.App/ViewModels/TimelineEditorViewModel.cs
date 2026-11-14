@@ -373,6 +373,27 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
         }
     }
 
+    // ---- its triggers: inputs that run it ----
+
+    /// <summary>
+    /// Where a timeline's triggers come from (the show computer's buttons panel, which hears every input); null where
+    /// inputs aren't heard (a browser), and Timeline properties has no triggers section.
+    /// </summary>
+    public Func<ShowTimeline?, TriggerListViewModel?>? TriggersOf
+    {
+        get => _triggersOf;
+        set
+        {
+            _triggersOf = value;
+            OnPropertyChanged(nameof(Triggers));
+        }
+    }
+
+    Func<ShowTimeline?, TriggerListViewModel?>? _triggersOf;
+
+    /// <summary>The open timeline's triggers, for Timeline properties.</summary>
+    public TriggerListViewModel? Triggers => _triggersOf?.Invoke(SelectedTimeline);
+
     // ---- playing alongside other timelines (see TimelinePlayback) ----
 
     /// <summary>Whether the Timeline properties panel is slid out. It stays as left when switching timelines; it isn't saved.</summary>
@@ -495,6 +516,7 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
         RebuildTracks();
         _playback.SetTimeline(value);
         OnPropertyChanged(nameof(TimelineName));
+        OnPropertyChanged(nameof(Triggers));
         OnPropertyChanged(nameof(Loop));
         OnPropertyChanged(nameof(LengthSeconds));
         foreach (var name in PlaybackProperties) OnPropertyChanged(name);

@@ -5,7 +5,10 @@
              x:DataType="vm:AudioViewModel">
   <ScrollViewer>
     <StackPanel Margin="0,16" Spacing="12" MaxWidth="860" HorizontalAlignment="Left">
-      <TextBlock Text="Default output" Classes="heading" />
+      <StackPanel Orientation="Horizontal" Spacing="7">
+        <PathIcon Data="{StaticResource Icon.Volume}" Width="18" Height="18" />
+        <TextBlock Text="Default output" Classes="heading" />
+      </StackPanel>
       <Border Classes="card">
         <StackPanel Spacing="10">
           <TextBlock TextWrapping="Wrap" Opacity="0.75"
@@ -32,7 +35,10 @@
         </StackPanel>
       </Border>
 
-      <TextBlock Text="Track outputs" Classes="heading" />
+      <StackPanel Orientation="Horizontal" Spacing="7">
+        <PathIcon Data="{StaticResource Icon.Link}" Width="18" Height="18" />
+        <TextBlock Text="Track outputs" Classes="heading" />
+      </StackPanel>
       <Border Classes="card">
         <StackPanel Spacing="4">
           <TextBlock TextWrapping="Wrap" Opacity="0.7" IsVisible="{Binding !RoutedOutputs.Count}"
@@ -55,7 +61,10 @@
         </StackPanel>
       </Border>
 
-      <TextBlock Text="Sounds in this show" Classes="heading" />
+      <StackPanel Orientation="Horizontal" Spacing="7">
+        <PathIcon Data="{StaticResource Icon.Music}" Width="18" Height="18" />
+        <TextBlock Text="Sounds in this show" Classes="heading" />
+      </StackPanel>
       <Border Classes="card">
         <StackPanel Spacing="4">
           <TextBlock Text="No audio events yet. Add an audio track on the Show → Timeline screen, then double-click it to add a sound."

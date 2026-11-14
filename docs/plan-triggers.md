@@ -40,10 +40,36 @@ Stream Deck 3   ┘
 - **Where settings live:** the show lists its **input devices** (a name, a kind, and the device's own settings, such as a
   serial speed), as it lists universes, and a trigger names the device and what to listen for on it ("Ethereal FX:
   BTN24"). The computer's settings store which port each device is on, as with DMX adapters. See "The Inputs screen".
-- **Later, if a real scare needs it:** a button option to stop on release, for something held like a pressure mat.
+- **Stopping on release** (a pressure mat, a held key) is a trigger setting: see "How a trigger behaves" (built).
 
 Trigger settings and the input monitor belong in the browser too, like everything else; the hardware stays on the show
 computer.
+
+## How a trigger behaves (built)
+
+Modelled on prop controllers' trigger modes (FrightProps' PicoBoo and PicoFX: single shot, loop while triggered,
+momentary, run once). A trigger is on a **button** (it presses it) or on a **timeline** (it runs it, in Timeline
+properties), with the same settings and the same editor for both. One input still starts one thing.
+
+**Inputs with states and pulses.** A key is down or up. A sensor box sends `BTN24=On` when tripped and `BTN24=Off` when
+it rests: since show version 9 that's input `BTN24` with a value, and the trigger has an **active value** (learned from
+the first value that isn't a rest-like one such as Off or 0) and **Inverted** for a normally closed sensor. Any other
+value is rest. A command without `=` (`GO`) is a pulse: it has no rest, so only the settings for setting it off again apply.
+Learned triggers from version 8 shows (`BTN24=On` as a whole command) are split when the show is opened.
+
+| Setting | Choices |
+|---|---|
+| Still active when it finishes | nothing more (single shot) · play it again, for as long as it stays active (loop while held) |
+| When the input rests | keep playing · finish the pass, then stop (End loop) · stop now (momentary) |
+| Set off again while playing | run it again, as a click would (a button's actions say copy or one only) · ignore it · restart it · stop it (toggle) |
+| Play looped | a timeline's trigger only |
+| Run once until reset | fires once, then not until its **reset input** fires, its Reset button is clicked, or the triggers are armed again |
+| Re-arm time | as before, from firing or from when its timelines finish |
+
+Presets fill in the first three: Like a click (the default, as before), Single shot, Loop while held, Momentary,
+Retrigger, Toggle; anything else is Custom. A state input must rest before it can fire again; a second `BTN24=On`
+without an Off between is ignored (a key-down without a key-up isn't: the key-up was missed). Resting, finishing and
+repeating act only on what the trigger itself started in that activation.
 
 ## The Inputs screen
 

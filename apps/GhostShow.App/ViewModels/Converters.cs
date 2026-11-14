@@ -1,5 +1,7 @@
+using Avalonia;
 using Avalonia.Media;
 using Avalonia.Data.Converters;
+using GhostShow.App.Controls;
 
 namespace GhostShow.App.ViewModels;
 
@@ -24,4 +26,11 @@ public static class Converters
     public static readonly IValueConverter DoneOpacity = new FuncValueConverter<bool, double>(done => done ? 0.6 : 1.0);
 
     public static readonly IValueConverter BoldWhen = new FuncValueConverter<bool, FontWeight>(bold => bold ? FontWeight.SemiBold : FontWeight.Normal);
+
+    /// <summary>An icon from Icons.axaml by the end of its key: "Usb" is Icon.Usb.</summary>
+    public static readonly IValueConverter Icon = new FuncValueConverter<string?, Geometry?>(name =>
+        name is not null && Application.Current?.TryGetResource($"Icon.{name}", null, out var icon) == true ? icon as Geometry : null);
+
+    /// <summary>Hardware found on this computer: a free ring, or a grey dot when something already has it.</summary>
+    public static readonly IValueConverter FoundState = new FuncValueConverter<bool, DeviceState>(inUse => inUse ? DeviceState.InUse : DeviceState.Available);
 }

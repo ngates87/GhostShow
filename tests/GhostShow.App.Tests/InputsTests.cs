@@ -1,3 +1,4 @@
+using GhostShow.App.Controls;
 using GhostShow.App.ViewModels;
 using GhostShow.Core.Editing;
 using GhostShow.Core.Inputs;
@@ -76,23 +77,26 @@ public class InputsTests : IDisposable
     }
 
     [Fact]
-    public void Adding_a_port_adds_a_device_named_after_it_that_listens_on_it()
+    public void Adding_a_port_adds_a_device_named_after_its_hardware_that_listens_on_it()
     {
         var screen = Screen("COM3", "COM4");
         Assert.Equal(["COM3", "COM4 · Ethereal FX QC-24"], screen.Found.Select(f => f.Label));   // the USB device's own name, where the computer says
+        Assert.Equal([("COM3", "Serial Port · COM3"), ("Ethereal FX QC-24", "USB Serial · COM4")], screen.Found.Select(f => (f.Title, f.Summary)));
         Assert.All(screen.Found, f => Assert.True(f.CanAdd));
 
         screen.AddCommand.Execute(screen.Found[1]);
         var device = Assert.IsType<SerialInputDevice>(Assert.Single(Show.Inputs));
-        Assert.Equal(("COM4", 9600), (device.Name, device.BaudRate));
+        Assert.Equal(("Ethereal FX QC-24", 9600), (device.Name, device.BaudRate));   // the hardware's name, not just "COM4"
         Assert.Equal(new InputPortBinding(device.Id, "COM4", "A1B2"), Assert.Single(_settings.InputPorts));   // the USB serial number, to follow it
         var row = Assert.Single(screen.Devices);
         Settle(screen, device.Id, SerialInputState.Listening);
         Assert.Equal("Listening on COM4 at 9600 baud.", row.StatusLabel);
+        Assert.Equal(DeviceState.Healthy, row.State);
+        Assert.Equal("USB Serial Input · COM4 · 9600 baud", row.Summary);
         Assert.True(screen.IsListening);
         Assert.True(_buttons.IsSerialListening);   // a button waiting for its trigger takes a command too
         Assert.Empty(screen.Warnings);
-        Assert.Equal("COM4", screen.Found[1].UsedBy);
+        Assert.Equal("Ethereal FX QC-24", screen.Found[1].UsedBy);
 
         // Its name and speed are the show's: edits, with undo.
         row.Name = "Ethereal FX";
@@ -106,6 +110,7 @@ public class InputsTests : IDisposable
         row.IsEnabled = false;
         Assert.Equal(SerialInputState.Off, _serial.Status(device.Id).State);
         Assert.Equal("Off: COM4 isn't being listened to.", row.StatusLabel);
+        Assert.Equal(DeviceState.Inactive, row.State);
         Assert.False(screen.IsListening);
         lock (_opened) Assert.Equal(["COM4 9600", "COM4 57600"], _opened);
         Assert.True(_saves >= 2);
@@ -147,6 +152,7 @@ public class InputsTests : IDisposable
         Assert.Equal(SerialInputState.Off, _serial.Status(device.Id).State);
         Assert.Equal("COM3 is DMX universe 1's adapter: pick another port.", row.StatusLabel);
         Assert.True(row.IsFaulted);
+        Assert.Equal(DeviceState.Error, row.State);
         Assert.Equal(["Ethereal FX: COM3 is DMX universe 1's adapter: pick another port. See Inputs."], screen.Warnings);
         Assert.Contains(row.Ports, p => p.Label == "COM3 (DMX universe 1)");
 
@@ -168,6 +174,8 @@ public class InputsTests : IDisposable
         var row = screen.Devices.Single();
         Assert.Equal("Not on a port on this computer: pick the port it's plugged into.", row.StatusLabel);
         Assert.True(row.IsFaulted);
+        Assert.Equal(DeviceState.Inactive, row.State);   // in the show, on no hardware here: grey, not red
+        Assert.Equal("Serial Input · No port on this computer · 57600 baud", row.Summary);
         Assert.Equal("None", row.SelectedPort?.Label);
 
         row.SelectedPort = row.Ports.Single(p => p.Port == "COM4");
@@ -186,6 +194,7 @@ public class InputsTests : IDisposable
         var screen = Screen("COM3", "COM6");
         Settle(screen, device.Id, SerialInputState.Retrying);
         Assert.Equal("COM4 isn't connected. Trying again every few seconds.", screen.Devices.Single().StatusLabel);
+        Assert.Equal(DeviceState.Error, screen.Devices.Single().State);
 
         _usbSerials.Clear();
         _usbSerials["COM6"] = "A1B2";   // plugged into another socket: Windows gives it another name
@@ -199,7 +208,7 @@ public class InputsTests : IDisposable
     public void An_older_show_s_serial_device_goes_on_the_port_this_computer_listened_on()
     {
         _settings.SerialInput = new SerialInputSettings("COM7", 4800);
-        Show.Buttons.Add(new ShowButton { Name = "Scare", Triggers = [new ButtonTrigger { Source = ButtonTrigger.Serial, Address = "GO" }] });
+        Show.Buttons.Add(new ShowButton { Name = "Scare", Triggers = [new InputTrigger { Source = InputTrigger.Serial, Address = "GO" }] });
         LegacySerialTriggers.Apply(Show);   // as loading an older show does
 
         var screen = Screen("COM3");

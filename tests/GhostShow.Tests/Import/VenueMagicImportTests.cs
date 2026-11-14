@@ -1,3 +1,4 @@
+using GhostShow.Core.Inputs;
 using System.Text;
 using GhostShow.Core.Fixtures;
 using GhostShow.Core.Import;
@@ -128,7 +129,7 @@ public class VenueMagicImportTests : IDisposable
         Assert.Equal(["Start Show", "Stop All", "Cages", "Calm the cages"], project.Buttons.Select(b => b.Name));
         var start = project.Buttons[0];
         var key = Assert.Single(start.Triggers);
-        Assert.Equal(("#008000", ButtonTrigger.Keyboard, "S"), (start.Color, key.Source, key.Address));   // "&Start Show": the S key
+        Assert.Equal(("#008000", InputTrigger.Keyboard, "S"), (start.Color, key.Source, key.Address));   // "&Start Show": the S key
         var run = Assert.IsType<RunTimelineAction>(Assert.Single(start.Actions));
         Assert.Equal((Id("SartShow"), false, true), (run.TimelineId, run.Loop, run.OneOnly));
         Assert.Equal("#FF0000", project.Buttons[1].Color);

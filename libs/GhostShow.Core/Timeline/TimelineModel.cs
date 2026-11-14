@@ -1,3 +1,4 @@
+using GhostShow.Core.Inputs;
 using System.Text.Json.Serialization;
 using GhostShow.Core.Fixtures;
 
@@ -49,6 +50,12 @@ public sealed class ShowTimeline
 
     /// <summary>How it plays alongside other timelines (priority, overriding, release). See <see cref="TimelinePlayback"/>.</summary>
     public TimelinePlayback Playback { get; set; } = new();
+
+    /// <summary>
+    /// Inputs that run it directly, as a button's triggers press the button (a sensor in its room): each says how it
+    /// behaves while held, at rest and if set off again. A duplicate takes none: one input starts one thing.
+    /// </summary>
+    public List<InputTrigger> Triggers { get; set; } = [];
 
     /// <summary>A deep copy with new IDs throughout (timeline, tracks, events), for Duplicate.</summary>
     public ShowTimeline Clone(string name) => new()

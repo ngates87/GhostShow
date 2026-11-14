@@ -15,10 +15,26 @@ public static class LegacySerialTriggers
 
     public static void Apply(Project project)
     {
-        var triggers = project.Buttons.SelectMany(b => b.Triggers).Where(t => t.Source == ButtonTrigger.Serial && t.Input is null).ToList();
+        var triggers = project.Buttons.SelectMany(b => b.Triggers).Where(t => t.Source == InputTrigger.Serial && t.Input is null).ToList();
         if (triggers.Count == 0) return;
         var device = project.Inputs.OfType<SerialInputDevice>().FirstOrDefault();
         if (device is null) project.Inputs.Add(device = new SerialInputDevice { Name = DeviceName });
         foreach (var trigger in triggers) trigger.Input = device.Id;
+    }
+
+    /// <summary>
+    /// Before show version 9, a serial trigger matched a whole command, so one learned from a sensor box that sends
+    /// <c>BTN24=On</c> had that as its address. From 9 that's input "BTN24" with the value "On": the trigger keeps
+    /// firing on exactly that command, and now also knows <c>BTN24=Off</c> is its rest.
+    /// </summary>
+    public static void SplitValues(Project project)
+    {
+        foreach (var trigger in project.Buttons.SelectMany(b => b.Triggers).Where(t => t.Source == InputTrigger.Serial && t.Value is null))
+        {
+            var (address, value) = InputEvent.SplitCommand(trigger.Address);
+            if (value is null) continue;
+            trigger.Address = address;
+            trigger.Value = value;
+        }
     }
 }

@@ -2,11 +2,13 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:GhostShow.App.ViewModels"
              xmlns:views="using:GhostShow.App.Views"
+             xmlns:controls="using:GhostShow.App.Controls"
              xmlns:inputs="using:GhostShow.Core.Inputs"
              x:Class="GhostShow.App.Views.InputsView"
              x:DataType="vm:InputsViewModel">
   <!-- Inputs: the show's input devices (left), what this computer has to add (right), and the input monitor (below).
-       Laid out like the DMX outputs: the show stores names and settings, the computer which port each is on. -->
+       Laid out like the DMX outputs, and drawn with the same device cards: the show stores names and settings, the
+       computer which port each is on. -->
   <Grid RowDefinitions="Auto,*" Margin="0,12">
     <Grid ColumnDefinitions="1.5*,16,*">
       <StackPanel Spacing="6">
@@ -14,50 +16,69 @@
         <TextBlock TextWrapping="Wrap" Opacity="0.7"
                    Text="What the show listens to. A button's trigger names the input, and what to listen for on it. Names and speeds belong to the show; the port each is on belongs to this computer, so a show opened elsewhere keeps its triggers and only needs its ports picked." />
         <ScrollViewer MaxHeight="440">
-          <StackPanel Spacing="8">
-            <Border Classes="card">
-              <DockPanel>
-                <ToggleButton DockPanel.Dock="Right" Content="Monitor" VerticalAlignment="Top" Command="{Binding MonitorKeyboardCommand}"
-                              IsChecked="{Binding IsKeyboardMonitored, Mode=OneWay}" ToolTip.Tip="Show only the keyboard's inputs in the monitor below" />
-                <StackPanel Spacing="2">
-                  <TextBlock Text="Keyboard" FontWeight="SemiBold" />
-                  <TextBlock Opacity="0.7" TextWrapping="Wrap"
-                             Text="Always on. F keys always press their buttons; letters and digits do unless a field has the cursor." />
-                </StackPanel>
-              </DockPanel>
-            </Border>
+          <StackPanel Spacing="6">
+            <controls:DeviceCard Icon="{StaticResource Icon.Keyboard}" Title="Keyboard" Kind="Keyboard Input · System"
+                                 State="Healthy" StatusText="Always on">
+              <controls:DeviceCard.Actions>
+                <ToggleButton Content="Monitor" Command="{Binding MonitorKeyboardCommand}" IsChecked="{Binding IsKeyboardMonitored, Mode=OneWay}"
+                              ToolTip.Tip="Show only the keyboard's inputs in the monitor below" />
+              </controls:DeviceCard.Actions>
+              <Grid Classes="deviceFacts" ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto">
+                <TextBlock Classes="label" Text="Keys" />
+                <TextBlock Grid.Column="1" Text="F keys always press their buttons; letters and digits do unless a field has the cursor." />
+                <TextBlock Grid.Row="1" Classes="label" Text="Settings" />
+                <TextBlock Grid.Row="1" Grid.Column="1" Text="None: the keyboard is always there." />
+              </Grid>
+            </controls:DeviceCard>
             <ItemsControl x:Name="InputDevices" ItemsSource="{Binding Devices}">
               <ItemsControl.ItemsPanel>
-                <ItemsPanelTemplate><StackPanel Spacing="8" /></ItemsPanelTemplate>
+                <ItemsPanelTemplate><StackPanel Spacing="6" /></ItemsPanelTemplate>
               </ItemsControl.ItemsPanel>
               <ItemsControl.ItemTemplate>
                 <DataTemplate x:DataType="vm:InputDeviceRowViewModel">
-                  <Border Classes="card">
-                    <StackPanel Spacing="6">
-                      <Grid ColumnDefinitions="*,8,Auto,8,Auto,8,Auto">
-                        <TextBox Text="{Binding Name}" ToolTip.Tip="What the show calls it, e.g. the device or the room it's in" />
-                        <TextBlock Grid.Column="2" Text="{Binding KindLabel}" Opacity="0.7" VerticalAlignment="Center" />
-                        <ToggleButton Grid.Column="4" Content="Monitor" Command="{Binding MonitorCommand}" IsChecked="{Binding IsMonitored, Mode=OneWay}"
+                  <controls:DeviceCard Icon="{Binding Icon, Converter={x:Static vm:Converters.Icon}}" Kind="{Binding Summary}"
+                                       State="{Binding State}" StatusText="{Binding StatusLabel}" Detail="{Binding LastReceived}"
+                                       IsExpanded="{Binding IsExpanded}">
+                    <controls:DeviceCard.Title>
+                      <TextBox Classes="deviceName" Text="{Binding Name}" ToolTip.Tip="What the show calls it, e.g. the device or the room it's in. Click to rename." />
+                    </controls:DeviceCard.Title>
+                    <controls:DeviceCard.Actions>
+                      <StackPanel Orientation="Horizontal" Spacing="6">
+                        <ToggleButton Content="Monitor" Command="{Binding MonitorCommand}" IsChecked="{Binding IsMonitored, Mode=OneWay}"
                                       ToolTip.Tip="Show only this input's commands in the monitor below" />
-                        <Button Grid.Column="6" Content="Remove"
+                        <Button Content="Remove"
                                 Command="{Binding $parent[ItemsControl].((vm:InputsViewModel)DataContext).RemoveCommand}" CommandParameter="{Binding}"
                                 ToolTip.Tip="Remove it from the show. Buttons listening to it keep their triggers (Undo puts it back)." />
-                      </Grid>
+                      </StackPanel>
+                    </controls:DeviceCard.Actions>
+                    <!-- Settings and diagnostics, behind the card's expander -->
+                    <StackPanel Spacing="10">
                       <WrapPanel Orientation="Horizontal" IsVisible="{Binding IsSerial}">
-                        <TextBlock Text="Port" VerticalAlignment="Center" Margin="0,0,8,0" />
+                        <TextBlock Text="Port" VerticalAlignment="Center" Margin="0,0,8,4" />
                         <ComboBox x:Name="InputPort" ItemsSource="{Binding Ports}" SelectedItem="{Binding SelectedPort}" MinWidth="200" Margin="0,0,20,4"
                                   ToolTip.Tip="The port it's plugged into on this computer (this computer's setting)" />
-                        <TextBlock Text="Speed" VerticalAlignment="Center" Margin="0,0,8,0" />
+                        <TextBlock Text="Speed" VerticalAlignment="Center" Margin="0,0,8,4" />
                         <ComboBox ItemsSource="{x:Static inputs:SerialInputDevice.BaudRates}" SelectedItem="{Binding BaudRate}" MinWidth="110" Margin="0,0,0,4"
                                   ToolTip.Tip="The device's manual gives it; 9600 is the most common. Always 8 data bits, no parity, 1 stop bit." />
-                        <TextBlock Text="baud" VerticalAlignment="Center" Margin="6,0,20,0" />
-                        <CheckBox Content="Listen" IsChecked="{Binding IsEnabled}" IsVisible="{Binding HasPort}"
+                        <TextBlock Text="baud" VerticalAlignment="Center" Margin="6,0,20,4" />
+                        <CheckBox Content="Listen" IsChecked="{Binding IsEnabled}" IsVisible="{Binding HasPort}" Margin="0,0,0,4"
                                   ToolTip.Tip="Off keeps the port picked but closed, e.g. to let another program use it." />
                       </WrapPanel>
-                      <TextBlock x:Name="InputStatus" Text="{Binding StatusLabel}" TextWrapping="Wrap" Classes.fault="{Binding IsFaulted}" />
-                      <TextBlock Text="{Binding LastReceived}" Opacity="0.7" />
+                      <Grid Classes="deviceFacts" ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto" IsVisible="{Binding IsSerial}">
+                        <TextBlock Classes="label" Text="Type" />
+                        <TextBlock Grid.Column="1" Text="{Binding KindLabel}" />
+                        <TextBlock Grid.Row="1" Classes="label" Text="USB device" />
+                        <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding HardwareLabel}" />
+                        <TextBlock Grid.Row="2" Classes="label" Text="USB serial number" />
+                        <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding UsbSerialLabel}"
+                                   ToolTip.Tip="How it's recognized if it comes back on another port" />
+                        <TextBlock Grid.Row="3" Classes="label" Text="Speed" />
+                        <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding BaudRate, StringFormat='{}{0} baud'}" />
+                        <TextBlock Grid.Row="4" Classes="label" Text="Format" />
+                        <TextBlock Grid.Row="4" Grid.Column="1" Text="{x:Static vm:InputDeviceRowViewModel.SerialFormat}" />
+                      </Grid>
                     </StackPanel>
-                  </Border>
+                  </controls:DeviceCard>
                 </DataTemplate>
               </ItemsControl.ItemTemplate>
             </ItemsControl>
@@ -70,23 +91,24 @@
       <StackPanel Grid.Column="2" Spacing="6">
         <TextBlock Text="On this computer" Classes="heading" />
         <TextBlock TextWrapping="Wrap" Opacity="0.7"
-                   Text="Serial ports, with the USB device on each when the computer says. Add the one your device is plugged into; it's named after the port until you rename it." />
+                   Text="Serial ports, with the USB device on each when the computer says. Add the one your device is plugged into; it's named after the device (or the port) until you rename it." />
         <Button Content="Look again" Command="{Binding RefreshPortsCommand}" ToolTip.Tip="List the ports again, after plugging in a USB cable" />
         <TextBlock Text="{Binding FoundStatus}" TextWrapping="Wrap" Opacity="0.7" IsVisible="{Binding !!FoundStatus.Length}" />
         <ItemsControl x:Name="FoundPorts" ItemsSource="{Binding Found}">
           <ItemsControl.ItemsPanel>
-            <ItemsPanelTemplate><StackPanel Spacing="4" /></ItemsPanelTemplate>
+            <ItemsPanelTemplate><StackPanel Spacing="2" /></ItemsPanelTemplate>
           </ItemsControl.ItemsPanel>
           <ItemsControl.ItemTemplate>
             <DataTemplate x:DataType="vm:FoundPort">
-              <DockPanel>
-                <Button DockPanel.Dock="Right" Content="Add" IsEnabled="{Binding CanAdd}" VerticalAlignment="Center"
-                        Command="{Binding $parent[ItemsControl].((vm:InputsViewModel)DataContext).AddCommand}" CommandParameter="{Binding}" />
-                <StackPanel VerticalAlignment="Center">
-                  <TextBlock Text="{Binding Label}" TextWrapping="Wrap" />
-                  <TextBlock Text="{Binding Note}" Opacity="0.7" IsVisible="{Binding !CanAdd}" />
-                </StackPanel>
-              </DockPanel>
+              <controls:DeviceCard Classes="compact" Icon="{Binding Icon, Converter={x:Static vm:Converters.Icon}}" Title="{Binding Title}"
+                                   Kind="{Binding Summary}" StatusText="{Binding Assignment}"
+                                   State="{Binding InUse, Converter={x:Static vm:Converters.FoundState}}">
+                <controls:DeviceCard.Actions>
+                  <Button Content="Add" IsEnabled="{Binding CanAdd}"
+                          Command="{Binding $parent[ItemsControl].((vm:InputsViewModel)DataContext).AddCommand}" CommandParameter="{Binding}"
+                          ToolTip.Tip="Add it to the show's inputs and listen to it" />
+                </controls:DeviceCard.Actions>
+              </controls:DeviceCard>
             </DataTemplate>
           </ItemsControl.ItemTemplate>
         </ItemsControl>

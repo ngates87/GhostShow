@@ -12,6 +12,9 @@ namespace GhostShow.Core.Model;
 public sealed class Project
 {
     /// <summary>
+    /// 9: a serial command with a value (<c>BTN24=On</c>) is input "BTN24" with the value "On", so a trigger can tell
+    /// active from rest; before, a trigger matched the whole command (see <see cref="Storage.LegacySerialTriggers"/>).
+    /// Triggers also say how they behave while held, at rest and when set off again, and timelines can have them.
     /// 8: the show lists its input devices, and a serial trigger names the one it listens to; before, there was one
     /// serial port per computer (see <see cref="Storage.LegacySerialTriggers"/>).
     /// 7: a Run Timeline (button action or event) says whether it loops and whether it plays only if the timeline isn't
@@ -22,7 +25,7 @@ public sealed class Project
     /// 3: universes numbered from 1, like consoles and sACN (earlier versions started at 0; loading shifts them up).
     /// 2: fixtures added, output hardware moved to machine settings. 1: the timeline prototype.
     /// </summary>
-    public const int CurrentSchemaVersion = 8;
+    public const int CurrentSchemaVersion = 9;
 
     /// <summary>Universe numbers run 1-63999: sACN's range, the widest of the protocols GhostShow will speak.</summary>
     public const int FirstUniverse = 1, LastUniverse = 63999;

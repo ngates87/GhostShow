@@ -8,7 +8,7 @@ sealed class FakeDevice : IDmxOutputDevice
     readonly Lock _lock = new();
     readonly List<byte[]> _frames = [];
 
-    public DmxDeviceInfo Info { get; } = new("Fake", "Test device");
+    public DmxDeviceInfo Info { get; init; } = new("Fake", "Test device");
 
     public int ConnectAttempts;
     public int Disconnects;
