@@ -252,6 +252,14 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
     {
         _session = session;
         _history = history ?? session.Document;
+        // The inspector shows what's just been selected; with nothing selected, the timeline.
+        PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName != nameof(ShowPropertiesHint)) return;
+            IsTimelineTab = ShowPropertiesHint;
+            OnPropertyChanged(nameof(SelectionTabLabel));
+            OnPropertyChanged(nameof(InspectorSummary));
+        };
         _history.HistoryChanged += () =>
         {
             OnPropertyChanged(nameof(UndoLabel));
@@ -396,12 +404,38 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
 
     // ---- playing alongside other timelines (see TimelinePlayback) ----
 
-    /// <summary>Whether the Timeline properties panel is slid out. It stays as left when switching timelines; it isn't saved.</summary>
+    // ---- the inspector: one panel for what's selected (a clip, a track, a handle, its channels) and the timeline ----
+
+    /// <summary>Whether the inspector is out (otherwise folded to a strip at the edge). It stays as left; it isn't saved.</summary>
     [ObservableProperty]
-    public partial bool IsTimelinePropertiesOpen { get; set; }
+    [NotifyPropertyChangedFor(nameof(InspectorSummary))]
+    public partial bool IsInspectorOpen { get; set; } = true;
 
     [RelayCommand]
-    void ToggleTimelineProperties() => IsTimelinePropertiesOpen = !IsTimelinePropertiesOpen;
+    void ToggleInspector() => IsInspectorOpen = !IsInspectorOpen;
+
+    /// <summary>The inspector shows the timeline's properties, not the selection's. Selecting something shows that.</summary>
+    [ObservableProperty]
+    public partial bool IsTimelineTab { get; set; } = true;
+
+    [RelayCommand]
+    void ShowTimelineTab() => IsTimelineTab = true;
+
+    [RelayCommand]
+    void ShowSelectionTab()
+    {
+        if (!ShowPropertiesHint) IsTimelineTab = false;
+    }
+
+    /// <summary>The selection tab's name: what's being inspected ("Clip", "Track", "Handle", "Channels"), or "Selection" with nothing.</summary>
+    public string SelectionTabLabel => ChannelPicker is not null ? "Channels"
+                                     : PointProperties is not null ? "Handle"
+                                     : Properties is not null ? (Properties.IsEffect || Properties.IsLevelControl || Properties.IsAudio ? "Clip" : "Event")
+                                     : TrackProperties is not null ? "Track"
+                                     : "Selection";
+
+    /// <summary>On the folded inspector's strip: what's selected, or how the timeline plays.</summary>
+    public string InspectorSummary => ShowPropertiesHint ? $"Timeline: {PlaybackSummary}" : SelectionLabel;
 
     static readonly string[] PlaybackProperties =
         [nameof(Priority), nameof(OverrideMode), nameof(IsSuppressing), nameof(ReleaseFadeSeconds), nameof(DuckPercent), nameof(ReleaseAtEnd), nameof(PlaybackSummary)];

@@ -1259,35 +1259,47 @@ public class UiTests
     });
 
     [Fact]
-    public void The_timeline_properties_panel_slides_out_from_its_strip_and_folds_back() => Ui.Run(() =>
+    public void The_inspector_shows_the_selection_or_the_timeline_and_folds_to_a_strip() => Ui.Run(() =>
     {
         using var rig = new WindowRig();
-        var strip = rig.Find<Button>(b => b.Name == "TimelinePropertiesStrip");
-        var panel = rig.Find<Border>(b => b.Name == "TimelinePropertiesPanel");
-        Assert.True(strip.IsVisible);
-        Assert.False(panel.IsEnabled);   // closed: nothing in it can take focus
-
-        rig.Click(rig.CenterOf(strip));
-        WindowRig.Pump(300);   // the slide takes 150 ms
-
-        Assert.True(rig.Editor.IsTimelinePropertiesOpen);
+        var strip = rig.Find<Button>(b => b.Name == "InspectorStrip");
+        var panel = rig.Find<Border>(b => b.Name == "InspectorPanel");
+        var selectionTab = rig.Find<Button>(b => b.Name == "SelectionTab");
+        Assert.True(rig.Editor.IsInspectorOpen);   // out from the start: it's where everything is edited
         Assert.False(strip.IsVisible);
-        Assert.True(panel.IsEnabled);
-        Assert.Equal(300, panel.GetVisualParent<Border>()!.Bounds.Width);
+        Assert.Equal(320, panel.GetVisualParent<Border>()!.Bounds.Width);
 
-        // The settings in it reach the timeline.
+        // Nothing selected: the timeline's properties, and they reach the timeline.
+        Assert.True(rig.Editor.IsTimelineTab);
+        Assert.False(selectionTab.IsEnabled);
         var scare = panel.GetVisualDescendants().OfType<Button>().Single(b => b.Content as string == "Make it a scare");
         rig.Click(rig.CenterOf(scare));
         WindowRig.Pump();
         Assert.Equal(10, rig.Editor.SelectedTimeline!.Playback.Priority);
 
+        // Selecting a track shows it; the Timeline tab is a click away, and the selection tab brings it back.
+        rig.Editor.EditTrackProperties(rig.Editor.Tracks.First(t => t.IsAudio));
+        WindowRig.Pump();
+        Assert.Equal((false, "Track", true), (rig.Editor.IsTimelineTab, selectionTab.Content as string, selectionTab.IsEnabled));
+        rig.Click(rig.CenterOf(rig.Find<Button>(b => b.Name == "TimelineTab")));
+        Assert.True(rig.Editor.IsTimelineTab);
+        rig.Click(rig.CenterOf(selectionTab));
+        Assert.False(rig.Editor.IsTimelineTab);
+        rig.Editor.TrackProperties!.CloseCommand.Execute(null);
+        WindowRig.Pump();
+        Assert.True(rig.Editor.IsTimelineTab);   // nothing selected again: the timeline
+
         var fold = panel.GetVisualDescendants().OfType<Button>().Single(b => b.Content as string == "»");
         rig.Click(rig.CenterOf(fold));
-        WindowRig.Pump(300);
-
-        Assert.False(rig.Editor.IsTimelinePropertiesOpen);
+        WindowRig.Pump(300);   // the slide takes 150 ms
+        Assert.False(rig.Editor.IsInspectorOpen);
         Assert.True(strip.IsVisible);
+        Assert.False(panel.IsEnabled);   // closed: nothing in it can take focus
         Assert.Equal(0, panel.GetVisualParent<Border>()!.Bounds.Width);
+
+        rig.Click(rig.CenterOf(strip));
+        WindowRig.Pump(300);
+        Assert.True(rig.Editor.IsInspectorOpen);
     });
 
     [Fact]
