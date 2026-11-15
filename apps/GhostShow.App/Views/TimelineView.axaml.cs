@@ -19,6 +19,11 @@ namespace GhostShow.App.Views;
 /// </summary>
 public partial class TimelineView : UserControl
 {
+    public static readonly StyledProperty<BottomWorkspaceViewModel?> BottomWorkspaceProperty =
+        AvaloniaProperty.Register<TimelineView, BottomWorkspaceViewModel?>(nameof(BottomWorkspace));
+
+    public BottomWorkspaceViewModel? BottomWorkspace { get => GetValue(BottomWorkspaceProperty); set => SetValue(BottomWorkspaceProperty, value); }
+
     static DataFormat<TimelineTreeNode> TreeNodeFormat => Controls.TimelineCanvas.TreeNodeFormat;   // shared: a timeline can be dropped on the lanes
     const double DragThreshold = 6;
 

@@ -1,0 +1,49 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:GhostShow.App.ViewModels"
+             x:Class="GhostShow.App.Views.PlayingListView"
+             x:DataType="vm:PlaybackViewModel">
+  <UserControl.Styles>
+    <Style Selector="Button.small">
+      <Setter Property="Padding" Value="6,1" />
+      <Setter Property="MinHeight" Value="0" />
+    </Style>
+    <Style Selector="PathIcon.runFlag">
+      <Setter Property="Width" Value="14" />
+      <Setter Property="Height" Value="14" />
+      <Setter Property="Foreground" Value="#FFD54F" />
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+  </UserControl.Styles>
+  <DockPanel>
+    <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4">
+      <Button DockPanel.Dock="Right" Classes="small" Content="Stop all" Command="{Binding StopAllCommand}"
+              ToolTip.Tip="Stop every timeline and release the held lights" />
+      <TextBlock Text="Playing" FontWeight="SemiBold" VerticalAlignment="Center" />
+    </DockPanel>
+    <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+      <ItemsControl ItemsSource="{Binding Running}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:RunningRowViewModel">
+            <DockPanel Margin="0,1">
+              <Button DockPanel.Dock="Right" Classes="small" Content="â– " Command="{Binding StopCommand}" ToolTip.Tip="{Binding StopTip}" />
+              <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="2" Margin="0,0,4,0" VerticalAlignment="Center">
+                <PathIcon Classes="runFlag" Data="{StaticResource Icon.Loop}" IsVisible="{Binding Loops}"
+                          ToolTip.Tip="Looped: it plays until it's stopped (or an End loop)" />
+                <PathIcon Classes="runFlag" Data="{StaticResource Icon.OneOnly}" IsVisible="{Binding OneOnly}"
+                          ToolTip.Tip="One only: running it again while it plays does nothing" />
+              </StackPanel>
+              <Button Command="{Binding OpenCommand}" Background="Transparent" Padding="2,0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                      ToolTip.Tip="Open it in the editor" IsHitTestVisible="{Binding !IsHeld}">
+                <StackPanel>
+                  <TextBlock Text="{Binding Name}" FontWeight="{Binding IsFocused, Converter={x:Static vm:Converters.BoldWhen}}" TextTrimming="CharacterEllipsis" />
+                  <TextBlock Text="{Binding Detail}" FontSize="11" Opacity="0.65" TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+              </Button>
+            </DockPanel>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </ScrollViewer>
+  </DockPanel>
+</UserControl>

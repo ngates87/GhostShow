@@ -51,6 +51,7 @@ sealed class ShellView : Border
     LightingViewModel? _lighting;
     LightingView? _lightingView;
     TimelineEditorViewModel? _editor;
+    BottomWorkspaceViewModel? _bottomWorkspace;
     bool _unsaved;
     long _noticeNumber;
     string _selectedPage = "Timeline";
@@ -130,6 +131,7 @@ sealed class ShellView : Border
             _editor = new TimelineEditorViewModel(_session, _playback, () => Task.FromResult<string?>(null), () => { }, _audioDevices, _edits);
             var fixtures = new FixtureSetupViewModel(_session, new ProfileLibraryViewModel(_library), _edits);
             _lighting = new LightingViewModel(_session, _levels, new OutputsViewModel(_session, _outputSetup, ShowNotice, _edits), fixtures, ShowNotice);
+            _bottomWorkspace = new BottomWorkspaceViewModel(_playback, null, _lighting, null);
             _lightingView = new LightingView { DataContext = _lighting, Margin = new(8, 0) };
             BuildShell();
             OpenFromAddress();
@@ -193,7 +195,7 @@ sealed class ShellView : Border
         {
             "Lighting" => _lightingView,
             "Audio" => AudioPage(),
-            _ => new TimelineView { DataContext = _editor, Margin = new(6) },
+            _ => new TimelineView { DataContext = _editor, BottomWorkspace = _bottomWorkspace, Margin = new(6) },
         };
         bool onLighting = _selectedPage == "Lighting";
         _lighting!.IsOnScreen = onLighting;

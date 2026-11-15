@@ -87,6 +87,7 @@ public sealed partial class MainViewModel : ObservableObject
             // another device may have that name now (the DMX output checks the adapter's serial number, so it won't take it).
             () => outputs.Services.Where(s => s.Status == DmxOutputStatus.Connected && s.Device.Port is not null).Select(s => (s.Universe, s.Device.Port!)),
             Buttons);
+        BottomWorkspace = new BottomWorkspaceViewModel(Playback, Inputs.Monitor, Lighting, Diagnostics, settings.Panels);
         // Both come on a port's reading thread, and are handled on this one. A command is an input like a key.
         _serial.CommandReceived += (device, command) => Dispatcher.UIThread.Post(() => Inputs.OnCommand(device, command));
         _serial.StatusChanged += _ => Dispatcher.UIThread.Post(Inputs.Refresh);
@@ -120,6 +121,8 @@ public sealed partial class MainViewModel : ObservableObject
         var panels = _settings.Panels;
         Timeline.TreeWidth = panels.Timelines ?? TimelineEditorViewModel.UsualTreeWidth;
         Timeline.InspectorWidth = panels.Inspector ?? TimelineEditorViewModel.UsualInspectorWidth;
+        BottomWorkspace.PanelHeight = panels.TimelineBottom ?? BottomWorkspaceViewModel.UsualHeight;
+        BottomWorkspace.IsOpen = panels.TimelineBottomOpen ?? false;
         Buttons.PanelWidth = panels.Buttons ?? ButtonsViewModel.UsualWidth;
         // Not on every step of a drag: once it's let go (or paused).
         _savePanels = new DispatcherTimer(TimeSpan.FromSeconds(1), DispatcherPriority.Background, async (_, _) =>
@@ -133,6 +136,13 @@ public sealed partial class MainViewModel : ObservableObject
             if (e.PropertyName == nameof(TimelineEditorViewModel.TreeWidth)) Note(() => panels.Timelines = Timeline.TreeWidth);
             else if (e.PropertyName == nameof(TimelineEditorViewModel.InspectorWidth)) Note(() => panels.Inspector = Timeline.InspectorWidth);
         };
+        BottomWorkspace.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(BottomWorkspaceViewModel.PanelHeight)) Note(() => panels.TimelineBottom = BottomWorkspace.PanelHeight);
+            else if (e.PropertyName == nameof(BottomWorkspaceViewModel.IsOpen)) Note(() => panels.TimelineBottomOpen = BottomWorkspace.IsOpen);
+            else if (e.PropertyName == nameof(BottomWorkspaceViewModel.SelectedPane)) Note(() => panels.TimelineSelectedPane = BottomWorkspace.SelectedPane?.Key);
+        };
+        BottomWorkspace.Panes.CollectionChanged += (_, _) => Note(() => panels.TimelinePanes = BottomWorkspace.Panes.Select(p => p.Key).ToList());
         Buttons.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(ButtonsViewModel.PanelWidth)) Note(() => panels.Buttons = Buttons.PanelWidth);
@@ -171,6 +181,7 @@ public sealed partial class MainViewModel : ObservableObject
     public FixtureSetupViewModel Fixtures => Lighting.Fixtures;
     public DiagnosticsViewModel Diagnostics { get; }
     public InputsViewModel Inputs { get; }
+    public BottomWorkspaceViewModel BottomWorkspace { get; }
     readonly SerialInputs _serial;
     public PerformanceMeterViewModel Performance { get; }
 

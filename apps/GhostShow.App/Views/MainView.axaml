@@ -184,7 +184,8 @@
       <!-- The timeline, with the show's buttons beside it -->
       <DockPanel IsVisible="{Binding CurrentPage, Converter={x:Static vm:Converters.PageIs}, ConverterParameter={x:Static vm:Page.Timeline}}">
         <views:ButtonsPanel DockPanel.Dock="Right" DataContext="{Binding Buttons}" />
-        <views:TimelineView DataContext="{Binding Timeline}" />
+        <views:TimelineView DataContext="{Binding Timeline}"
+                            BottomWorkspace="{Binding $parent[views:MainView].((vm:MainViewModel)DataContext).BottomWorkspace}" />
       </DockPanel>
       <views:DiagnosticsView DataContext="{Binding Diagnostics}"
                              IsVisible="{Binding $parent[views:MainView].((vm:MainViewModel)DataContext).CurrentPage, Converter={x:Static vm:Converters.PageIs}, ConverterParameter={x:Static vm:Page.Diagnostics}}" />

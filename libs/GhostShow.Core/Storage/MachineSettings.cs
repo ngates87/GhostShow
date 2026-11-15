@@ -123,7 +123,7 @@ public sealed record SerialInputSettings(string? Port = null, int BaudRate = 960
 /// <param name="Enabled">Off keeps the port picked but closed, e.g. to let another program use it.</param>
 public sealed record InputPortBinding(Guid Input, string Port, string? UsbSerial = null, bool Enabled = true);
 
-/// <summary>The side panels' widths, in pixels; null for the usual width. A screen's, so this computer's.</summary>
+/// <summary>The timeline and side panels' sizes in pixels; null for the usual size. These belong to this computer.</summary>
 public sealed class PanelWidths
 {
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -134,4 +134,16 @@ public sealed class PanelWidths
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public double? Buttons { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public double? TimelineBottom { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? TimelineBottomOpen { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<string>? TimelinePanes { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? TimelineSelectedPane { get; set; }
 }
