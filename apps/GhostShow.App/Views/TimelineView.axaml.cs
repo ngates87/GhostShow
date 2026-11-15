@@ -42,10 +42,12 @@ public partial class TimelineView : UserControl
         TimelineTree.AddHandler(PointerPressedEvent, OnTreePressed, RoutingStrategies.Tunnel);
         TimelineTree.AddHandler(PointerMovedEvent, OnTreeMoved, RoutingStrategies.Tunnel);
         TimelineTree.AddHandler(PointerReleasedEvent, (_, _) => _pressed = null, RoutingStrategies.Tunnel);
-        EffectList.AddHandler(PointerPressedEvent, OnEffectPressed, RoutingStrategies.Tunnel);
-        EffectList.AddHandler(PointerMovedEvent, OnEffectMoved, RoutingStrategies.Tunnel);
-        EffectList.AddHandler(PointerReleasedEvent, OnEffectReleased, RoutingStrategies.Tunnel);
-        EffectList.AddHandler(PointerCaptureLostEvent, (_, _) => EndEffectDrag(), RoutingStrategies.Tunnel);
+        // The Effects menu: pressed in the list, then the pointer is this view's (it outlives the list, which closes once
+        // a drag starts), until it's let go: a click adds the effect, a drag drops it on a track.
+        EffectMenu.AddHandler(PointerPressedEvent, OnEffectPressed, RoutingStrategies.Tunnel);
+        AddHandler(PointerMovedEvent, OnEffectMoved, RoutingStrategies.Bubble, handledEventsToo: true);
+        AddHandler(PointerReleasedEvent, OnEffectReleased, RoutingStrategies.Bubble, handledEventsToo: true);
+        AddHandler(PointerCaptureLostEvent, (_, _) => EndEffectDrag(), RoutingStrategies.Bubble, handledEventsToo: true);
         TimelineTree.AddHandler(DragDrop.DragOverEvent, OnTreeDragOver);
         TimelineTree.AddHandler(DragDrop.DropEvent, OnTreeDrop);
         // The in-place rename box: focus it when it appears, commit when focus leaves it.
@@ -308,42 +310,63 @@ public partial class TimelineView : UserControl
         e.Handled = true;
     }
 
-    // ---- dragging from the effects list ----
+    // ---- the Effects menu: click an effect to add it, or drag it onto a lighting track ----
     // By following the pointer rather than with the system's drag and drop: it's all inside this screen, and this way it
     // works the same with a mouse, a finger and in a browser.
 
-    EffectChoice? _draggedEffect;
+    EffectChoice? _pressedEffect;   // pressed in the menu, not let go yet
+    Point _effectPressedAt;
+    bool _draggingEffect;           // moved far enough to be a drag (otherwise letting go is a click)
 
     void OnEffectPressed(object? sender, PointerPressedEventArgs e)
     {
-        if ((e.Source as Control)?.DataContext is not EffectChoice choice || !e.GetCurrentPoint(EffectList).Properties.IsLeftButtonPressed) return;
-        _draggedEffect = choice;
-        e.Pointer.Capture(EffectList);
-        ShowEffectChip(choice, e);
+        if ((e.Source as Control)?.DataContext is not EffectChoice choice || !e.GetCurrentPoint(EffectMenu).Properties.IsLeftButtonPressed) return;
+        _pressedEffect = choice;
+        _draggingEffect = false;
+        _effectPressedAt = e.GetPosition(this);
+        e.Pointer.Capture(this);
         e.Handled = true;
     }
 
     void OnEffectMoved(object? sender, PointerEventArgs e)
     {
-        if (_draggedEffect is not { } choice) return;
+        if (_pressedEffect is not { } choice) return;
+        if (!_draggingEffect)
+        {
+            var at = e.GetPosition(this);
+            if (Math.Abs(at.X - _effectPressedAt.X) < DragThreshold && Math.Abs(at.Y - _effectPressedAt.Y) < DragThreshold) return;
+            _draggingEffect = true;
+            EffectsButton.IsChecked = false;   // the list closes, out of the way of the lanes
+            ShowEffectChip(choice, e);
+        }
         bool lands = Canvas.PreviewEffect(choice, PointOnLanes(e));
         MoveEffectChip(e, lands ? choice.Name : $"{choice.Name}: drop on a lighting track");
     }
 
     void OnEffectReleased(object? sender, PointerReleasedEventArgs e)
     {
-        if (_draggedEffect is not { } choice) return;
-        Canvas.PreviewEffect(choice, PointOnLanes(e));
-        Canvas.DropEffect(choice);
-        _draggedEffect = null;
-        HideEffectChip();
+        if (_pressedEffect is not { } choice) return;
+        _pressedEffect = null;
+        if (_draggingEffect)
+        {
+            Canvas.PreviewEffect(choice, PointOnLanes(e));
+            Canvas.DropEffect(choice);
+            HideEffectChip();
+        }
+        else
+        {
+            EffectsButton.IsChecked = false;
+            _editor?.AddChoiceCommand.Execute(choice);
+        }
+        _draggingEffect = false;
         e.Pointer.Capture(null);
     }
 
     void EndEffectDrag()
     {
-        if (_draggedEffect is { } choice) Canvas.PreviewEffect(choice, null);
-        _draggedEffect = null;
+        if (_pressedEffect is { } choice && _draggingEffect) Canvas.PreviewEffect(choice, null);
+        _pressedEffect = null;
+        _draggingEffect = false;
         HideEffectChip();
     }
 

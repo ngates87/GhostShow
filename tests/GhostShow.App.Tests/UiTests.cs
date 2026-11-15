@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia;
 using Avalonia.Headless;
 using Avalonia.Input;
@@ -888,22 +889,35 @@ public class UiTests
     });
 
     [Fact]
-    public Task An_effect_dragged_from_the_list_lands_where_it_is_dropped() => Ui.Run(() =>
+    public Task An_effect_in_the_menu_is_dragged_onto_a_track_or_clicked_in_at_the_playhead() => Ui.Run(() =>
     {
         using var rig = new WindowRig();
-        var entry = rig.Find<Views.TimelineView>().GetVisualDescendants().OfType<Border>().First(b => b.DataContext is EffectChoice { Kind: EffectKind.Strobe });
+        var menu = rig.Find<ToggleButton>(b => b.Name == "EffectsButton");
+        Border Entry(EffectKind kind)
+        {
+            rig.Click(rig.CenterOf(menu));
+            WindowRig.Pump(100);
+            return rig.Window.GetVisualDescendants().OfType<Border>().First(b => b.DataContext is EffectChoice c && c.Kind == kind && b.IsEffectivelyVisible);
+        }
         var track = rig.TrackRow("Lighting").Track.Track;
         int before = track.Events.Count;
 
-        rig.Drag(rig.CenterOf(entry), rig.At(rig.TrackRow("Lighting"), 4));
+        rig.Drag(rig.CenterOf(Entry(EffectKind.Strobe)), rig.At(rig.TrackRow("Lighting"), 4));
 
         var clip = Assert.IsType<LightingClip>(track.Events[before]);
         Assert.Equal(EffectKind.Strobe, clip.Effect?.Kind);
         Assert.Equal(4, clip.Start.TotalSeconds, 0.5);
+        Assert.False(menu.IsChecked);   // the menu got out of the way as the drag started
 
-        // Let go anywhere else: nothing is added.
-        rig.Drag(rig.CenterOf(entry), rig.CenterOf(entry));
+        // Let go over a track that can't take it: nothing is added.
+        rig.Drag(rig.CenterOf(Entry(EffectKind.Fire)), rig.At(rig.TrackRow("Audio"), 4));
         Assert.Equal(before + 1, track.Events.Count);
+
+        // A click: at the playhead (0:00, free up to the strobe dropped at 4 s), on the lighting track.
+        rig.Click(rig.CenterOf(Entry(EffectKind.Strobe)));
+        Assert.Equal(before + 2, track.Events.Count);
+        Assert.Equal(TimeSpan.Zero, track.Events.Min(e => e.Start));
+        Assert.False(menu.IsChecked);
     });
 
     [Fact]
@@ -1289,18 +1303,18 @@ public class UiTests
         WindowRig.Pump();
         Assert.False(add.IsVisible);   // lighting clips come from the Effects menu
 
-        var effects = rig.Find<Button>(b => b.Flyout is MenuFlyout f && f.Items.OfType<MenuItem>().Any(i => i.Header as string == "Level Control"));
-        var flyout = (MenuFlyout)effects.Flyout!;
-        rig.Click(rig.CenterOf(effects));   // open it: its items' commands bind once shown
-        Assert.True(flyout.IsOpen);
-        var items = flyout.Items.OfType<MenuItem>().ToList();
-        Assert.Equal("Level Control", items[0].Header);
-        Assert.Equal(EffectInfo.All.Select(i => i.Name), items.Skip(1).Select(i => (string)i.Header!));
-        items[0].Command!.Execute(items[0].CommandParameter);
+        var menu = rig.Find<ToggleButton>(t => t.Name == "EffectsButton");
+        List<Border> Entries()
+        {
+            rig.Click(rig.CenterOf(menu));
+            WindowRig.Pump(100);
+            return rig.Window.GetVisualDescendants().OfType<Border>().Where(b => b.DataContext is EffectChoice && b.IsEffectivelyVisible).ToList();
+        }
+        var entries = Entries();
+        Assert.Equal(["Level Control", .. EffectInfo.All.Select(i => i.Name)], entries.Select(b => ((EffectChoice)b.DataContext!).Name));
+        rig.Click(rig.CenterOf(entries[0]));   // a click adds it
         rig.Editor.Playback.Seek(S(10));
-        items[1].Command!.Execute(items[1].CommandParameter);
-
-        flyout.Hide();
+        rig.Click(rig.CenterOf(Entries()[1]));
 
         Assert.Equal(["Level Control", "Lightning"], rig.Lighting.Events.Select(e => e.Name));
         Assert.Equal([null, EffectKind.Lightning], rig.Lighting.Events.Cast<LightingClip>().Select(c => c.Effect?.Kind));

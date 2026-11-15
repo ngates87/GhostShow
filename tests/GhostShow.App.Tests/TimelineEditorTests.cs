@@ -707,6 +707,28 @@ public class TimelineEditorTests : IDisposable
     }
 
     [Fact]
+    public void An_effect_clicked_in_the_menu_goes_at_the_playhead_or_in_the_next_gap_long_enough()
+    {
+        _rig.RedLane();
+        AddClip(0, 2);
+        AddClip(5, 1);   // free: 2-5 (3 s), and from 6
+        var lightning = TimelineEditorViewModel.EffectChoices.Single(c => c.Kind == EffectKind.Lightning);   // 4 s
+        var strobe = TimelineEditorViewModel.EffectChoices.Single(c => c.Kind == EffectKind.Strobe);         // 3 s
+
+        _rig.Playback.Seek(S(1));
+        Editor.AddChoiceCommand.Execute(lightning);
+        Assert.Equal(S(6), _rig.LightingTrack.Events.Single(e => e.Name == "Lightning").Start);   // 2-5 is too short
+
+        _rig.Playback.Seek(S(1));
+        Editor.AddChoiceCommand.Execute(strobe);
+        Assert.Equal(S(2), _rig.LightingTrack.Events.Single(e => e.Name == "Strobe").Start);      // fits, just
+
+        _rig.Playback.Seek(S(20));
+        Editor.AddChoiceCommand.Execute(TimelineEditorViewModel.EffectChoices.Single(c => c.Kind is null));
+        Assert.Contains(_rig.LightingTrack.Events, e => e is LightingClip { Effect: null } && e.Start == S(20));   // free: at the playhead
+    }
+
+    [Fact]
     public void Converting_an_effect_gives_a_level_control_clip_that_plays_the_same_with_handles_to_edit()
     {
         var red = _rig.RedLane();

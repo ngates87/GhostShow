@@ -313,22 +313,37 @@ public sealed partial class TimelineEditorViewModel
     /// <summary>Asks the screen to scroll a time into view. The Effects menu adds at the playhead, which may be out of view.</summary>
     public event Action<TimeSpan>? RevealRequested;
 
-    /// <summary>The toolbar's Effects menu: the effect at the playhead, on the selected lighting track (or the first one).</summary>
+    /// <summary>
+    /// A click on an entry of the Effects menu: the clip on the selected lighting track (or the first one), at the next
+    /// open slot: at the playhead if it fits there, otherwise in the first gap after it that's long enough.
+    /// </summary>
     [RelayCommand]
-    void AddEffect(EffectKind kind)
+    void AddChoice(EffectChoice choice)
     {
         if (EffectsTrack() is not { } row) return;
-        AddEffectAt(row, SnapTime(_playback.Position), kind);
-        RevealRequested?.Invoke(_playback.Position);
+        var at = NextOpenSlot(row.Track, SnapTime(_playback.Position), choice.Length);
+        DropEffect(choice, row, at);
+        RevealRequested?.Invoke(at);
     }
 
-    /// <summary>The Effects menu's Level Control: a clip at the playhead, on the selected lighting track (or the first one).</summary>
     [RelayCommand]
-    void AddLevelControl()
+    void AddEffect(EffectKind kind) => AddChoice(EffectChoices.First(c => c.Kind == kind));
+
+    [RelayCommand]
+    void AddLevelControl() => AddChoice(EffectChoices.First(c => c.Kind is null));
+
+    /// <summary>The earliest time from <paramref name="from"/> where a clip this long overlaps none already on the track.</summary>
+    public TimeSpan NextOpenSlot(TimelineTrack track, TimeSpan from, TimeSpan length)
     {
-        if (EffectsTrack() is not { } row) return;
-        AddClipAt(row, SnapTime(_playback.Position));
-        RevealRequested?.Invoke(_playback.Position);
+        var taken = track.Events.Select(e => (Start: e.Start, End: e.Start + LengthOf(e))).OrderBy(c => c.Start).ToList();
+        var at = from;
+        foreach (var (start, end) in taken)
+        {
+            if (end <= at) continue;          // before the slot
+            if (start >= at + length) break;  // after it: it fits
+            at = end;                         // in the way: after it
+        }
+        return at;
     }
 
     TrackRowViewModel? EffectsTrack() => SelectedTrack is { IsLighting: true } selected ? selected : Tracks.FirstOrDefault(t => t.IsLighting);

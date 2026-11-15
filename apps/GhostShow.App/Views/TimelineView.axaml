@@ -60,31 +60,6 @@
                     ToolTip.Tip="New folder in the selected folder" />
           </StackPanel>
         </StackPanel>
-        <!-- The effects list: drag one onto a lighting track (VenueMagic's library of fixture effects). -->
-        <Expander DockPanel.Dock="Bottom" Header="Effects" IsExpanded="True" HorizontalAlignment="Stretch" Margin="0,6,0,0" Padding="4">
-          <ScrollViewer MaxHeight="190">
-            <ItemsControl x:Name="EffectList" ItemsSource="{x:Static vm:TimelineEditorViewModel.EffectChoices}">
-              <ItemsControl.Styles>
-                <Style Selector="Border.effectChoice:pointerover">
-                  <Setter Property="Background" Value="#33FFFFFF" />
-                </Style>
-              </ItemsControl.Styles>
-              <ItemsControl.ItemTemplate>
-                <DataTemplate x:DataType="vm:EffectChoice">
-                  <Border Classes="effectChoice" Background="Transparent" Padding="6,3" CornerRadius="3" Cursor="DragMove"
-                          ToolTip.Tip="{Binding Description, StringFormat='{}{0} Drag it onto a lighting track.'}">
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                      <!-- Grip dots: says it can be dragged. Drawn, since a browser may not have a font with them. -->
-                      <Path Fill="#99FFFFFF" VerticalAlignment="Center"
-                            Data="M0,0h2v2h-2z M4,0h2v2h-2z M0,4h2v2h-2z M4,4h2v2h-2z M0,8h2v2h-2z M4,8h2v2h-2z" />
-                      <TextBlock Text="{Binding Name}" />
-                    </StackPanel>
-                  </Border>
-                </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
-          </ScrollViewer>
-        </Expander>
         <Border DockPanel.Dock="Bottom" Classes="confirm" Margin="0,6,0,0" IsVisible="{Binding Tree.IsConfirmingDelete}">
           <StackPanel Spacing="6">
             <TextBlock Text="{Binding Tree.DeleteQuestion}" TextWrapping="Wrap" />
@@ -260,23 +235,38 @@
               ToolTip.Tip="Add a sound or an event to the selected track at the playhead (or double-click a row, or right-click → Add here)">
         <TextBlock Text="{Binding AddLabel}" />
       </Button>
-      <Button ToolTip.Tip="Add a Level Control clip or a built-in effect at the playhead, on the selected lighting track">
+      <!-- Effects (VenueMagic's library of fixture effects): click one to add it, or drag it onto a lighting track. The
+           list is in the window's overlay layer, not a window of its own, so a drag can carry on from it onto the lanes. -->
+      <ToggleButton x:Name="EffectsButton" ToolTip.Tip="Lighting effects: click one to add it on the selected lighting track, or drag it onto a track">
         <StackPanel Orientation="Horizontal" Spacing="5"><PathIcon Data="{StaticResource Icon.Effect}" Width="14" Height="14" /><TextBlock Text="Effects ▾" /></StackPanel>
-        <Button.Flyout>
-          <MenuFlyout>
-            <MenuItem Header="Level Control" Command="{Binding AddLevelControlCommand}" ToolTip.Tip="Envelopes you shape yourself, handle by handle" />
-            <Separator />
-            <MenuItem Header="Lightning" Command="{Binding AddEffectCommand}" CommandParameter="{x:Static tl:EffectKind.Lightning}" ToolTip.Tip="Strikes of cold flickering flashes" />
-            <MenuItem Header="Brown out" Command="{Binding AddEffectCommand}" CommandParameter="{x:Static tl:EffectKind.BrownOut}" ToolTip.Tip="The power sags, stutters and drops out" />
-            <MenuItem Header="Explosion" Command="{Binding AddEffectCommand}" CommandParameter="{x:Static tl:EffectKind.Explosion}" ToolTip.Tip="A blinding flash, then a dying fireball glow" />
-            <MenuItem Header="Failing bulb" Command="{Binding AddEffectCommand}" CommandParameter="{x:Static tl:EffectKind.Flicker}" ToolTip.Tip="Mostly on, with stuttering drop-outs" />
-            <MenuItem Header="Fire" Command="{Binding AddEffectCommand}" CommandParameter="{x:Static tl:EffectKind.Fire}" ToolTip.Tip="A warm, restless flicker" />
-            <MenuItem Header="Strobe" Command="{Binding AddEffectCommand}" CommandParameter="{x:Static tl:EffectKind.Strobe}" ToolTip.Tip="Hard flashes in the dark" />
-            <MenuItem Header="Heartbeat" Command="{Binding AddEffectCommand}" CommandParameter="{x:Static tl:EffectKind.Heartbeat}" ToolTip.Tip="A lub-dub pulse of colour" />
-            <MenuItem Header="Police lights" Command="{Binding AddEffectCommand}" CommandParameter="{x:Static tl:EffectKind.Police}" ToolTip.Tip="Red and blue flashes, taking turns" />
-          </MenuFlyout>
-        </Button.Flyout>
-      </Button>
+      </ToggleButton>
+      <Popup x:Name="EffectsPopup" PlacementTarget="{Binding #EffectsButton}" Placement="BottomEdgeAlignedLeft" ShouldUseOverlayLayer="True"
+             IsLightDismissEnabled="True" IsOpen="{Binding #EffectsButton.IsChecked, Mode=TwoWay}">
+        <Border Classes="card" Padding="4" BoxShadow="0 4 16 0 #80000000" MinWidth="230">
+          <StackPanel Spacing="2">
+            <ItemsControl x:Name="EffectMenu" ItemsSource="{x:Static vm:TimelineEditorViewModel.EffectChoices}">
+              <ItemsControl.Styles>
+                <Style Selector="Border.effectChoice:pointerover">
+                  <Setter Property="Background" Value="#33FFFFFF" />
+                </Style>
+              </ItemsControl.Styles>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:EffectChoice">
+                  <Border Classes="effectChoice" Background="Transparent" Padding="6,4" CornerRadius="3" Cursor="Hand" ToolTip.Tip="{Binding Description}"
+                          ToolTip.Placement="Right">
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                      <controls:EffectThumbnail Kind="{Binding Kind}" Width="56" Height="22" VerticalAlignment="Center" />
+                      <TextBlock Text="{Binding Name}" VerticalAlignment="Center" />
+                    </StackPanel>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <TextBlock Text="Click: at the playhead (or the next gap) on the selected lighting track. Drag: onto any lighting track."
+                       TextWrapping="Wrap" MaxWidth="230" FontSize="11" Opacity="0.6" Margin="6,4,6,2" />
+          </StackPanel>
+        </Border>
+      </Popup>
       <Border Classes="separator" />
       <Button Classes="icon" Command="{Binding OpenEnvelopesCommand}"
               ToolTip.Tip="Envelope Editor: edit the selected lighting clip's envelopes (or double-click the clip)">
