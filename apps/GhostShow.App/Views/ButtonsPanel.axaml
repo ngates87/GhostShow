@@ -94,11 +94,14 @@
               <TextBlock Text="Playing" FontWeight="SemiBold" VerticalAlignment="Center" />
             </DockPanel>
             <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
-              <ItemsControl ItemsSource="{Binding Playback.Running}">
+              <!-- The right margin keeps the Stop buttons clear of the scrollbar, which is drawn over the list. -->
+              <ItemsControl ItemsSource="{Binding Playback.Running}" Margin="0,0,14,0">
                 <ItemsControl.ItemTemplate>
                   <DataTemplate x:DataType="vm:RunningRowViewModel">
                     <DockPanel Margin="0,1">
-                      <Button DockPanel.Dock="Right" Classes="small" Content="■" Command="{Binding StopCommand}" ToolTip.Tip="{Binding StopTip}" />
+                      <Button DockPanel.Dock="Right" Classes="small" Command="{Binding StopCommand}" ToolTip.Tip="{Binding StopTip}" VerticalAlignment="Center">
+                        <PathIcon Data="{StaticResource Icon.Stop}" Width="10" Height="10" />
+                      </Button>
                       <!-- How it was run: looped (it won't leave the list by itself), one only (running it again does nothing). -->
                       <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="2" Margin="0,0,4,0" VerticalAlignment="Center">
                         <PathIcon Classes="runFlag" Data="{StaticResource Icon.Loop}" IsVisible="{Binding Loops}"
