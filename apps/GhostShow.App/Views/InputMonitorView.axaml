@@ -12,11 +12,12 @@
       </StackPanel>
       <StackPanel Spacing="2">
         <StackPanel Orientation="Horizontal" Spacing="12">
-          <TextBlock Text="Input monitor" Classes="heading" />
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <TextBlock Text="Input monitor" Classes="heading" />
+            <PathIcon Classes="info" ToolTip.Tip="Every input as it arrives, and what it did. It keeps listening on every screen, so trip a sensor in the room and look here after. Shortcuts (Ctrl+…) and letters typed into a field aren't inputs." />
+          </StackPanel>
           <TextBlock x:Name="MonitorFilter" Text="{Binding FilterLabel}" IsVisible="{Binding IsFiltered}" Classes="warning" VerticalAlignment="Center" />
         </StackPanel>
-        <TextBlock Opacity="0.7" TextWrapping="Wrap"
-                   Text="Every input as it arrives, and what it did. It keeps listening on every screen, so trip a sensor in the room and look here after. Shortcuts (Ctrl+…) and letters typed into a field aren't inputs." />
       </StackPanel>
     </DockPanel>
     <Grid DockPanel.Dock="Top" ColumnDefinitions="100,140,120,80,*" Opacity="0.7" Margin="12,0,0,4">

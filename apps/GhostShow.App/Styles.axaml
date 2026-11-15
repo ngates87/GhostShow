@@ -130,7 +130,96 @@
           <Setter Property="Opacity" Value="0.6" />
         </Style>
       </ControlTheme>
+
+      <!-- A number field's arrow: just the chevron, a tint under the pointer (Fluent's button greys a disabled one). -->
+      <ControlTheme x:Key="SpinArrow" TargetType="RepeatButton">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Template">
+          <ControlTemplate>
+            <ContentPresenter Name="PART_ContentPresenter" Background="{TemplateBinding Background}" CornerRadius="{TemplateBinding CornerRadius}"
+                              Content="{TemplateBinding Content}" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" />
+          </ControlTemplate>
+        </Setter>
+        <Style Selector="^:pointerover">
+          <Setter Property="Background" Value="#22FFFFFF" />
+          <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}" />
+        </Style>
+        <Style Selector="^:pressed">
+          <Setter Property="Background" Value="#38FFFFFF" />
+        </Style>
+        <Style Selector="^:disabled">
+          <Setter Property="Opacity" Value="0.3" />
+        </Style>
+      </ControlTheme>
+
+      <!-- Number fields: a slim column of up/down arrows instead of Fluent's two wide buttons beside the box, so a field
+           fits a narrow panel. The mouse wheel and the arrow keys still step the value. -->
+      <ControlTheme x:Key="CompactSpinner" TargetType="ButtonSpinner">
+        <Setter Property="Template">
+          <ControlTemplate>
+            <DataValidationErrors>
+              <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                      BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{TemplateBinding CornerRadius}"
+                      MinHeight="{TemplateBinding MinHeight}">
+                <DockPanel>
+                  <Grid DockPanel.Dock="Right" RowDefinitions="*,*" Width="20" IsVisible="{TemplateBinding ShowButtonSpinner}">
+                    <RepeatButton Name="PART_IncreaseButton" Theme="{StaticResource SpinArrow}" CornerRadius="0,3,0,0">
+                      <Path Data="M0,4 L4,0 L8,4" StrokeThickness="1.4" Stroke="{Binding $parent[RepeatButton].Foreground}" />
+                    </RepeatButton>
+                    <RepeatButton Name="PART_DecreaseButton" Grid.Row="1" Theme="{StaticResource SpinArrow}" CornerRadius="0,0,3,0">
+                      <Path Data="M0,0 L4,4 L8,0" StrokeThickness="1.4" Stroke="{Binding $parent[RepeatButton].Foreground}" />
+                    </RepeatButton>
+                  </Grid>
+                  <ContentPresenter Name="PART_ContentPresenter" Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}"
+                                    Padding="{TemplateBinding Padding}" HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                    VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+                </DockPanel>
+              </Border>
+            </DataValidationErrors>
+          </ControlTemplate>
+        </Setter>
+      </ControlTheme>
     </Styles.Resources>
+
+    <Style Selector="NumericUpDown /template/ ButtonSpinner">
+      <Setter Property="Theme" Value="{StaticResource CompactSpinner}" />
+    </Style>
+
+    <!-- Help that would otherwise be a paragraph on screen: an ⓘ by a heading, or a short "info line", with the whole
+         text in a tooltip that comes up quickly. -->
+    <Style Selector="PathIcon.info">
+      <Setter Property="Data" Value="{DynamicResource Icon.Info}" />
+      <Setter Property="Width" Value="14" />
+      <Setter Property="Height" Value="14" />
+      <Setter Property="Opacity" Value="0.6" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="Cursor" Value="Help" />
+      <Setter Property="ToolTip.ShowDelay" Value="150" />
+    </Style>
+    <Style Selector="PathIcon.info:pointerover">
+      <Setter Property="Opacity" Value="1" />
+    </Style>
+    <Style Selector="StackPanel.infoLine">
+      <Setter Property="Orientation" Value="Horizontal" />
+      <Setter Property="Spacing" Value="5" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Cursor" Value="Help" />
+      <Setter Property="ToolTip.ShowDelay" Value="150" />
+      <Setter Property="Opacity" Value="0.7" />
+    </Style>
+    <Style Selector="StackPanel.infoLine:pointerover">
+      <Setter Property="Opacity" Value="1" />
+    </Style>
+    <Style Selector="StackPanel.infoLine > TextBlock">
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="StackPanel.infoLine > PathIcon">
+      <Setter Property="Opacity" Value="1" />
+    </Style>
 
     <!-- Two levels of tabs: big department tabs (Show, Lighting, Audio), smaller screen tabs within each. -->
     <Style Selector="TabStrip.sections > TabStripItem">

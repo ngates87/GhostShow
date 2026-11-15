@@ -301,8 +301,10 @@
                             <TextBlock Text="Side" Classes="label" />
                             <ComboBox ItemsSource="{x:Static vm:TrackRowViewModel.Sides}" SelectedItem="{Binding Row.SelectedSide}" HorizontalAlignment="Stretch"
                                       ToolTip.Tip="Stereo, or one side of the device: both of the file's channels are mixed into it. Left and right can feed different rooms." />
-                            <TextBlock TextWrapping="Wrap" Opacity="0.7" FontSize="12"
-                                       Text="The sound card or speakers this track plays on. Saved in the show; on a computer without that device the track plays on the default output (set on the Audio screen)." />
+                            <StackPanel Classes="infoLine" ToolTip.Tip="The sound card or speakers this track plays on. Saved in the show; on a computer without that device the track plays on the default output (set on the Audio screen).">
+                              <PathIcon Classes="info" />
+                              <TextBlock Text="On another computer" />
+                            </StackPanel>
                           </StackPanel>
                           <Grid ColumnDefinitions="Auto,*" IsVisible="{Binding IsAudio}">
                             <TextBlock Text="Volume (%)" Classes="label" Margin="0,0,8,0" />
@@ -316,8 +318,10 @@
                               <Button DockPanel.Dock="Right" Content="Channels…" Command="{Binding EditChannelsCommand}" Padding="6,1" MinHeight="0" />
                               <TextBlock Text="Starting levels" FontWeight="SemiBold" VerticalAlignment="Center" />
                             </DockPanel>
-                            <TextBlock TextWrapping="Wrap" Opacity="0.7" FontSize="12"
-                                       Text="Where each channel is from the timeline's start until its first clip. The first clip's envelope starts there; every later clip starts where the one before left the channel." />
+                            <StackPanel Classes="infoLine" ToolTip.Tip="Where each channel is from the timeline's start until its first clip. The first clip's envelope starts there; every later clip starts where the one before left the channel.">
+                              <PathIcon Classes="info" />
+                              <TextBlock Text="What starting levels are" />
+                            </StackPanel>
                             <TextBlock Text="No channels yet." Opacity="0.7" IsVisible="{Binding !HasChannels}" />
                             <ItemsControl ItemsSource="{Binding Channels}">
                               <ItemsControl.ItemTemplate>
@@ -395,8 +399,10 @@
                             <StackPanel Spacing="6" IsVisible="{Binding IsLevelControl}">
                               <CheckBox Content="Scale envelopes on resize" IsChecked="{Binding ScaleOnResize}"
                                         ToolTip.Tip="On: resizing the clip scales its envelopes with it. Off: resizing crops them (handles keep their times)." />
-                              <TextBlock TextWrapping="Wrap" Opacity="0.7"
-                                         Text="Double-click the clip (or Envelopes…) to edit its envelopes in the Envelope Editor. Expand the track (▸) to see them on the timeline, where you can also drag handles or right-click the clip → Add Envelope Handle. Each envelope starts where the previous clip left the channel." />
+                              <StackPanel Classes="infoLine" ToolTip.Tip="Double-click the clip (or Envelopes…) to edit its envelopes in the Envelope Editor. Expand the track (▸) to see them on the timeline, where you can also drag handles or right-click the clip → Add Envelope Handle. Each envelope starts where the previous clip left the channel.">
+                                <PathIcon Classes="info" />
+                                <TextBlock Text="Double-click the clip to edit its envelopes" />
+                              </StackPanel>
                             </StackPanel>
 
                             <!-- Built-in effect -->
@@ -450,8 +456,10 @@
                                           ToolTip.Tip="Turn the effect into envelope handles you can edit one by one" />
                                 </WrapPanel>
                               </StackPanel>
-                              <TextBlock TextWrapping="Wrap" Opacity="0.7" FontSize="12"
-                                         Text="An effect works on every channel of the track: dimmers flash or dim, colour channels take its colour (a fixture without a dimmer on the track dims through its colours), anything else (pan, gobo, …) is left alone. It starts from where the previous clip left the lights." />
+                              <StackPanel Classes="infoLine" ToolTip.Tip="An effect works on every channel of the track: dimmers flash or dim, colour channels take its colour (a fixture without a dimmer on the track dims through its colours), anything else (pan, gobo, …) is left alone. It starts from where the previous clip left the lights.">
+                                <PathIcon Classes="info" />
+                                <TextBlock Text="How it uses the track’s channels" />
+                              </StackPanel>
                             </StackPanel>
                           </StackPanel>
 
@@ -476,8 +484,10 @@
                                 </DataTemplate>
                               </ComboBox.ItemTemplate>
                             </ComboBox>
-                            <TextBlock TextWrapping="Wrap" Opacity="0.7" FontSize="12"
-                                       Text="When this timeline's playhead gets here, it runs (from its start) or stops the other timeline, as VenueMagic's Run Timeline event does. A room's play timeline can start its lights and sounds this way. End loop lets a looping timeline finish the pass it's on, then stop." />
+                            <StackPanel Classes="infoLine" ToolTip.Tip="When this timeline's playhead gets here, it runs (from its start) or stops the other timeline, as VenueMagic's Run Timeline event does. A room's play timeline can start its lights and sounds this way. End loop lets a looping timeline finish the pass it's on, then stop.">
+                              <PathIcon Classes="info" />
+                              <TextBlock Text="How events run timelines" />
+                            </StackPanel>
                           </StackPanel>
 
                           <!-- Audio -->
@@ -523,13 +533,12 @@
                                    ToolTip.Tip="0 = until the last event ends" />
                   </Grid>
                   <CheckBox Content="Loop when played here" IsChecked="{Binding Loop}"
-                            ToolTip.Tip="When you play it with the transport here (or a remote's): start again from the beginning at the end, until stopped. The same as the loop button under the timeline." />
-                  <TextBlock TextWrapping="Wrap" Opacity="0.75" FontSize="12"
-                             Text="A button or an event that runs it says for itself whether it loops, and whether it plays only if it isn't already playing (Play looped, Play one only), as in VenueMagic." />
+                            ToolTip.Tip="When you play it with the transport here (or a remote's): start again from the beginning at the end, until stopped. The same as the loop button under the timeline. A button or an event that runs it says for itself whether it loops, and whether it plays only if it isn't already playing (Play looped, Play one only), as in VenueMagic." />
                   <Separator Margin="0,4" />
-                  <TextBlock Text="Playing alongside other timelines" FontWeight="SemiBold" />
-                  <TextBlock TextWrapping="Wrap" Opacity="0.75" FontSize="12"
-                             Text="Several timelines can play at once. Where two set the same channel, the higher priority wins (equal: the one started last). A timeline with a higher priority overrides lower ones: only on the channels it uses." />
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <TextBlock Text="Playing alongside other timelines" FontWeight="SemiBold" />
+                    <PathIcon Classes="info" ToolTip.Tip="Several timelines can play at once. Where two set the same channel, the higher priority wins (equal: the one started last). A timeline with a higher priority overrides lower ones: only on the channels it uses." />
+                  </StackPanel>
                   <Grid ColumnDefinitions="*,140" RowDefinitions="Auto,8,Auto,8,Auto,8,Auto,8,Auto">
                     <TextBlock Text="Priority" VerticalAlignment="Center" />
                     <NumericUpDown Grid.Column="1" Value="{Binding Priority}" Minimum="-100" Maximum="1000" Increment="1" FormatString="0"

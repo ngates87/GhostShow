@@ -12,9 +12,10 @@
   <Grid RowDefinitions="Auto,*" Margin="0,12">
     <Grid ColumnDefinitions="1.5*,16,*">
       <StackPanel Spacing="6">
-        <TextBlock Text="Show's inputs" Classes="heading" />
-        <TextBlock TextWrapping="Wrap" Opacity="0.7"
-                   Text="What the show listens to. A button's trigger names the input, and what to listen for on it. Names and speeds belong to the show; the port each is on belongs to this computer, so a show opened elsewhere keeps its triggers and only needs its ports picked." />
+        <StackPanel Orientation="Horizontal" Spacing="6">
+          <TextBlock Text="Show's inputs" Classes="heading" />
+          <PathIcon Classes="info" ToolTip.Tip="What the show listens to. A button's trigger names the input, and what to listen for on it. Names and speeds belong to the show; the port each is on belongs to this computer, so a show opened elsewhere keeps its triggers and only needs its ports picked." />
+        </StackPanel>
         <ScrollViewer MaxHeight="440">
           <StackPanel Spacing="6">
             <controls:DeviceCard Icon="{StaticResource Icon.Keyboard}" Title="Keyboard" Kind="Keyboard Input · System"
@@ -89,9 +90,10 @@
       </StackPanel>
 
       <StackPanel Grid.Column="2" Spacing="6">
-        <TextBlock Text="On this computer" Classes="heading" />
-        <TextBlock TextWrapping="Wrap" Opacity="0.7"
-                   Text="Serial ports, with the USB device on each when the computer says. Add the one your device is plugged into; it's named after the device (or the port) until you rename it." />
+        <StackPanel Orientation="Horizontal" Spacing="6">
+          <TextBlock Text="On this computer" Classes="heading" />
+          <PathIcon Classes="info" ToolTip.Tip="Serial ports, with the USB device on each when the computer says. Add the one your device is plugged into; it's named after the device (or the port) until you rename it." />
+        </StackPanel>
         <Button Content="Look again" Command="{Binding RefreshPortsCommand}" ToolTip.Tip="List the ports again, after plugging in a USB cable" />
         <TextBlock Text="{Binding FoundStatus}" TextWrapping="Wrap" Opacity="0.7" IsVisible="{Binding !!FoundStatus.Length}" />
         <ItemsControl x:Name="FoundPorts" ItemsSource="{Binding Found}">
