@@ -83,6 +83,12 @@ public sealed partial class ButtonsViewModel : ObservableObject
     [RelayCommand]
     void ToggleOpen() => IsOpen = !IsOpen;
 
+    public const double UsualWidth = 268;
+
+    /// <summary>The panel's width, as dragged by its grip.</summary>
+    [ObservableProperty]
+    public partial double PanelWidth { get; set; } = UsualWidth;
+
     /// <summary>Edit mode: a click selects a button to edit instead of pressing it.</summary>
     [ObservableProperty]
     public partial bool IsEditing { get; set; }

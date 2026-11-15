@@ -408,11 +408,32 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
 
     /// <summary>Whether the inspector is out (otherwise folded to a strip at the edge). It stays as left; it isn't saved.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(InspectorSummary))]
+    [NotifyPropertyChangedFor(nameof(InspectorSummary), nameof(InspectorSlideWidth))]
     public partial bool IsInspectorOpen { get; set; } = true;
 
     [RelayCommand]
     void ToggleInspector() => IsInspectorOpen = !IsInspectorOpen;
+
+    public const double UsualInspectorWidth = 312, UsualTreeWidth = 230;
+
+    /// <summary>The inspector's width, as dragged by its grip.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(InspectorSlideWidth))]
+    public partial double InspectorWidth { get; set; } = UsualInspectorWidth;
+
+    /// <summary>How much room the inspector takes: its width and the gap before it (its grip), or none while folded. Slides.</summary>
+    public double InspectorSlideWidth => IsInspectorOpen ? InspectorWidth + 8 : 0;
+
+    /// <summary>Whether the timeline tree is out (otherwise folded to a strip at the edge).</summary>
+    [ObservableProperty]
+    public partial bool IsTreeOpen { get; set; } = true;
+
+    [RelayCommand]
+    void ToggleTree() => IsTreeOpen = !IsTreeOpen;
+
+    /// <summary>The timeline tree's width, as dragged by its grip.</summary>
+    [ObservableProperty]
+    public partial double TreeWidth { get; set; } = UsualTreeWidth;
 
     /// <summary>The inspector shows the timeline's properties, not the selection's. Selecting something shows that.</summary>
     [ObservableProperty]

@@ -38,6 +38,9 @@ public sealed class MachineSettings
     /// <summary>The web remote: whether devices on the network may connect, and the paired devices.</summary>
     public RemoteSettings Remote { get; set; } = new();
 
+    /// <summary>How wide the side panels are on this computer's screen, as last dragged; null: the usual width.</summary>
+    public PanelWidths Panels { get; set; } = new();
+
     /// <summary>Shows opened or saved on this computer, most recent first (show folders, or older single-file shows).</summary>
     public List<string> RecentShows { get; set; } = [];
 
@@ -119,3 +122,16 @@ public sealed record SerialInputSettings(string? Port = null, int BaudRate = 960
 /// plugged in first, so the device is looked for by this and followed to its new port.</param>
 /// <param name="Enabled">Off keeps the port picked but closed, e.g. to let another program use it.</param>
 public sealed record InputPortBinding(Guid Input, string Port, string? UsbSerial = null, bool Enabled = true);
+
+/// <summary>The side panels' widths, in pixels; null for the usual width. A screen's, so this computer's.</summary>
+public sealed class PanelWidths
+{
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public double? Timelines { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public double? Inspector { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public double? Buttons { get; set; }
+}

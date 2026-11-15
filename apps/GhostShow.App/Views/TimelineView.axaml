@@ -12,7 +12,7 @@
       <Setter Property="Padding" Value="6,0" />
       <Setter Property="VerticalContentAlignment" Value="Top" />
     </Style>
-    <Style Selector="StackPanel.toolbar > Button">
+    <Style Selector="WrapPanel.toolbar > Button">
       <Setter Property="Padding" Value="8,4" />
     </Style>
     <Style Selector="TextBlock.label">
@@ -34,7 +34,6 @@
     </Style>
     <!-- Timeline properties: slides out by growing its width; what's inside keeps its size, so it doesn't reflow on the way. -->
     <Style Selector="Border.slideOut">
-      <Setter Property="Width" Value="0" />
       <Setter Property="ClipToBounds" Value="True" />
       <Setter Property="Transitions">
         <Transitions>
@@ -42,8 +41,11 @@
         </Transitions>
       </Setter>
     </Style>
-    <Style Selector="Border.slideOut.open">
-      <Setter Property="Width" Value="320" />
+    <!-- While its grip is dragged, the panel follows the pointer at once. -->
+    <Style Selector="Border.slideOut.resizing">
+      <Setter Property="Transitions">
+        <Transitions />
+      </Setter>
     </Style>
     <Style Selector="Button.inspectorTab">
       <Setter Property="Padding" Value="12,4" />
@@ -60,12 +62,26 @@
     </Style>
   </UserControl.Styles>
 
-  <Grid ColumnDefinitions="230,6,*" Margin="0,8">
-    <!-- The show's timelines: the tree is the show folder's timelines/ directory -->
-    <Border Classes="card" Padding="6">
+  <Grid ColumnDefinitions="Auto,*" Margin="0,8">
+    <!-- The show's timelines: the tree is the show folder's timelines/ directory. Its grip resizes it; it folds to a strip. -->
+    <Panel>
+    <Button x:Name="TreeStrip" IsVisible="{Binding !IsTreeOpen}" Command="{Binding ToggleTreeCommand}" VerticalAlignment="Stretch"
+            VerticalContentAlignment="Top" Padding="4,8" Margin="0,0,6,0" ToolTip.Tip="Show the timelines">
+      <LayoutTransformControl>
+        <LayoutTransformControl.LayoutTransform>
+          <RotateTransform Angle="90" />
+        </LayoutTransformControl.LayoutTransform>
+        <TextBlock Text="Timelines ▾" />
+      </LayoutTransformControl>
+    </Button>
+    <Border Classes="card" Padding="6" Width="{Binding TreeWidth}" Margin="0,0,8,0" IsVisible="{Binding IsTreeOpen}">
       <DockPanel>
         <StackPanel DockPanel.Dock="Top" Spacing="6" Margin="2,0,0,6">
-          <TextBlock Text="Timelines" FontWeight="SemiBold" />
+          <DockPanel>
+            <Button DockPanel.Dock="Right" Content="«" Padding="6,1" MinHeight="0" Command="{Binding ToggleTreeCommand}"
+                    ToolTip.Tip="Fold the timelines away" />
+            <TextBlock Text="Timelines" FontWeight="SemiBold" VerticalAlignment="Center" />
+          </DockPanel>
           <StackPanel Orientation="Horizontal" Spacing="4">
             <Button Content="+ Timeline" Command="{Binding Tree.NewTimelineCommand}" Padding="6,2"
                     ToolTip.Tip="New timeline in the selected folder" />
@@ -133,10 +149,12 @@
         </TreeView>
       </DockPanel>
     </Border>
+    <controls:PanelGrip x:Name="TreeGrip" HorizontalAlignment="Right" IsVisible="{Binding IsTreeOpen}" PanelWidth="{Binding TreeWidth}"
+                        IsPanelOpen="{Binding IsTreeOpen}" MinPanelWidth="160" MaxPanelWidth="480" KeepRoomFor="LanesArea"
+                        DefaultPanelWidth="{x:Static vm:TimelineEditorViewModel.UsualTreeWidth}" />
+    </Panel>
 
-    <GridSplitter Grid.Column="1" ResizeDirection="Columns" Background="Transparent" />
-
-  <DockPanel Grid.Column="2">
+  <DockPanel Grid.Column="1">
     <!-- The inspector: what's selected (a clip, a track, a handle, a track's channels) and the open timeline, in one panel
          with a tab each. Selecting something shows it; with nothing selected, the timeline. Folds to a strip at the edge,
          like the Buttons panel. -->
@@ -152,9 +170,9 @@
         </LayoutTransformControl>
       </Button>
 
-      <Border Classes="slideOut" Classes.open="{Binding IsInspectorOpen}">
+      <Border Classes="slideOut" Classes.resizing="{Binding #InspectorGrip.IsDragging}" Width="{Binding InspectorSlideWidth}" HorizontalAlignment="Right">
         <!-- Not enabled while closed, so Tab can't land on a control that's out of sight. -->
-        <Border x:Name="InspectorPanel" Classes="card" Width="312" Margin="8,0,0,0" Padding="8" HorizontalAlignment="Left"
+        <Border x:Name="InspectorPanel" Classes="card" Width="{Binding InspectorWidth}" Margin="8,0,0,0" Padding="8" HorizontalAlignment="Left"
                 IsEnabled="{Binding IsInspectorOpen}">
           <DockPanel>
             <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
@@ -542,6 +560,9 @@
           </DockPanel>
         </Border>
       </Border>
+      <controls:PanelGrip x:Name="InspectorGrip" HorizontalAlignment="Left" GrowsLeftward="True" IsVisible="{Binding IsInspectorOpen}"
+                          PanelWidth="{Binding InspectorWidth}" IsPanelOpen="{Binding IsInspectorOpen}" MinPanelWidth="260" MaxPanelWidth="640" KeepRoomFor="LanesArea"
+                          DefaultPanelWidth="{x:Static vm:TimelineEditorViewModel.UsualInspectorWidth}" />
     </Panel>
 
     <!-- Open timelines, as tabs; the selected one is edited and played -->
@@ -566,7 +587,7 @@
     </DockPanel>
 
     <!-- Editing tools -->
-    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="6" Margin="0,0,0,8" Classes="toolbar">
+    <WrapPanel DockPanel.Dock="Top" ItemSpacing="6" LineSpacing="6" Margin="0,0,0,8" Classes="toolbar">
       <Button Content="Add track ▾">
         <Button.Flyout>
           <MenuFlyout>
@@ -633,7 +654,7 @@
       <Border Classes="separator" />
       <Button Classes="icon" Command="{Binding UndoCommand}" ToolTip.Tip="{Binding UndoLabel}"><PathIcon Data="{StaticResource Icon.Undo}" /></Button>
       <Button Classes="icon" Command="{Binding RedoCommand}" ToolTip.Tip="{Binding RedoLabel}"><PathIcon Data="{StaticResource Icon.Redo}" /></Button>
-    </StackPanel>
+    </WrapPanel>
 
     <!-- Problems: those events are skipped when playing -->
     <Border DockPanel.Dock="Bottom" Classes="card" Margin="0,8,0,0" MaxHeight="110" IsVisible="{Binding !!Playback.Issues.Count}">
@@ -650,15 +671,8 @@
     <!-- The transport, under the timeline (VenueMagic's place for it), with how the lanes are viewed (zoom, snap) on the right. -->
     <Border DockPanel.Dock="Bottom" Classes="card transport" Margin="0,8,0,0" Padding="8,6"
             IsVisible="{Binding SelectedTimeline, Converter={x:Static ObjectConverters.IsNotNull}}">
-      <DockPanel>
-        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="4" Margin="16,0,0,0" VerticalAlignment="Center">
-          <Button Classes="icon" Command="{Binding ZoomOutCommand}" ToolTip.Tip="Zoom out (Ctrl+wheel)"><PathIcon Data="{StaticResource Icon.ZoomOut}" /></Button>
-          <Button Classes="icon" Command="{Binding ZoomInCommand}" ToolTip.Tip="Zoom in (Ctrl+wheel)"><PathIcon Data="{StaticResource Icon.ZoomIn}" /></Button>
-          <Button Classes="icon" Click="OnZoomToFit" ToolTip.Tip="Show the whole timeline"><PathIcon Data="{StaticResource Icon.Fit}" /></Button>
-          <TextBlock Text="Snap" Classes="label" Margin="8,0,4,0" />
-          <ComboBox ItemsSource="{x:Static vm:TimelineEditorViewModel.SnapOptions}" SelectedItem="{Binding Snap}" MinWidth="90" />
-        </StackPanel>
-        <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Spacing="6" Margin="0,0,20,0">
+      <Grid x:Name="TransportBar" ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto,Auto">
+        <StackPanel x:Name="TransportTools" Orientation="Horizontal" Spacing="6" Margin="0,0,20,0">
           <Button Classes="icon transport" Command="{Binding Playback.ToStartCommand}" ToolTip.Tip="Back to the start (Home)">
             <PathIcon Data="{StaticResource Icon.ToStart}" />
           </Button>
@@ -679,10 +693,19 @@
             <TextBlock Text="{Binding Playback.StateLabel}" FontSize="11" Opacity="0.7" />
           </StackPanel>
         </StackPanel>
-        <TextBlock Text="{Binding SelectionLabel}" Opacity="0.75" IsVisible="{Binding !ShowPropertiesHint}" VerticalAlignment="Center" />
-        <TextBlock Opacity="0.6" IsVisible="{Binding ShowPropertiesHint}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
-                   Text="Double-click a row to add a clip · drag to move · drag edges to resize · double-click a lighting clip to edit its envelopes · ▸ shows them on the track" />
-      </DockPanel>
+        <Panel Grid.Column="1" VerticalAlignment="Center">
+          <TextBlock Text="{Binding SelectionLabel}" Opacity="0.75" TextTrimming="CharacterEllipsis" IsVisible="{Binding !ShowPropertiesHint}" VerticalAlignment="Center" />
+          <TextBlock Opacity="0.6" IsVisible="{Binding ShowPropertiesHint}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
+                     Text="Double-click a row to add a clip · drag to move · drag edges to resize · double-click a lighting clip to edit its envelopes · ▸ shows them on the track" />
+        </Panel>
+        <StackPanel x:Name="ViewTools" Grid.Column="2" Orientation="Horizontal" Spacing="4" Margin="16,0,0,0" VerticalAlignment="Center">
+          <Button Classes="icon" Command="{Binding ZoomOutCommand}" ToolTip.Tip="Zoom out (Ctrl+wheel)"><PathIcon Data="{StaticResource Icon.ZoomOut}" /></Button>
+          <Button Classes="icon" Command="{Binding ZoomInCommand}" ToolTip.Tip="Zoom in (Ctrl+wheel)"><PathIcon Data="{StaticResource Icon.ZoomIn}" /></Button>
+          <Button Classes="icon" Click="OnZoomToFit" ToolTip.Tip="Show the whole timeline"><PathIcon Data="{StaticResource Icon.Fit}" /></Button>
+          <TextBlock Text="Snap" Classes="label" Margin="8,0,4,0" />
+          <ComboBox ItemsSource="{x:Static vm:TimelineEditorViewModel.SnapOptions}" SelectedItem="{Binding Snap}" MinWidth="90" />
+        </StackPanel>
+      </Grid>
     </Border>
 
     <!-- Track headers and lanes scroll up and down together; only the lanes scroll sideways. -->
@@ -690,7 +713,7 @@
     <TextBlock Text="No timeline open. Double-click one in the list on the left, or make one with + Timeline."
                Opacity="0.7" HorizontalAlignment="Center" VerticalAlignment="Center" TextWrapping="Wrap"
                IsVisible="{Binding SelectedTimeline, Converter={x:Static ObjectConverters.IsNull}}" />
-    <Border Classes="card" Padding="0" IsVisible="{Binding SelectedTimeline, Converter={x:Static ObjectConverters.IsNotNull}}">
+    <Border x:Name="LanesArea" Classes="card" Padding="0" IsVisible="{Binding SelectedTimeline, Converter={x:Static ObjectConverters.IsNotNull}}">
       <ScrollViewer HorizontalScrollBarVisibility="Disabled">
         <Grid ColumnDefinitions="180,*">
           <ListBox x:Name="TrackHeaders" Classes="tracks" ItemsSource="{Binding Tracks}" SelectedItem="{Binding SelectedTrack}"
@@ -773,7 +796,7 @@
   </DockPanel>
 
   <!-- The Envelope Editor where there are no second windows (a browser). Covers this screen; see ShowEnvelopeEditor. -->
-  <Border x:Name="EnvelopeEditorInPage" Grid.ColumnSpan="3" x:DataType="vm:EnvelopeEditorViewModel" Background="#141414" IsVisible="False">
+  <Border x:Name="EnvelopeEditorInPage" Grid.ColumnSpan="2" x:DataType="vm:EnvelopeEditorViewModel" Background="#141414" IsVisible="False">
     <DockPanel>
       <DockPanel DockPanel.Dock="Top" Margin="8,4">
         <Button DockPanel.Dock="Right" Content="Close" Click="OnCloseEnvelopeEditorInPage" />

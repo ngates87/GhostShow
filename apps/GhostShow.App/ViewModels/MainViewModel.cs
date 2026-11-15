@@ -107,6 +107,43 @@ public sealed partial class MainViewModel : ObservableObject
         _tick = new DispatcherTimer(TickInterval, DispatcherPriority.Background, (_, _) => Tick());
         _autoSave = new DispatcherTimer(AutoSaveDelay, DispatcherPriority.Background, OnAutoSaveTimer);
         _autoSave.Stop();
+        FollowPanelWidths();
+    }
+
+    // ---- the side panels' widths: this computer's, as last dragged ----
+
+    DispatcherTimer? _savePanels;
+
+    /// <summary>Opens the panels at their saved widths, and saves a width a moment after it's been dragged.</summary>
+    void FollowPanelWidths()
+    {
+        var panels = _settings.Panels;
+        Timeline.TreeWidth = panels.Timelines ?? TimelineEditorViewModel.UsualTreeWidth;
+        Timeline.InspectorWidth = panels.Inspector ?? TimelineEditorViewModel.UsualInspectorWidth;
+        Buttons.PanelWidth = panels.Buttons ?? ButtonsViewModel.UsualWidth;
+        // Not on every step of a drag: once it's let go (or paused).
+        _savePanels = new DispatcherTimer(TimeSpan.FromSeconds(1), DispatcherPriority.Background, async (_, _) =>
+        {
+            _savePanels!.Stop();
+            await SaveSettingsAsync();
+        });
+        _savePanels.Stop();
+        Timeline.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(TimelineEditorViewModel.TreeWidth)) Note(() => panels.Timelines = Timeline.TreeWidth);
+            else if (e.PropertyName == nameof(TimelineEditorViewModel.InspectorWidth)) Note(() => panels.Inspector = Timeline.InspectorWidth);
+        };
+        Buttons.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(ButtonsViewModel.PanelWidth)) Note(() => panels.Buttons = Buttons.PanelWidth);
+        };
+
+        void Note(Action change)
+        {
+            change();
+            _savePanels.Stop();
+            _savePanels.Start();
+        }
     }
 
     readonly UnsavedChangesGuard _unsavedChanges;

@@ -1303,6 +1303,55 @@ public class UiTests
     });
 
     [Fact]
+    public Task Side_panels_are_resized_by_their_grips_and_fold_when_dragged_past_their_narrowest() => Ui.Run(() =>
+    {
+        var settings = new MachineSettings();
+        using var rig = new WindowRig(settings: settings);
+        rig.ViewModel.Buttons.IsOpen = true;
+        WindowRig.Pump(300);
+        var editor = rig.Editor;
+        var inspector = rig.Find<Controls.PanelGrip>(g => g.Name == "InspectorGrip");
+        var tree = rig.Find<Controls.PanelGrip>(g => g.Name == "TreeGrip");
+
+        // The inspector's grip is on its left edge: left makes it wider.
+        rig.Drag(rig.CenterOf(inspector), rig.CenterOf(inspector) - new Point(100, 0));
+        Assert.Equal(TimelineEditorViewModel.UsualInspectorWidth + 100, editor.InspectorWidth);
+        WindowRig.Pump(300);
+        Assert.Equal(editor.InspectorWidth, rig.Find<Border>(b => b.Name == "InspectorPanel").Bounds.Width);
+
+        // The tree's is on its right edge, and it stops at its narrowest...
+        rig.Drag(rig.CenterOf(tree), rig.CenterOf(tree) - new Point(60, 0));
+        Assert.Equal(170, editor.TreeWidth);
+        rig.Drag(rig.CenterOf(tree), rig.CenterOf(tree) - new Point(30, 0));
+        Assert.Equal(160, editor.TreeWidth);
+        // ...until it's dragged well past it: then it folds away, keeping its width for next time.
+        rig.Drag(rig.CenterOf(tree), rig.CenterOf(tree) - new Point(120, 0));
+        Assert.False(editor.IsTreeOpen);
+        Assert.Equal(160, editor.TreeWidth);
+        rig.Click(rig.CenterOf(rig.Find<Button>(b => b.Name == "TreeStrip")));
+        Assert.True(editor.IsTreeOpen);
+
+        // However far it's dragged, the lanes keep room to work in.
+        rig.Drag(rig.CenterOf(inspector), rig.CenterOf(inspector) - new Point(800, 0));
+        WindowRig.Pump(300);
+        Assert.InRange(rig.Find<Border>(b => b.Name == "LanesArea").Bounds.Width, 415, 425);
+
+        // A double-click: the usual width.
+        rig.DoubleClick(rig.CenterOf(inspector));
+        Assert.Equal(TimelineEditorViewModel.UsualInspectorWidth, editor.InspectorWidth);
+
+        // The Buttons panel's grip too.
+        var buttons = rig.Window.GetVisualDescendants().OfType<Controls.PanelGrip>().Single(g => g.DataContext is ButtonsViewModel);
+        rig.Drag(rig.CenterOf(buttons), rig.CenterOf(buttons) - new Point(50, 0));
+        Assert.Equal(ButtonsViewModel.UsualWidth + 50, rig.ViewModel.Buttons.PanelWidth);
+
+        // This computer remembers them, once they've been let go a moment.
+        WindowRig.Pump(1300);
+        Assert.Equal((160.0, TimelineEditorViewModel.UsualInspectorWidth, ButtonsViewModel.UsualWidth + 50),
+                     (settings.Panels.Timelines, settings.Panels.Inspector, settings.Panels.Buttons));
+    });
+
+    [Fact]
     public Task The_add_button_is_for_sounds_and_level_control_is_first_in_the_effects_menu() => Ui.Run(() =>
     {
         using var rig = new WindowRig();

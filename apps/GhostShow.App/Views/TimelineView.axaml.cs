@@ -5,6 +5,7 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Media;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Layout;
 using Avalonia.VisualTree;
 using GhostShow.App.ViewModels;
 using GhostShow.Core.Playback;
@@ -33,6 +34,10 @@ public partial class TimelineView : UserControl
         // Tunnel, so the editor's shortcuts (Delete, arrows, Ctrl+C...) get there before a focused control uses the key.
         AddHandler(KeyDownEvent, OnShortcut, RoutingStrategies.Tunnel);
         LanesScroll.AddHandler(PointerWheelChangedEvent, OnWheel, RoutingStrategies.Tunnel);
+        TransportBar.SizeChanged += (_, e) =>
+        {
+            if (e.WidthChanged) FitTransport();
+        };
 
         TimelineTree.DoubleTapped += (_, e) =>
         {
@@ -308,6 +313,20 @@ public partial class TimelineView : UserControl
         LanesScroll.UpdateLayout();
         LanesScroll.Offset = LanesScroll.Offset.WithX(Math.Max(0, seconds * editor.PixelsPerSecond - pointerInView));
         e.Handled = true;
+    }
+
+    /// <summary>
+    /// The view's tools (zoom, snap) go on a line of their own under the transport when there isn't room for both on one
+    /// (narrow lanes, between wide panels); otherwise at the right of it.
+    /// </summary>
+    void FitTransport()
+    {
+        bool under = TransportTools.DesiredSize.Width + ViewTools.DesiredSize.Width + 40 > TransportBar.Bounds.Width;
+        Grid.SetRow(ViewTools, under ? 1 : 0);
+        Grid.SetColumn(ViewTools, under ? 0 : 2);
+        Grid.SetColumnSpan(ViewTools, under ? 3 : 1);
+        ViewTools.HorizontalAlignment = under ? HorizontalAlignment.Left : HorizontalAlignment.Stretch;
+        ViewTools.Margin = under ? new Thickness(0, 6, 0, 0) : new Thickness(16, 0, 0, 0);
     }
 
     // ---- the Effects menu: click an effect to add it, or drag it onto a lighting track ----
