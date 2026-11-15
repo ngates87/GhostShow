@@ -24,6 +24,9 @@ public sealed record AppPaths(string ConfigDirectory)
 
     public string MachineSettingsFile => Path.Combine(ConfigDirectory, "machine.json");
 
+    /// <summary>What ended GhostShow, if something did: every other log is in memory or on the console, and goes with it.</summary>
+    public string CrashLogFile => Path.Combine(ConfigDirectory, "crash.log");
+
     /// <summary>The user's own fixture profiles (.json or .qxf). Profiles here replace built-in ones with the same ID.</summary>
     public string UserProfilesDirectory => Path.Combine(ConfigDirectory, "profiles");
 

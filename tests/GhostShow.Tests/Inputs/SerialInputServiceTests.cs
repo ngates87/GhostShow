@@ -29,6 +29,20 @@ public class SerialInputServiceTests : IDisposable
         public void Dispose() => Disposed = true;
     }
 
+    /// <summary>A port that does what Windows does when it's closed while a read waits on it: the read is cancelled.</summary>
+    sealed class WindowsLikeLink : ISerialLink
+    {
+        readonly ManualResetEventSlim _closed = new();
+
+        public int Read(byte[] buffer)
+        {
+            if (_closed.Wait(20)) throw new OperationCanceledException("The operation was canceled.");
+            return 0;
+        }
+
+        public void Dispose() => _closed.Set();
+    }
+
     readonly ConcurrentQueue<string> _commands = new();
     readonly List<FakeLink> _opened = [];
     readonly SerialInputService _service;
@@ -108,5 +122,39 @@ public class SerialInputServiceTests : IDisposable
         _service.Stop();
         Assert.Equal(new SerialInputStatus(SerialInputState.Off, null, 0), _service.Status);
         await Eventually.True(() => Latest.Disposed, "the port is closed");
+    }
+
+    [Fact]
+    public async Task A_read_cancelled_by_closing_the_port_for_a_new_speed_reopens_it_and_never_ends_the_show()
+    {
+        int opens = 0;
+        using var service = new SerialInputService(NullLogger.Instance, (_, _) =>
+        {
+            Interlocked.Increment(ref opens);
+            return new WindowsLikeLink();
+        }, TimeSpan.FromMilliseconds(30));
+        service.Start("COM6", 9600);
+        await Eventually.True(() => service.Status.State == SerialInputState.Listening, "it listens");
+
+        service.Start("COM6", 115200);   // closes the port mid-read, as picking a new speed does
+
+        await Eventually.True(() => service.Status is { State: SerialInputState.Listening, BaudRate: 115200 } && opens == 2, "it listens at the new speed");
+        await Task.Delay(100);
+        Assert.Equal(SerialInputState.Listening, service.Status.State);   // the old listener ended quietly, without a fault
+    }
+
+    [Fact]
+    public async Task An_unexpected_failure_while_reading_is_retried_rather_than_ending_the_show()
+    {
+        int opens = 0;
+        using var service = new SerialInputService(NullLogger.Instance, (_, _) =>
+        {
+            if (Interlocked.Increment(ref opens) == 1) throw new NotSupportedException("the driver did something odd");
+            return new FakeLink();
+        }, TimeSpan.FromMilliseconds(30));
+
+        service.Start("COM6", 9600);
+
+        await Eventually.True(() => service.Status.State == SerialInputState.Listening, "it tries again, and listens");
     }
 }
