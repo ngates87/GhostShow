@@ -83,7 +83,21 @@ public sealed partial class ButtonsViewModel : ObservableObject
     [RelayCommand]
     void ToggleOpen() => IsOpen = !IsOpen;
 
-    public const double UsualWidth = 268;
+    /// <summary>The panel shows what's playing (its Playing tab) rather than the buttons.</summary>
+    [ObservableProperty]
+    public partial bool IsPlayingTab { get; set; }
+
+    [RelayCommand]
+    void ShowButtonsTab() => IsPlayingTab = false;
+
+    [RelayCommand]
+    void ShowPlayingTab()
+    {
+        IsPlayingTab = true;
+        IsEditing = false;   // editing is for the buttons
+    }
+
+        public const double UsualWidth = 268;
 
     /// <summary>The panel's width, as dragged by its grip.</summary>
     [ObservableProperty]
@@ -105,6 +119,7 @@ public sealed partial class ButtonsViewModel : ObservableObject
 
     partial void OnIsEditingChanged(bool value)
     {
+        if (value) IsPlayingTab = false;   // editing shows the buttons
         if (!value) Selected = null;
         else Selected ??= Buttons.FirstOrDefault();
         OnPropertyChanged(nameof(EditLabel));

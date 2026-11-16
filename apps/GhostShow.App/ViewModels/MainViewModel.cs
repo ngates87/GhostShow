@@ -87,7 +87,7 @@ public sealed partial class MainViewModel : ObservableObject
             // another device may have that name now (the DMX output checks the adapter's serial number, so it won't take it).
             () => outputs.Services.Where(s => s.Status == DmxOutputStatus.Connected && s.Device.Port is not null).Select(s => (s.Universe, s.Device.Port!)),
             Buttons);
-        BottomWorkspace = new BottomWorkspaceViewModel(Playback, Inputs.Monitor, Lighting, Diagnostics, settings.Panels);
+        BottomWorkspace = new BottomWorkspaceViewModel(Playback, Inputs.Monitor, Lighting, Diagnostics, settings.Panels, offersPlaying: false);
         // Both come on a port's reading thread, and are handled on this one. A command is an input like a key.
         _serial.CommandReceived += (device, command) => Dispatcher.UIThread.Post(() => Inputs.OnCommand(device, command));
         _serial.StatusChanged += _ => Dispatcher.UIThread.Post(Inputs.Refresh);

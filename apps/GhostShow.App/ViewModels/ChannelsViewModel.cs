@@ -29,13 +29,29 @@ public sealed partial class ChannelsViewModel : ObservableObject
 
     /// <summary>How many faders are shown; set by the view from the available space.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(MaxBankStart), nameof(RangeLabel))]
+    [NotifyPropertyChangedFor(nameof(MaxBankStart), nameof(RangeLabel), nameof(ScrollMaximum))]
     public partial int PageSize { get; private set; } = 16;
 
     /// <summary>First address on the page.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(RangeLabel))]
+    [NotifyPropertyChangedFor(nameof(RangeLabel), nameof(ScrollStart))]
     public partial decimal BankStart { get; set; } = 1;
+
+    /// <summary>
+    /// The channel scrollbar under the faders: its position is the first channel shown, in whole channels, so it reaches
+    /// any of the 512 without paging.
+    /// </summary>
+    public double ScrollStart
+    {
+        get => (double)BankStart;
+        set
+        {
+            decimal start = Math.Clamp((decimal)Math.Round(value), 1, MaxBankStart);
+            if (start != BankStart) BankStart = start;
+        }
+    }
+
+    public double ScrollMaximum => (double)MaxBankStart;
 
     /// <summary>The last start address that still shows a full page.</summary>
     public decimal MaxBankStart => DmxUniverse.LastAddress - PageSize + 1;

@@ -84,14 +84,14 @@
       <views:FixtureControlView DataContext="{Binding Control}" />
     </DataTemplate>
     <DataTemplate DataType="vm:RawChannelsPaneViewModel">
-      <views:ChannelsView DataContext="{Binding Lighting}" />
+      <views:ChannelsView IsCompact="True" DataContext="{Binding Lighting}" />
     </DataTemplate>
     <DataTemplate DataType="vm:DmxMonitorPaneViewModel">
       <views:MonitorView DataContext="{Binding Lighting}" />
     </DataTemplate>
   </UserControl.DataTemplates>
 
-  <Grid ColumnDefinitions="Auto,*" RowDefinitions="*,Auto,Auto" Margin="0,8">
+  <Grid ColumnDefinitions="Auto,*" Margin="0,8">
     <!-- The show's timelines: the tree is the show folder's timelines/ directory. Its grip resizes it; it folds to a strip. -->
     <Panel>
     <Button x:Name="TreeStrip" IsVisible="{Binding !IsTreeOpen}" Command="{Binding ToggleTreeCommand}" VerticalAlignment="Stretch"
@@ -603,6 +603,8 @@
                           DefaultPanelWidth="{x:Static vm:TimelineEditorViewModel.UsualInspectorWidth}" />
     </Panel>
 
+    <Grid RowDefinitions="*,Auto,Auto">
+    <DockPanel>
     <!-- Open timelines, as tabs; the selected one is edited and played -->
     <DockPanel DockPanel.Dock="Top" Margin="0,0,0,6">
       <ListBox Classes="tabs" ItemsSource="{Binding Tabs}" SelectedItem="{Binding SelectedTab}"
@@ -831,6 +833,57 @@
       </ScrollViewer>
     </Border>
     </Panel>
+    </DockPanel>
+    <!-- The workspace under the timeline (only under it: the panels either side keep the full height). Its tabs are views of
+         other screens (input monitor, fixture sliders, DMX monitor, …); + adds one, ⌄ folds it to its tabs. -->
+    <controls:VerticalPanelGrip Grid.Row="1" PanelHeight="{Binding $parent[views:TimelineView].BottomWorkspace.PanelHeight}"
+                                IsVisible="{Binding $parent[views:TimelineView].BottomWorkspace.IsOpen}" MinPanelHeight="100" MaxPanelHeight="520" KeepRoom="220"
+                                DefaultPanelHeight="{x:Static vm:BottomWorkspaceViewModel.UsualHeight}" />
+    <Border x:Name="Workspace" Grid.Row="2" Classes="card" Padding="6,4,6,6" Margin="0"
+            Height="{Binding $parent[views:TimelineView].BottomWorkspace.ActualHeight}"
+            DataContext="{Binding $parent[views:TimelineView].BottomWorkspace}">
+      <DockPanel>
+        <DockPanel DockPanel.Dock="Top">
+          <Button DockPanel.Dock="Right" Classes="bottomPaneClose" Content="{Binding ToggleLabel}" Command="{Binding ToggleOpenCommand}"
+                  ToolTip.Tip="Fold the workspace to its tabs, or open it" />
+          <Button DockPanel.Dock="Right" Classes="bottomPaneClose" Content="+" ToolTip.Tip="Add a view">
+            <Button.Flyout>
+              <MenuFlyout>
+                <MenuItem Header="Input monitor" Command="{Binding AddPaneCommand}" CommandParameter="{x:Static vm:BottomPaneKind.InputMonitor}" IsVisible="{Binding HasInputMonitor}" />
+                <MenuItem Header="Playing" Command="{Binding AddPaneCommand}" CommandParameter="{x:Static vm:BottomPaneKind.Playing}" IsVisible="{Binding OffersPlaying}" />
+                <MenuItem Header="Fixture sliders" Command="{Binding AddPaneCommand}" CommandParameter="{x:Static vm:BottomPaneKind.FixtureSliders}" IsVisible="{Binding HasLighting}" />
+                <MenuItem Header="Raw channels" Command="{Binding AddPaneCommand}" CommandParameter="{x:Static vm:BottomPaneKind.RawChannels}" IsVisible="{Binding HasLighting}" />
+                <MenuItem Header="DMX monitor" Command="{Binding AddPaneCommand}" CommandParameter="{x:Static vm:BottomPaneKind.DmxMonitor}" IsVisible="{Binding HasLighting}" />
+                <MenuItem Header="Diagnostics" Command="{Binding AddPaneCommand}" CommandParameter="{x:Static vm:BottomPaneKind.Diagnostics}" IsVisible="{Binding HasDiagnostics}" />
+              </MenuFlyout>
+            </Button.Flyout>
+          </Button>
+          <ListBox x:Name="WorkspaceTabs" Classes="tabs" ItemsSource="{Binding Panes}" SelectedItem="{Binding SelectedPane}" Background="Transparent"
+                   ScrollViewer.HorizontalScrollBarVisibility="Auto" ScrollViewer.VerticalScrollBarVisibility="Disabled">
+            <ListBox.ItemsPanel>
+              <ItemsPanelTemplate>
+                <StackPanel Orientation="Horizontal" Spacing="2" />
+              </ItemsPanelTemplate>
+            </ListBox.ItemsPanel>
+            <ListBox.ItemTemplate>
+              <DataTemplate x:DataType="vm:BottomPaneViewModel">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <TextBlock Text="{Binding Title}" VerticalAlignment="Center" />
+                  <Button Classes="bottomPaneClose" Content="×" IsVisible="{Binding CanClose}" ToolTip.Tip="Close this view"
+                          Command="{Binding $parent[ListBox].((vm:BottomWorkspaceViewModel)DataContext).ClosePaneCommand}" CommandParameter="{Binding}" />
+                </StackPanel>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+        </DockPanel>
+        <Panel IsVisible="{Binding IsOpen}" Margin="0,6,0,0">
+          <TextBlock Text="No views open: + adds one (the input monitor, fixture sliders, the DMX monitor, …)." Opacity="0.6"
+                     HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding IsEmpty}" />
+          <ContentControl Content="{Binding SelectedPane}" />
+        </Panel>
+      </DockPanel>
+    </Border>
+    </Grid>
   </DockPanel>
 
   <!-- The Envelope Editor where there are no second windows (a browser). Covers this screen; see ShowEnvelopeEditor. -->
@@ -841,44 +894,6 @@
         <TextBlock Text="{Binding Title}" FontWeight="SemiBold" VerticalAlignment="Center" />
       </DockPanel>
       <views:EnvelopeEditorView />
-    </DockPanel>
-  </Border>
-  <controls:VerticalPanelGrip Grid.Row="1" Grid.ColumnSpan="2" PanelHeight="{Binding $parent[views:TimelineView].BottomWorkspace.PanelHeight}"
-                              IsVisible="{Binding $parent[views:TimelineView].BottomWorkspace.IsOpen}" MinPanelHeight="100" MaxPanelHeight="520" KeepRoom="220"
-                              DefaultPanelHeight="{x:Static vm:BottomWorkspaceViewModel.UsualHeight}" />
-  <Border Grid.Row="2" Grid.ColumnSpan="2" Classes="card" Padding="6" Height="{Binding $parent[views:TimelineView].BottomWorkspace.ActualHeight}"
-          DataContext="{Binding $parent[views:TimelineView].BottomWorkspace}">
-    <DockPanel>
-      <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4">
-        <Button DockPanel.Dock="Right" Classes="bottomPaneClose" Content="+" ToolTip.Tip="Add a view to the workspace">
-          <Button.Flyout>
-            <MenuFlyout>
-              <MenuItem Header="Input monitor" Command="{Binding AddPaneCommand}" CommandParameter="{x:Static vm:BottomPaneKind.InputMonitor}" IsEnabled="{Binding HasInputMonitor}" />
-              <MenuItem Header="Playing" Command="{Binding AddPaneCommand}" CommandParameter="{x:Static vm:BottomPaneKind.Playing}" />
-              <Separator />
-              <MenuItem Header="Fixture sliders" Command="{Binding AddPaneCommand}" CommandParameter="{x:Static vm:BottomPaneKind.FixtureSliders}" IsEnabled="{Binding HasLighting}" />
-              <MenuItem Header="Raw channels" Command="{Binding AddPaneCommand}" CommandParameter="{x:Static vm:BottomPaneKind.RawChannels}" IsEnabled="{Binding HasLighting}" />
-              <MenuItem Header="DMX monitor" Command="{Binding AddPaneCommand}" CommandParameter="{x:Static vm:BottomPaneKind.DmxMonitor}" IsEnabled="{Binding HasLighting}" />
-              <MenuItem Header="Diagnostics" Command="{Binding AddPaneCommand}" CommandParameter="{x:Static vm:BottomPaneKind.Diagnostics}" IsEnabled="{Binding HasDiagnostics}" />
-            </MenuFlyout>
-          </Button.Flyout>
-        </Button>
-        <Button DockPanel.Dock="Right" Classes="bottomPaneClose" Content="{Binding ToggleLabel}" Command="{Binding ToggleOpenCommand}"
-                ToolTip.Tip="Collapse or expand the bottom workspace" />
-        <TextBlock Text="Workspace" FontWeight="SemiBold" VerticalAlignment="Center" />
-      </DockPanel>
-      <TabControl ItemsSource="{Binding Panes}" SelectedItem="{Binding SelectedPane}" IsVisible="{Binding IsOpen}">
-        <TabControl.ItemTemplate>
-          <DataTemplate x:DataType="vm:BottomPaneViewModel">
-            <StackPanel Orientation="Horizontal" Spacing="4">
-              <TextBlock Text="{Binding Title}" VerticalAlignment="Center" />
-              <Button Classes="bottomPaneClose" Content="×" IsVisible="{Binding CanClose}"
-                      Command="{Binding $parent[TabControl].((vm:BottomWorkspaceViewModel)DataContext).ClosePaneCommand}" CommandParameter="{Binding}"
-                      ToolTip.Tip="Close this view" />
-            </StackPanel>
-          </DataTemplate>
-        </TabControl.ItemTemplate>
-      </TabControl>
     </DockPanel>
   </Border>
   </Grid>

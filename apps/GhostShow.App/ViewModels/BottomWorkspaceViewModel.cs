@@ -48,6 +48,9 @@ public sealed class DiagnosticsPaneViewModel(object diagnostics) : BottomPaneVie
 public sealed partial class BottomWorkspaceViewModel : ObservableObject
 {
     public const double UsualHeight = 210;
+
+    /// <summary>The height a view of faders needs to show them whole (they shrink only so far: see ChannelsView).</summary>
+    public const double FaderHeight = 320;
     public const double HeaderHeight = 36;
 
     readonly PlaybackViewModel _playback;
@@ -56,9 +59,14 @@ public sealed partial class BottomWorkspaceViewModel : ObservableObject
     readonly object? _diagnostics;
     readonly GhostShow.Core.Storage.PanelWidths? _settings;
 
+    /// <param name="offersPlaying">
+    /// Whether the Playing list is one of its views: where there's no Buttons panel (a browser). On the show computer it's
+    /// the Buttons panel's Playing tab, where it has the height.
+    /// </param>
     public BottomWorkspaceViewModel(PlaybackViewModel playback, InputMonitorViewModel? inputMonitor,
-        LightingViewModel? lighting, object? diagnostics, GhostShow.Core.Storage.PanelWidths? settings = null)
+        LightingViewModel? lighting, object? diagnostics, GhostShow.Core.Storage.PanelWidths? settings = null, bool offersPlaying = true)
     {
+        OffersPlaying = offersPlaying;
         _playback = playback;
         _inputMonitor = inputMonitor;
         _lighting = lighting;
@@ -67,12 +75,11 @@ public sealed partial class BottomWorkspaceViewModel : ObservableObject
 
         IEnumerable<BottomPaneKind> initial = settings?.TimelinePanes is { } saved
             ? saved.Select(Parse).Where(k => k is not null).Select(k => k!.Value)
-            : inputMonitor is null ? [BottomPaneKind.Playing] : [BottomPaneKind.InputMonitor, BottomPaneKind.Playing];
+            : inputMonitor is null ? [BottomPaneKind.Playing] : [BottomPaneKind.InputMonitor];
         foreach (var kind in initial.Distinct())
             if (Create(kind) is { } pane) Panes.Add(pane);
-        if (Panes.Count == 0) Panes.Add(new PlayingPaneViewModel(playback));
         Panes.CollectionChanged += OnPanesChanged;
-        SelectedPane = Panes.FirstOrDefault(p => p.Key == settings?.TimelineSelectedPane) ?? Panes[0];
+        SelectedPane = Panes.FirstOrDefault(p => p.Key == settings?.TimelineSelectedPane) ?? Panes.FirstOrDefault();
         PanelHeight = settings?.TimelineBottom ?? UsualHeight;
         IsOpen = settings?.TimelineBottomOpen ?? false;
     }
@@ -82,6 +89,10 @@ public sealed partial class BottomWorkspaceViewModel : ObservableObject
     public bool HasInputMonitor => _inputMonitor is not null;
     public bool HasLighting => _lighting is not null;
     public bool HasDiagnostics => _diagnostics is not null;
+    public bool OffersPlaying { get; }
+
+    /// <summary>Every view closed: it says how to add one.</summary>
+    public bool IsEmpty => Panes.Count == 0;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ActualHeight), nameof(ToggleLabel))]
@@ -96,6 +107,14 @@ public sealed partial class BottomWorkspaceViewModel : ObservableObject
 
     [ObservableProperty]
     public partial BottomPaneViewModel? SelectedPane { get; set; }
+
+    /// <summary>A tab clicked while it's folded opens it.</summary>
+    partial void OnSelectedPaneChanged(BottomPaneViewModel? oldValue, BottomPaneViewModel? newValue)
+    {
+        if (oldValue is not null && newValue is not null) IsOpen = true;
+        // Faders shown in a short workspace would be cut off: it grows to fit them (it can still be dragged shorter).
+        if (oldValue is not null && newValue is FixtureSlidersPaneViewModel or RawChannelsPaneViewModel && PanelHeight < FaderHeight) PanelHeight = FaderHeight;
+    }
 
     [RelayCommand]
     void ToggleOpen() => IsOpen = !IsOpen;
@@ -126,7 +145,7 @@ public sealed partial class BottomWorkspaceViewModel : ObservableObject
     BottomPaneViewModel? Create(BottomPaneKind kind) => kind switch
     {
         BottomPaneKind.InputMonitor when _inputMonitor is not null => new InputMonitorPaneViewModel(_inputMonitor),
-        BottomPaneKind.Playing => new PlayingPaneViewModel(_playback),
+        BottomPaneKind.Playing when OffersPlaying => new PlayingPaneViewModel(_playback),
         BottomPaneKind.FixtureSliders when _lighting is not null => new FixtureSlidersPaneViewModel(_lighting.Control),
         BottomPaneKind.RawChannels when _lighting is not null => new RawChannelsPaneViewModel(_lighting),
         BottomPaneKind.DmxMonitor when _lighting is not null => new DmxMonitorPaneViewModel(_lighting),
@@ -138,6 +157,7 @@ public sealed partial class BottomWorkspaceViewModel : ObservableObject
     {
         if (_settings is not null) _settings.TimelinePanes = Panes.Select(p => p.Key).ToList();
         OnPropertyChanged(nameof(Panes));
+        OnPropertyChanged(nameof(IsEmpty));
     }
 
     static BottomPaneKind? Parse(string key) => Enum.TryParse<BottomPaneKind>(key, out var kind) ? kind : null;

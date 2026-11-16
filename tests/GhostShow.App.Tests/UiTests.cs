@@ -1352,6 +1352,52 @@ public class UiTests
     });
 
     [Fact]
+    public Task The_workspace_sits_under_the_timeline_only_and_its_views_are_tabs() => Ui.Run(() =>
+    {
+        using var rig = new WindowRig();
+        var workspace = rig.ViewModel.BottomWorkspace;
+        workspace.IsOpen = true;
+        WindowRig.Pump(300);
+        Rect Of(string name) => rig.Find<Control>(c => c.Name == name) is var c ? new Rect(c.TranslatePoint(new Point(), rig.Window)!.Value, c.Bounds.Size) : default;
+
+        // Under the timeline only: the tree and the inspector beside it keep the full height.
+        var bottom = Of("Workspace");
+        var lanes = Of("LanesArea");
+        Assert.InRange(bottom.Left, lanes.Left - 1, lanes.Left + 1);
+        Assert.InRange(bottom.Right, lanes.Right - 1, lanes.Right + 1);
+        Assert.True(Of("InspectorPanel").Bottom >= bottom.Bottom - 1);
+        Assert.True(Of("TimelineTree").Bottom > bottom.Top);
+
+        // On the show computer, Playing is the Buttons panel's, not a view here.
+        Assert.False(workspace.OffersPlaying);
+        Assert.DoesNotContain(workspace.Panes, p => p is PlayingPaneViewModel);
+        workspace.AddPaneCommand.Execute(BottomPaneKind.Playing);
+        Assert.DoesNotContain(workspace.Panes, p => p is PlayingPaneViewModel);
+
+        // A view of faders makes room for them; a tab clicked while folded opens it.
+        workspace.AddPaneCommand.Execute(BottomPaneKind.RawChannels);
+        Assert.Equal(BottomWorkspaceViewModel.FaderHeight, workspace.PanelHeight);
+        workspace.IsOpen = false;
+        workspace.SelectedPane = workspace.Panes[0];
+        Assert.True(workspace.IsOpen);
+
+        // Its scrollbar reaches any channel, a whole channel at a time.
+        var channels = rig.ViewModel.Lighting.Channels;
+        channels.ScrollStart = 300.4;
+        Assert.Equal(300m, channels.BankStart);
+        channels.ScrollStart = 9999;
+        Assert.Equal(channels.MaxBankStart, channels.BankStart);
+
+        // The Buttons panel: its buttons, or what's playing.
+        var buttons = rig.ViewModel.Buttons;
+        buttons.IsEditing = true;
+        buttons.ShowPlayingTabCommand.Execute(null);
+        Assert.Equal((true, false), (buttons.IsPlayingTab, buttons.IsEditing));   // editing is for the buttons
+        buttons.IsEditing = true;
+        Assert.False(buttons.IsPlayingTab);
+    });
+
+    [Fact]
     public Task The_add_button_is_for_sounds_and_level_control_is_first_in_the_effects_menu() => Ui.Run(() =>
     {
         using var rig = new WindowRig();

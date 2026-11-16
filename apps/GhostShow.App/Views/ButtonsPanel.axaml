@@ -46,6 +46,27 @@
       <Setter Property="Foreground" Value="#FFD54F" />
       <Setter Property="Background" Value="Transparent" />
     </Style>
+    <Style Selector="Button.panelTab">
+      <Setter Property="Padding" Value="10,3" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <Style Selector="Button.panelTab.selected">
+      <Setter Property="Background" Value="#2D4A66" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="Border.count">
+      <Setter Property="Background" Value="#4CAF50" />
+      <Setter Property="CornerRadius" Value="8" />
+      <Setter Property="Padding" Value="5,0" />
+      <Setter Property="MinWidth" Value="16" />
+    </Style>
+    <Style Selector="Border.count TextBlock">
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Foreground" Value="White" />
+      <Setter Property="HorizontalAlignment" Value="Center" />
+    </Style>
     <Style Selector="Button.small">
       <Setter Property="Padding" Value="6,1" />
       <Setter Property="MinHeight" Value="0" />
@@ -68,11 +89,28 @@
       <DockPanel>
         <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
           <Button DockPanel.Dock="Right" Classes="small" Content="»" Command="{Binding ToggleOpenCommand}" Margin="4,0,0,0" ToolTip.Tip="Fold the buttons away" />
-          <Button DockPanel.Dock="Right" Classes="small" Content="+" Command="{Binding AddCommand}" Margin="4,0,0,0" ToolTip.Tip="Add a button" />
+          <Button DockPanel.Dock="Right" Classes="small" Content="+" Command="{Binding AddCommand}" Margin="4,0,0,0" ToolTip.Tip="Add a button"
+                  IsVisible="{Binding !IsPlayingTab}" />
           <ToggleButton DockPanel.Dock="Right" Classes="small" Content="{Binding EditLabel}" IsChecked="{Binding IsEditing}" Padding="8,1" MinHeight="0"
+                        IsVisible="{Binding !IsPlayingTab}"
                         ToolTip.Tip="Edit mode (or right-click a button): click a button to change its name, colour, triggers and actions (instead of pressing it). Done, or Esc, finishes." />
-          <TextBlock Text="Buttons" FontWeight="SemiBold" VerticalAlignment="Center" />
+          <!-- Two tabs: the buttons, and what's playing (with the height it needs for a long list). -->
+          <StackPanel Orientation="Horizontal" Spacing="2">
+            <Button x:Name="ButtonsTab" Classes="panelTab" Classes.selected="{Binding !IsPlayingTab}" Content="Buttons" Command="{Binding ShowButtonsTabCommand}" />
+            <Button x:Name="PlayingTab" Classes="panelTab" Classes.selected="{Binding IsPlayingTab}" Command="{Binding ShowPlayingTabCommand}"
+                    ToolTip.Tip="The timelines playing now, each copy, with how it was run; stop one, or all">
+              <StackPanel Orientation="Horizontal" Spacing="5">
+                <TextBlock Text="Playing" />
+                <Border Classes="count" IsVisible="{Binding !!Playback.Running.Count}">
+                  <TextBlock Text="{Binding Playback.Running.Count}" />
+                </Border>
+              </StackPanel>
+            </Button>
+          </StackPanel>
         </DockPanel>
+        <Panel>
+        <views:PlayingListView DataContext="{Binding Playback}" IsVisible="{Binding $parent[UserControl].((vm:ButtonsViewModel)DataContext).IsPlayingTab}" />
+        <DockPanel IsVisible="{Binding !IsPlayingTab}">
         <!-- Arming: on when a show opens; off while working on it. Red when off, so it isn't forgotten. -->
         <ToggleButton DockPanel.Dock="Top" Classes="arming" IsChecked="{Binding TriggersArmed}" Content="{Binding ArmedLabel}"
                       HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Margin="0,0,0,6" Padding="6,2" MinHeight="0"
@@ -210,6 +248,8 @@
         </ScrollViewer>
         </Border>
 
+        </DockPanel>
+        </Panel>
       </DockPanel>
     </Border>
     <!-- Its grip: on its left edge, in the gap before it. -->
