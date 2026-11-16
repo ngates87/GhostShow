@@ -46,7 +46,7 @@ public sealed partial class TimelineEditorViewModel
     /// <summary>A colour or position handle: grouped handles on the fixture's colour (or pan and tilt) channels at a time, at the levels they have there. One undo step.</summary>
     public IReadOnlyList<CurvePoint> AddGroupHandle(LightingClip clip, Guid fixtureId, TimeSpan time, HandleGroupKind kind)
     {
-        if (clip.Locked || clip.Effect is not null || TrackOf(clip) is not { } track) return [];
+        if (clip.Locked || clip.IsGenerated || TrackOf(clip) is not { } track) return [];
         var at = SnapTime(time) - clip.Start;
         if (at <= TimeSpan.Zero || at >= clip.Length) at = time - clip.Start;
         if (at <= TimeSpan.Zero || at >= clip.Length) return [];
@@ -64,7 +64,7 @@ public sealed partial class TimelineEditorViewModel
     /// </summary>
     public IReadOnlyList<CurvePoint> Snapshot(LightingClip clip, TimeSpan time, IEnumerable<LaneTarget> targets)
     {
-        if (clip.Locked || clip.Effect is not null) return [];
+        if (clip.Locked || clip.IsGenerated) return [];
         var at = time - clip.Start;
         if (at <= TimeSpan.Zero || at > clip.Length) return [];
         var levels = targets.Select(t => (Target: t, Level: ManualLevel(t))).Where(l => l.Level is not null).ToList();

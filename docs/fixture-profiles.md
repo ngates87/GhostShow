@@ -65,8 +65,9 @@ Manufacturer spellings that differ only in case or punctuation ("Pro-Lights" and
 
 Manufacturer, model, type, each mode's channels in DMX order, a function per channel (from QLC+'s channel preset,
 or its group and colour in older files) and default values. A shutter channel with no explicit default starts at
-its first "open" range, because a closed shutter makes a fixture look dead. Fine (16-bit) channels are imported as
-generic channels: GhostShow drives only the coarse byte for now. Capability ranges ("11-255: strobe slow to fast"),
+its first "open" range, because a closed shutter makes a fixture look dead. Fine (16-bit) pan and tilt channels are
+imported as `PanFine`/`TiltFine` (tilt clips drive both bytes), with the travel in degrees from `<Focus PanMax TiltMax>`;
+other fine channels are imported as generic channels, and GhostShow drives only their coarse byte. Capability ranges ("11-255: strobe slow to fast"),
 physical data and multi-head layouts are ignored. All 1,435 definitions shipped with QLC+ 4.12.7 import cleanly
 (checked by `Every_installed_QLC_plus_fixture_imports`).
 
@@ -108,8 +109,9 @@ JSON, camelCase, comments and trailing commas allowed. Example:
 | `modes` | yes, at least 1 | Mode names must be unique (case-insensitive). |
 | `modes[].channels` | yes, 1-512 | In DMX order: the first channel is at the fixture's start address. |
 | `channels[].name` | yes | Shown on faders. |
-| `channels[].function` | no (Generic) | `Intensity`, `Red`, `Green`, `Blue`, `White`, `Amber`, `UV`: logical controls the Control screen and commands address by name. Descriptive only: `Strobe`, `Shutter`, `Pan`, `Tilt`, `ColorWheel`, `Gobo`, `Speed`, `Effect`, `Maintenance`, `Generic`. |
+| `channels[].function` | no (Generic) | `Intensity`, `Red`, `Green`, `Blue`, `White`, `Amber`, `UV`: logical controls the Control screen and commands address by name. Descriptive only: `Strobe`, `Shutter`, `Pan`, `Tilt`, `ColorWheel`, `Gobo`, `Speed`, `Effect`, `Maintenance`, `Generic`. `Tilt` and `TiltFine` (its 16-bit low byte; `PanFine` likewise) are what tilt clips move. |
 | `channels[].defaultValue` | no (0) | Written when the fixture is first patched (or moved). |
+| `channels[].rangeDegrees` | no | A pan or tilt channel's travel in degrees (a bar that tilts 0-230° says 230). Tilt clips work in angles from its middle (0°, straight ahead); without it they assume ±90°. QLC+ and OFL imports take it from the fixture's `TiltMax`/`PanMax`. |
 
 If a mode has several channels with the same function, the first one is the logical control.
 

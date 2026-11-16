@@ -38,13 +38,14 @@ public sealed partial class EventPropertiesViewModel : ObservableObject
     public string Kind => Event switch
     {
         LightingClip { Effect: not null } clip => $"{clip.KindName} effect",
+        LightingClip { Tilt: not null } => "Tilt move",
         LightingClip clip => clip.KindName,
         TimelineCommandEvent => "Event",
         _ => "Audio clip",
     };
 
     /// <summary>A Level Control clip (handles of its own), not an effect.</summary>
-    public bool IsLevelControl => Event is LightingClip { Effect: null };
+    public bool IsLevelControl => Event is LightingClip { IsGenerated: false };
 
     /// <summary>A lighting clip's length; changing it scales or crops its envelopes, as dragging its edge does.</summary>
     public decimal ClipLengthSeconds
@@ -180,6 +181,72 @@ public sealed partial class EventPropertiesViewModel : ObservableObject
         {
             if (Command is { } e) Change($"Mark it with a {value.ToString().ToLowerInvariant()}", e.Symbol, value, v => e.Symbol = v, "symbol");
         }
+    }
+
+    // ---- tilt move (moving heads) ----
+
+    LightingClip? TiltClip => Event as LightingClip is { Tilt: not null } clip ? clip : null;
+
+    public bool IsTilt => TiltClip is not null;
+
+    /// <summary>The arc shows this far each way from straight ahead: the track's moving heads' travel (±90° if not known).</summary>
+    public double TiltLimit => TiltClip is { } clip ? _editor.TiltLimitOf(clip) ?? TiltChannel.UnknownRange / 2 : 90;
+
+    /// <summary>Whether the track has a moving head's tilt channel to move; if not, its properties say so.</summary>
+    public bool HasTiltChannel => TiltClip is { } clip && _editor.TiltLimitOf(clip) is not null;
+
+    public double StartDegrees
+    {
+        get => TiltClip?.Tilt?.StartDegrees ?? 0;
+        set => ChangeTilt("Change start angle", m => m.StartDegrees = Math.Round(Math.Clamp(value, -TiltLimit, TiltLimit)), "start");
+    }
+
+    public double EndDegrees
+    {
+        get => TiltClip?.Tilt?.EndDegrees ?? 0;
+        set => ChangeTilt("Change end angle", m => m.EndDegrees = Math.Round(Math.Clamp(value, -TiltLimit, TiltLimit)), "end");
+    }
+
+    /// <summary>Which handle the arc and the value box edit: the end (true) or the start.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SelectedDegrees), nameof(SelectedLabel), nameof(IsStartSelected))]
+    public partial bool IsEndSelected { get; set; } = true;
+
+    public bool IsStartSelected => !IsEndSelected;
+
+    public string SelectedLabel => IsEndSelected ? "End" : "Start";
+
+    /// <summary>The selected handle's angle (the value box under the arc).</summary>
+    public double SelectedDegrees
+    {
+        get => IsEndSelected ? EndDegrees : StartDegrees;
+        set
+        {
+            if (IsEndSelected) EndDegrees = value;
+            else StartDegrees = value;
+        }
+    }
+
+    [RelayCommand]
+    void SelectStart() => IsEndSelected = false;
+
+    [RelayCommand]
+    void SelectEnd() => IsEndSelected = true;
+
+    /// <summary>The value box's arrows: a degree at a time.</summary>
+    [RelayCommand]
+    void Nudge(string by) => SelectedDegrees += double.Parse(by, System.Globalization.CultureInfo.InvariantCulture);
+
+    [RelayCommand]
+    void SwapTilt() => ChangeTilt("Swap start and end", m => (m.StartDegrees, m.EndDegrees) = (m.EndDegrees, m.StartDegrees), "swap");
+
+    void ChangeTilt(string description, Action<TiltMove> change, string field)
+    {
+        if (TiltClip is not { } clip) return;
+        _editor.ChangeTilt(clip, description, change, field);
+        OnPropertyChanged(nameof(StartDegrees));
+        OnPropertyChanged(nameof(EndDegrees));
+        OnPropertyChanged(nameof(SelectedDegrees));
     }
 
     // ---- built-in effect ----

@@ -57,6 +57,17 @@
       <Setter Property="Width" Value="18" />
       <Setter Property="Height" Value="18" />
     </Style>
+    <!-- A tilt move's Start | End: which handle the arc and the value box edit. -->
+    <Style Selector="Button.tiltHandle">
+      <Setter Property="Padding" Value="12,4" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <Style Selector="Button.tiltHandle.selected">
+      <Setter Property="Background" Value="#3A2459" />
+      <Setter Property="BorderBrush" Value="#B04BFF" />
+      <Setter Property="BorderThickness" Value="1" />
+    </Style>
   </UserControl.Styles>
 
   <UserControl.DataTemplates>
@@ -430,6 +441,46 @@
                               </StackPanel>
                             </StackPanel>
 
+                            <!-- Tilt move (moving heads): from the start angle to the end one over the clip -->
+                            <StackPanel Spacing="8" IsVisible="{Binding IsTilt}" IsEnabled="{Binding IsUnlocked}">
+                              <TextBlock Text="The track has no moving head's tilt channel: add one (Channels…) for this to move it."
+                                         Classes="fault" TextWrapping="Wrap" FontSize="12" IsVisible="{Binding !HasTiltChannel}" />
+                              <StackPanel Orientation="Horizontal" Spacing="2" HorizontalAlignment="Center">
+                                <Button x:Name="TiltStart" Classes="tiltHandle" Classes.selected="{Binding IsStartSelected}" Command="{Binding SelectStartCommand}"
+                                        ToolTip.Tip="Where the move starts (the ring on the arc)">
+                                  <TextBlock><Run Text="Start " /><Run Text="{Binding StartDegrees, StringFormat='{}{0:+0;−0;0}°'}" /></TextBlock>
+                                </Button>
+                                <Button x:Name="TiltEnd" Classes="tiltHandle" Classes.selected="{Binding IsEndSelected}" Command="{Binding SelectEndCommand}"
+                                        ToolTip.Tip="Where the move ends (the filled handle)">
+                                  <TextBlock><Run Text="End " /><Run Text="{Binding EndDegrees, StringFormat='{}{0:+0;−0;0}°'}" /></TextBlock>
+                                </Button>
+                              </StackPanel>
+                              <controls:TiltArc x:Name="TiltArc" Height="230" Limit="{Binding TiltLimit}" StartDegrees="{Binding StartDegrees}"
+                                                EndDegrees="{Binding EndDegrees}" IsEndSelected="{Binding IsEndSelected}"
+                                                ToolTip.Tip="Drag to set the selected angle (Shift: 5° steps); press a handle to pick it; the wheel nudges it" />
+                              <Grid ColumnDefinitions="Auto,*,Auto" HorizontalAlignment="Center" Width="220">
+                                <Button Content="‹" Command="{Binding NudgeCommand}" CommandParameter="-1" Padding="12,0" FontSize="22" VerticalAlignment="Stretch" VerticalContentAlignment="Center"
+                                        ToolTip.Tip="A degree less" />
+                                <Border Grid.Column="1" Margin="6,0" Padding="6,4" CornerRadius="6" BorderThickness="1.5" BorderBrush="#B04BFF" Background="#24183A">
+                                  <StackPanel HorizontalAlignment="Center">
+                                    <NumericUpDown Value="{Binding SelectedDegrees}" Minimum="-180" Maximum="180" Increment="1" FormatString="0"
+                                                   ShowButtonSpinner="False" HorizontalContentAlignment="Center" FontSize="18" MinWidth="90"
+                                                   ToolTip.Tip="The selected handle's angle: 0 straight ahead" />
+                                    <TextBlock Text="{Binding SelectedLabel}" HorizontalAlignment="Center" FontSize="11" Opacity="0.75" />
+                                  </StackPanel>
+                                </Border>
+                                <Button Grid.Column="2" Content="›" Command="{Binding NudgeCommand}" CommandParameter="1" Padding="12,0" FontSize="22" VerticalAlignment="Stretch" VerticalContentAlignment="Center"
+                                        ToolTip.Tip="A degree more" />
+                              </Grid>
+                              <Button Content="Swap start and end" Command="{Binding SwapTiltCommand}" HorizontalAlignment="Center"
+                                      ToolTip.Tip="Move back the other way" />
+                              <StackPanel Classes="infoLine"
+                                          ToolTip.Tip="The track's moving heads tilt from the start angle to the end one over the clip: place and stretch it to set when, and how fast. 0° is straight ahead, the middle of their travel (a fixture's travel comes from its profile; ±90° if it doesn't say). A fixture with a fine tilt channel moves smoothly in 16 bits. The track's other channels hold where the clip before left them.">
+                                <PathIcon Classes="info" />
+                                <TextBlock Text="How a tilt move works" />
+                              </StackPanel>
+                            </StackPanel>
+
                             <!-- Built-in effect -->
                             <StackPanel Spacing="6" IsVisible="{Binding IsEffect}">
                               <StackPanel Spacing="6" IsEnabled="{Binding IsUnlocked}">
@@ -658,7 +709,7 @@
                   <Border Classes="effectChoice" Background="Transparent" Padding="6,4" CornerRadius="3" Cursor="Hand" ToolTip.Tip="{Binding Description}"
                           ToolTip.Placement="Right">
                     <StackPanel Orientation="Horizontal" Spacing="10">
-                      <controls:EffectThumbnail Kind="{Binding Kind}" Width="56" Height="22" VerticalAlignment="Center" />
+                      <controls:EffectThumbnail Kind="{Binding Kind}" IsTilt="{Binding IsTilt}" Width="56" Height="22" VerticalAlignment="Center" />
                       <TextBlock Text="{Binding Name}" VerticalAlignment="Center" />
                     </StackPanel>
                   </Border>

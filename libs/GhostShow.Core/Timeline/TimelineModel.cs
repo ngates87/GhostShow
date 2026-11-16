@@ -401,9 +401,19 @@ public sealed class LightingClip : TimelineEvent
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public LightingEffect? Effect { get; set; }
 
-    /// <summary>What the clip is: "Level Control", or the effect's name.</summary>
+    /// <summary>A tilt move this clip plays instead of its own envelopes (see <see cref="TiltMove"/>); null otherwise.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public TiltMove? Tilt { get; set; }
+
+    public const string TiltName = "Tilt";
+
+    /// <summary>Its envelopes are made from its settings (an effect or a tilt move), so it has no handles of its own to edit.</summary>
     [JsonIgnore]
-    public string KindName => Effect is { } effect ? EffectInfo.Of(effect.Kind).Name : DefaultName;
+    public bool IsGenerated => Effect is not null || Tilt is not null;
+
+    /// <summary>What the clip is: "Level Control", "Tilt", or the effect's name.</summary>
+    [JsonIgnore]
+    public string KindName => Effect is { } effect ? EffectInfo.Of(effect.Kind).Name : Tilt is not null ? TiltName : DefaultName;
 
     public ChannelLane? LaneFor(LaneTarget target) => Lanes.FirstOrDefault(l => l.Target == target);
 
@@ -486,7 +496,7 @@ public sealed class LightingClip : TimelineEvent
     /// </summary>
     public LightingClip? SplitAt(TimeSpan at, Func<LaneTarget, byte> startLevels)
     {
-        if (at <= TimeSpan.Zero || at >= Length || Effect is not null) return null;   // an effect is made whole: convert it to split it
+        if (at <= TimeSpan.Zero || at >= Length || IsGenerated) return null;   // an effect or move is made whole: convert it to split it
         var after = new LightingClip { Name = Name, Enabled = Enabled, Start = Start + at, Length = Length - at, ScaleOnResize = ScaleOnResize };
         foreach (var lane in Lanes)
         {
@@ -528,7 +538,7 @@ public sealed class LightingClip : TimelineEvent
     public override TimelineEvent Clone() => new LightingClip
     {
         Name = Name, Start = Start, Enabled = Enabled, Length = Length, ScaleOnResize = ScaleOnResize, Lanes = Lanes.Select(l => l.Clone()).ToList(),
-        Effect = Effect?.Clone(),
+        Effect = Effect?.Clone(), Tilt = Tilt?.Clone(),
     };
 }
 

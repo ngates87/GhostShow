@@ -1418,10 +1418,10 @@ public class UiTests
             return rig.Window.GetVisualDescendants().OfType<Border>().Where(b => b.DataContext is EffectChoice && b.IsEffectivelyVisible).ToList();
         }
         var entries = Entries();
-        Assert.Equal(["Level Control", .. EffectInfo.All.Select(i => i.Name)], entries.Select(b => ((EffectChoice)b.DataContext!).Name));
+        Assert.Equal(["Level Control", "Tilt", .. EffectInfo.All.Select(i => i.Name)], entries.Select(b => ((EffectChoice)b.DataContext!).Name));
         rig.Click(rig.CenterOf(entries[0]));   // a click adds it
         rig.Editor.Playback.Seek(S(10));
-        rig.Click(rig.CenterOf(Entries()[1]));
+        rig.Click(rig.CenterOf(Entries()[2]));   // Lightning
 
         Assert.Equal(["Level Control", "Lightning"], rig.Lighting.Events.Select(e => e.Name));
         Assert.Equal([null, EffectKind.Lightning], rig.Lighting.Events.Cast<LightingClip>().Select(c => c.Effect?.Kind));

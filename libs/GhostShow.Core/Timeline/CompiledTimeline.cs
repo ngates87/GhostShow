@@ -10,14 +10,24 @@ public sealed record TimelineIssue(TimelineIssueSeverity Severity, Guid? EventId
     public override string ToString() => $"{Severity}: {Message}";
 }
 
-/// <summary>One channel's part of a levels event, flattened. Times are TimeSpan ticks.</summary>
-readonly record struct LevelStep(long Start, long Fade, int Slot, int Index, byte From, byte To)
+/// <summary>Which byte of a 16-bit fade a step plays (a tilt move's coarse and fine channels), or its own byte.</summary>
+enum StepByte : byte { Whole, High, Low }
+
+/// <summary>
+/// One channel's part of a levels event, flattened. Times are TimeSpan ticks. A 16-bit fade (a tilt move) is played
+/// as two steps, one for each byte of the same 16-bit value (WideFrom to WideTo), so the fine byte turns over smoothly
+/// as the coarse one steps, rather than fading on its own.
+/// </summary>
+readonly record struct LevelStep(long Start, long Fade, int Slot, int Index, byte From, byte To,
+                                 ushort WideFrom = 0, ushort WideTo = 0, StepByte Part = StepByte.Whole)
 {
     public byte ValueAt(long t)
     {
-        if (Fade <= 0 || t >= Start + Fade) return To;
-        double progress = (double)(t - Start) / Fade;
-        return (byte)Math.Round(From + (To - From) * progress);
+        bool done = Fade <= 0 || t >= Start + Fade;
+        double progress = done ? 1 : (double)(t - Start) / Fade;
+        if (Part == StepByte.Whole) return done ? To : (byte)Math.Round(From + (To - From) * progress);
+        var wide = (ushort)Math.Round(WideFrom + (WideTo - WideFrom) * progress);
+        return Part == StepByte.High ? (byte)(wide >> 8) : (byte)(wide & 0xFF);
     }
 }
 

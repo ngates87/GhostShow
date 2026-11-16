@@ -38,7 +38,7 @@ public static class TimelineCompiler
         {
             var track = timeline.Tracks[trackIndex];
             if (!track.Enabled) continue;
-            var channelLevels = TrackLevels.ResolveAll(track, target => FunctionOf(target, context));
+            var channelLevels = TrackLevels.ResolveAll(track, target => FunctionOf(target, context), target => TiltOf(target, context.Fixtures));
             for (int laneIndex = 0; laneIndex < track.Channels.Count; laneIndex++)
             {
                 var lane = track.Channels[laneIndex];
@@ -261,8 +261,32 @@ public static class TimelineCompiler
             yield return new LevelStep(0, 0, channel.Slot, channel.Index, levels.Channel.StartLevel, levels.Channel.StartLevel);
         foreach (var clip in levels.Clips)
         {
+            if (clip.Clip.Tilt is { } move && levels.Tilt is { IsSixteenBit: true } tilt)
+            {
+                // Both bytes of one 16-bit fade, so a slow move is smooth (the next clip takes over where it starts).
+                yield return new LevelStep(clip.Clip.Start.Ticks, clip.Clip.Length.Ticks, channel.Slot, channel.Index,
+                                           tilt.ValueAt(move.StartDegrees), tilt.ValueAt(move.EndDegrees),
+                                           tilt.Position(move.StartDegrees), tilt.Position(move.EndDegrees), tilt.IsFine ? StepByte.Low : StepByte.High);
+                continue;
+            }
             var end = clip.PlaysFor < clip.Clip.Length ? clip.PlaysFor : (TimeSpan?)null;
             foreach (var step in LaneSteps(clip.Handles, channel, clip.Clip.Start, end, levels.Channel.Id, null)) yield return step;
+        }
+    }
+
+    /// <summary>A fixture's tilt (or tilt fine) channel as tilt clips drive it, from the patch; null for any other channel.</summary>
+    public static TiltChannel? TiltOf(LaneTarget target, IReadOnlyDictionary<Guid, PatchedFixture> fixtures)
+    {
+        if (target.FixtureId is not { } id || !fixtures.TryGetValue(id, out var fixture)) return null;
+        // By number, or by what it does (the fixture's Tilt): its first channel that does that.
+        int number = target.Channel ?? (target.Control is { } function ? IndexOf(fixture.Mode, function) + 1 : 0);
+        return TiltChannel.Of(fixture.Mode, number);
+
+        static int IndexOf(FixtureMode mode, ChannelFunction function)
+        {
+            for (int i = 0; i < mode.Channels.Count; i++)
+                if (mode.Channels[i].Function == function) return i;
+            return -1;
         }
     }
 

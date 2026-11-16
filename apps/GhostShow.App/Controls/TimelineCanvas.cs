@@ -495,7 +495,7 @@ public sealed class TimelineCanvas : Control
                 bool expanded = ShowsEnvelopes(row);
                 context.FillRectangle(ClipFill, rect, 4);
                 // Built-in effects (Lightning, Fire, …) have a violet title; their envelopes are made, not edited.
-                bool effect = clip.Effect is not null;
+                bool effect = clip.IsGenerated;
                 context.FillRectangle(effect ? EffectTitleFill : TitleFill, new Rect(rect.X, rect.Y, rect.Width, ClipTitle), 4);
                 using (context.PushClip(rect.Deflate(1))) DrawEnvelopes(context, editor, row, clip, rect, levels, editable: expanded && !effect, startDots: expanded);
                 context.DrawRectangle(effect ? EffectBorder : ClipBorder, rect.Deflate(0.5), 4);
@@ -1141,7 +1141,7 @@ public sealed class TimelineCanvas : Control
         int count = editor.Selection.Count;
         string what = count > 1 ? $"{count} clips" : "clip";
         var position = editor.Playback.Position;
-        var split = new MenuItem { Header = "Split at playhead", IsEnabled = !clicked.Locked && clicked is not LightingClip { Effect: not null } && clicked.Start < position && position < clicked.Start + editor.LengthOf(clicked) };
+        var split = new MenuItem { Header = "Split at playhead", IsEnabled = !clicked.Locked && clicked is not LightingClip { IsGenerated: true } && clicked.Start < position && position < clicked.Start + editor.LengthOf(clicked) };
         split.Click += (_, _) => editor.SplitCommand.Execute(null);
         items.Add(split);
         var lockItem = new MenuItem { Header = clicked.Locked ? $"Unlock {what}" : $"Lock {what}" };

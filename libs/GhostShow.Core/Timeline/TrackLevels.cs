@@ -103,13 +103,17 @@ public sealed class TrackLevels
         public byte EndLevel => Envelope.Round(Envelope.ValueAt(Handles, PlaysFor));
     }
 
-    TrackLevels(ChannelLane channel, IReadOnlyList<ClipEnvelope> clips)
+    TrackLevels(ChannelLane channel, IReadOnlyList<ClipEnvelope> clips, TiltChannel? tilt)
     {
         Channel = channel;
         Clips = clips;
+        Tilt = tilt;
     }
 
     public ChannelLane Channel { get; }
+
+    /// <summary>The channel as a tilt clip drives it, if it's a moving head's tilt (or tilt fine) channel.</summary>
+    public TiltChannel? Tilt { get; }
 
     /// <summary>The enabled clips in playing order (by start).</summary>
     public IReadOnlyList<ClipEnvelope> Clips { get; }
@@ -119,11 +123,14 @@ public sealed class TrackLevels
         track.Events.OfType<LightingClip>().Where(c => c.Enabled).OrderBy(c => c.Start).ToList();
 
     /// <param name="functionOf">What a fixture channel by number does (from the patch), so effects treat it right; null if not known.</param>
-    public static TrackLevels Resolve(TimelineTrack track, ChannelLane channel, Func<LaneTarget, ChannelFunction?>? functionOf = null)
+    /// <param name="tiltOf">Which channels are tilt channels, and how they move (from the patch), for tilt clips; null if not known.</param>
+    public static TrackLevels Resolve(TimelineTrack track, ChannelLane channel, Func<LaneTarget, ChannelFunction?>? functionOf = null,
+                                      Func<LaneTarget, TiltChannel?>? tiltOf = null)
     {
         int index = track.Channels.IndexOf(channel);
         var role = index >= 0 ? LightingEffects.Roles(track.Channels, functionOf)[index] : EffectRole.Brightness;
-        return Resolve(PlayingOrder(track), channel, role: role, function: channel.Target.Control ?? functionOf?.Invoke(channel.Target));
+        return Resolve(PlayingOrder(track), channel, role: role, function: channel.Target.Control ?? functionOf?.Invoke(channel.Target),
+                       tilt: tiltOf?.Invoke(channel.Target));
     }
 
     /// <summary>
@@ -131,7 +138,9 @@ public sealed class TrackLevels
     /// once for all channels, so a track with many channels and clips stays quick.
     /// </summary>
     /// <param name="functionOf">What a fixture channel by number does (from the patch), so effects treat it right; null if not known.</param>
-    public static IReadOnlyList<TrackLevels> ResolveAll(TimelineTrack track, Func<LaneTarget, ChannelFunction?>? functionOf = null)
+    /// <param name="tiltOf">Which channels are tilt channels, and how they move (from the patch), for tilt clips; null if not known.</param>
+    public static IReadOnlyList<TrackLevels> ResolveAll(TimelineTrack track, Func<LaneTarget, ChannelFunction?>? functionOf = null,
+                                                        Func<LaneTarget, TiltChannel?>? tiltOf = null)
     {
         var clips = PlayingOrder(track);
         var lanes = clips.Select(c =>
@@ -143,7 +152,8 @@ public sealed class TrackLevels
         var keys = clips.Select(c => c.Effect is { } effect ? LightingEffects.Keys(effect, c.Length) : null).ToList();
         var roles = LightingEffects.Roles(track.Channels, functionOf);
         return track.Channels.Select((channel, k) => Resolve(clips, channel, i => lanes[i].GetValueOrDefault(channel.Target), i => keys[i],
-                                                             roles[k], channel.Target.Control ?? functionOf?.Invoke(channel.Target))).ToList();
+                                                             roles[k], channel.Target.Control ?? functionOf?.Invoke(channel.Target),
+                                                             tiltOf?.Invoke(channel.Target))).ToList();
     }
 
     /// <param name="clips">The track's clips in playing order (see <see cref="PlayingOrder"/>).</param>
@@ -151,9 +161,10 @@ public sealed class TrackLevels
     /// <param name="keysOf">An effect clip's keys (default: made from its effect).</param>
     /// <param name="role">How effect clips treat the channel (see <see cref="LightingEffects.Roles"/>).</param>
     /// <param name="function">What the channel does (for an effect's colour); null for a dimmer or raw channel.</param>
+    /// <param name="tilt">The channel as a tilt clip drives it, if it's a tilt channel; a tilt clip holds any other channel.</param>
     public static TrackLevels Resolve(IReadOnlyList<LightingClip> clips, ChannelLane channel, Func<int, ChannelLane?>? laneOf = null,
                                       Func<int, IReadOnlyList<LightingEffects.Key>?>? keysOf = null, EffectRole role = EffectRole.Brightness,
-                                      ChannelFunction? function = null)
+                                      ChannelFunction? function = null, TiltChannel? tilt = null)
     {
         var result = new List<ClipEnvelope>(clips.Count);
         byte level = channel.StartLevel;
@@ -167,6 +178,21 @@ public sealed class TrackLevels
                 var keys = keysOf?.Invoke(i) ?? LightingEffects.Keys(effect, clip.Length);
                 envelope = new ClipEnvelope(clip, null, LightingEffects.EnvelopeFor(keys, role, function, level, clip.Length), playsFor);
             }
+            else if (clip.Tilt is { } move)
+            {
+                // A tilt channel moves from the start angle to the end one (the move says where it starts, rather than
+                // carrying on from the clip before). Every other channel holds.
+                var handles = tilt is { } t
+                    ? new List<CurvePoint>
+                    {
+                        new() { Time = TimeSpan.Zero, Value = t.ValueAt(move.StartDegrees) },
+                        // A fine byte means nothing on its own (it turns over as the coarse one steps): drawn flat, then
+                        // its end value, which is where the next clip carries on from. Playback moves both bytes as one.
+                        new() { Time = clip.Length, Value = t.ValueAt(move.EndDegrees), Curve = t.IsFine ? CurveKind.Step : CurveKind.Linear },
+                    }
+                    : Envelope.WithStart(null, level, clip.Length);
+                envelope = new ClipEnvelope(clip, null, handles, playsFor);
+            }
             else
             {
                 var lane = laneOf is null ? clip.LaneFor(channel.Target) : laneOf(i);
@@ -175,7 +201,7 @@ public sealed class TrackLevels
             result.Add(envelope);
             level = envelope.EndLevel;
         }
-        return new TrackLevels(channel, result);
+        return new TrackLevels(channel, result, tilt);
     }
 
     /// <summary>Whether the timeline holds the channel at its start level before its first clip (else it leaves it alone there).</summary>

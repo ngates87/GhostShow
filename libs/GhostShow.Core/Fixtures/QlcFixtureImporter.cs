@@ -35,12 +35,16 @@ public static class QlcFixtureImporter
         string manufacturer = Text(root, "Manufacturer") ?? throw new InvalidDataException("has no <Manufacturer>.");
         string model = Text(root, "Model") ?? throw new InvalidDataException("has no <Model>.");
 
+        // How far it pans and tilts, in degrees (<Physical><Focus PanMax="540" TiltMax="270" />), for its pan and tilt channels.
+        var focus = Child(root, "Physical")?.Elements().FirstOrDefault(e => e.Name.LocalName == "Focus");
+        double? panMax = Degrees(focus?.Attribute("PanMax")), tiltMax = Degrees(focus?.Attribute("TiltMax"));
+
         // Keyed by the exact name, untrimmed: some shipped files name a channel "Red " and refer to it as "Red ".
         var channelsByName = new Dictionary<string, FixtureChannel>(StringComparer.Ordinal);
         foreach (var element in Children(root, "Channel"))
         {
             string name = (string?)element.Attribute("Name") ?? throw new InvalidDataException("has a <Channel> without a name.");
-            channelsByName.TryAdd(name, ReadChannel(name, element));
+            channelsByName.TryAdd(name, ReadChannel(name, element, panMax, tiltMax));
         }
 
         var modes = Children(root, "Mode").Select(m => ReadMode(m, channelsByName)).ToList();
@@ -72,7 +76,7 @@ public static class QlcFixtureImporter
         return new FixtureMode { Name = name, Channels = channels };
     }
 
-    static FixtureChannel ReadChannel(string name, XElement channel)
+    static FixtureChannel ReadChannel(string name, XElement channel, double? panMax, double? tiltMax)
     {
         var function = FunctionOf(channel);
         return new FixtureChannel
@@ -80,12 +84,23 @@ public static class QlcFixtureImporter
             Name = name.Trim(),
             Function = function,
             DefaultValue = DefaultValueOf(channel, function),
+            RangeDegrees = function switch
+            {
+                ChannelFunction.Tilt or ChannelFunction.TiltFine => tiltMax,
+                ChannelFunction.Pan or ChannelFunction.PanFine => panMax,
+                _ => null,
+            },
         };
     }
 
+    /// <summary>A positive number of degrees, or null (absent, unreadable, or 0, which some files use for "not stated").</summary>
+    static double? Degrees(XAttribute? attribute) =>
+        double.TryParse((string?)attribute, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var d) && d > 0 ? d : null;
+
     /// <summary>
     /// Newer files use a channel Preset ("IntensityRed"); older ones a Group ("Intensity") plus an optional Colour.
-    /// Fine (16-bit low byte) channels map to Generic: GhostShow only drives the coarse byte for now.
+    /// Fine (16-bit low byte) pan and tilt channels are TiltFine and PanFine (tilt clips drive both bytes); other fine
+    /// channels map to Generic, as GhostShow drives only their coarse byte.
     /// </summary>
     static ChannelFunction FunctionOf(XElement channel)
     {
@@ -93,7 +108,9 @@ public static class QlcFixtureImporter
         if (preset is not null) return FunctionOfPreset(preset);
 
         var group = Child(channel, "Group");
-        if (group is null || (string?)group.Attribute("Byte") == "1") return ChannelFunction.Generic;
+        if (group is null) return ChannelFunction.Generic;
+        if ((string?)group.Attribute("Byte") == "1")
+            return group.Value.Trim() switch { "Tilt" => ChannelFunction.TiltFine, "Pan" => ChannelFunction.PanFine, _ => ChannelFunction.Generic };
         return group.Value.Trim() switch
         {
             "Intensity" => ColourFunction(Text(channel, "Colour")),
@@ -111,6 +128,8 @@ public static class QlcFixtureImporter
 
     static ChannelFunction FunctionOfPreset(string preset)
     {
+        if (preset == "PositionTiltFine") return ChannelFunction.TiltFine;
+        if (preset == "PositionPanFine") return ChannelFunction.PanFine;
         if (preset.EndsWith("Fine", StringComparison.Ordinal)) return ChannelFunction.Generic;
         return preset switch
         {

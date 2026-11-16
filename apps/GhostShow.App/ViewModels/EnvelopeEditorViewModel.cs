@@ -38,7 +38,8 @@ public sealed partial class EnvelopeEditorViewModel : ObservableObject
     public string Title => Clip is null
         ? "Envelope Editor"
         : $"Envelope Editor · {Clip.Name ?? Clip.KindName} · {Track?.Name} · {PlaybackViewModel.Format(Clip.Start)}–{PlaybackViewModel.Format(Clip.Start + Clip.Length)}"
-          + (Clip.Effect is not null ? " · an effect: view only (convert it to Level Control to edit its handles)" : "");
+          + (Clip.Effect is not null ? " · an effect: view only (convert it to Level Control to edit its handles)"
+             : Clip.Tilt is not null ? " · a tilt move: view only (set its angles in its properties)" : "");
 
     /// <summary>The track's channels by fixture, with whether each is drawn.</summary>
     public ObservableCollection<EnvelopeFixtureViewModel> Fixtures { get; } = new();
@@ -272,7 +273,7 @@ public sealed partial class EnvelopeEditorViewModel : ObservableObject
     [ObservableProperty]
     public partial string Status { get; private set; } = "";
 
-    bool Editable => Clip is { Locked: false, Effect: null };
+    bool Editable => Clip is { Locked: false, IsGenerated: false };
 
     Guid? ActiveFixture => ActiveTarget?.FixtureId;
 

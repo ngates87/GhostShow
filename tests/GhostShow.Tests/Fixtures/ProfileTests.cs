@@ -172,12 +172,15 @@ public class QlcFixtureImporterTests
     }
 
     [Fact]
-    public void Fine_channels_are_imported_as_generic()
+    public void Pan_and_tilt_fine_channels_and_their_travel_in_degrees_are_imported()
     {
         var mode = Import(Eurolite).FindMode("Pan only")!;
+        Assert.Equal((ChannelFunction.Pan, ChannelFunction.PanFine), (mode.Channels[0].Function, mode.Channels[1].Function));
+        Assert.Null(mode.Channels[0].RangeDegrees);   // the file doesn't say
 
-        Assert.Equal(ChannelFunction.Pan, mode.Channels[0].Function);
-        Assert.Equal(ChannelFunction.Generic, mode.Channels[1].Function);
+        string withFocus = Eurolite.Replace("</FixtureDefinition>", "<Physical><Focus Type=\"Head\" PanMax=\"540\" TiltMax=\"0\"/></Physical></FixtureDefinition>");
+        var pan = Import(withFocus).FindMode("Pan only")!.Channels;
+        Assert.Equal((540.0, 540.0), (pan[0].RangeDegrees, pan[1].RangeDegrees));
     }
 
     [Fact]

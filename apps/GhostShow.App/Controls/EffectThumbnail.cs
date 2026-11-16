@@ -16,7 +16,12 @@ public sealed class EffectThumbnail : Control
 
     public EffectKind? Kind { get => GetValue(KindProperty); set => SetValue(KindProperty, value); }
 
-    static EffectThumbnail() => AffectsRender<EffectThumbnail>(KindProperty);
+    /// <summary>A tilt move rather than Level Control: drawn as a sweep along an arc.</summary>
+    public static readonly StyledProperty<bool> IsTiltProperty = AvaloniaProperty.Register<EffectThumbnail, bool>(nameof(IsTilt));
+
+    public bool IsTilt { get => GetValue(IsTiltProperty); set => SetValue(IsTiltProperty, value); }
+
+    static EffectThumbnail() => AffectsRender<EffectThumbnail>(KindProperty, IsTiltProperty);
 
     const int Columns = 64;          // samples across, whatever the width (it's drawn scaled)
     const int SamplesPerColumn = 8;  // the brightest of these (the darkest, for a dimming effect): a flash or a drop-out can be shorter than a column
@@ -35,6 +40,12 @@ public sealed class EffectThumbnail : Control
         context.FillRectangle(Back, bounds, 3);
         var inner = bounds.Deflate(2);
         if (inner.Width <= 0 || inner.Height <= 0) return;
+        if (IsTilt)
+        {
+            DrawTilt(context, inner);
+            context.DrawRectangle(Frame, bounds.Deflate(0.5), 3);
+            return;
+        }
 
         var columns = Kind is { } kind ? PictureOf(kind) : LevelControl();
         double width = inner.Width / columns.Length;
@@ -46,6 +57,29 @@ public sealed class EffectThumbnail : Control
                                   new Rect(inner.X + i * width, inner.Bottom - height, Math.Ceiling(width), height));
         }
         context.DrawRectangle(Frame, bounds.Deflate(0.5), 3);
+    }
+
+    /// <summary>A tilt move: an arc over a small fixture, the swept part bright, a beam to where it ends.</summary>
+    static void DrawTilt(DrawingContext context, Rect inner)
+    {
+        var pivot = new Point(inner.Center.X, inner.Bottom - 2);
+        double radius = Math.Min(inner.Width / 2 - 2, inner.Height - 4);
+        Point At(double degrees) => new(pivot.X + radius * Math.Sin(degrees * Math.PI / 180), pivot.Y - radius * Math.Cos(degrees * Math.PI / 180));
+        var dim = new Pen(new SolidColorBrush(Color.Parse("#5A4A78")), 2);
+        var bright = new Pen(new SolidColorBrush(Color.Parse("#B04BFF")), 2.5);
+        StreamGeometry Arc(double from, double to)
+        {
+            var g = new StreamGeometry();
+            using var c = g.Open();
+            c.BeginFigure(At(from), false);
+            c.ArcTo(At(to), new Size(radius, radius), 0, false, SweepDirection.Clockwise);
+            c.EndFigure(false);
+            return g;
+        }
+        context.DrawGeometry(null, dim, Arc(-80, 80));
+        context.DrawGeometry(null, bright, Arc(-45, 45));
+        context.DrawLine(new Pen(new SolidColorBrush(Color.Parse("#B04BFF"), 0.6), 1.5), pivot, At(45));
+        context.DrawEllipse(Brushes.White, null, At(45), 2.5, 2.5);
     }
 
     /// <summary>Each column's brightness (0-1) and colour, worked out once per kind.</summary>

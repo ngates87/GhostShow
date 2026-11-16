@@ -26,6 +26,10 @@ public enum ChannelFunction
     Speed,
     Effect,
     Maintenance,
+    /// <summary>A 16-bit tilt's low byte: with its <see cref="Tilt"/> channel (the high byte), smooth slow moves.</summary>
+    TiltFine,
+    /// <summary>A 16-bit pan's low byte.</summary>
+    PanFine,
 }
 
 /// <summary>
@@ -83,4 +87,11 @@ public sealed class FixtureChannel
     /// value or the fixture emits no light at all.
     /// </summary>
     public byte DefaultValue { get; init; }
+
+    /// <summary>
+    /// A pan or tilt channel's travel in degrees: the angle its whole DMX range covers (a bar that tilts 0-230° says
+    /// 230). Its middle is 0°, straight ahead, so tilt clips work in angles. Null where the profile doesn't say.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public double? RangeDegrees { get; init; }
 }

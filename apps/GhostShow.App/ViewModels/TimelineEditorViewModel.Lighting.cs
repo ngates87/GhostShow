@@ -5,8 +5,8 @@ using GhostShow.Core.Timeline;
 
 namespace GhostShow.App.ViewModels;
 
-/// <summary>One entry of the effects list, dragged onto a lighting track. No kind: a Level Control clip.</summary>
-public sealed record EffectChoice(string Name, string Description, EffectKind? Kind, TimeSpan Length);
+/// <summary>One entry of the effects list, dragged onto a lighting track. No kind: a Level Control clip, or a tilt move.</summary>
+public sealed record EffectChoice(string Name, string Description, EffectKind? Kind, TimeSpan Length, bool IsTilt = false);
 
 /// <summary>A track's row in the lanes area. The header list and the canvas both lay out from these, so they always line up.</summary>
 public sealed record TimelineRow(int TrackIndex, TrackRowViewModel Track, double Top, double Height)
@@ -182,7 +182,8 @@ public sealed partial class TimelineEditorViewModel
         EnsureIndex();
         if (_levels.TryGetValue(track, out var levels)) return levels;
         var patched = _session.Patch.Fixtures.ToDictionary(f => f.Id);
-        return _levels[track] = TrackLevels.ResolveAll(track, target => TimelineCompiler.FunctionOf(target, patched));
+        return _levels[track] = TrackLevels.ResolveAll(track, target => TimelineCompiler.FunctionOf(target, patched),
+                                                       target => TimelineCompiler.TiltOf(target, patched));
     }
 
     TimelineTrack? TrackOf(LightingClip clip) => SelectedTimeline?.Tracks.FirstOrDefault(t => t.Events.Contains(clip));
@@ -231,7 +232,7 @@ public sealed partial class TimelineEditorViewModel
     /// </summary>
     public CurvePoint? AddHandle(LightingClip clip, LaneTarget target, TimeSpan time)
     {
-        if (clip.Locked || clip.Effect is not null) return null;   // an effect's envelopes are made from its settings
+        if (clip.Locked || clip.IsGenerated) return null;   // an effect's or move's envelopes are made from its settings
         var at = SnapTime(time) - clip.Start;
         if (at <= TimeSpan.Zero || at >= clip.Length) at = time - clip.Start;   // the grid would put it on an edge
         if (at <= TimeSpan.Zero || at >= clip.Length) return null;
@@ -300,6 +301,7 @@ public sealed partial class TimelineEditorViewModel
     public static IReadOnlyList<EffectChoice> EffectChoices { get; } =
     [
         new(LightingClip.DefaultName, "Handles you set yourself", null, new LightingClip().Length),
+        new(LightingClip.TiltName, "Moving heads tilt from one angle to another over the clip", null, LightingClip.DefaultLength, IsTilt: true),
         .. EffectInfo.All.Select(info => new EffectChoice(info.Name, info.Description, info.Kind, info.DefaultLength)),
     ];
 
@@ -307,6 +309,7 @@ public sealed partial class TimelineEditorViewModel
     public void DropEffect(EffectChoice choice, TrackRowViewModel row, TimeSpan time)
     {
         if (choice.Kind is { } kind) AddEffectAt(row, time, kind);
+        else if (choice.IsTilt) AddTiltAt(row, time);
         else AddClipAt(row, time);
     }
 
@@ -344,6 +347,51 @@ public sealed partial class TimelineEditorViewModel
             at = end;                         // in the way: after it
         }
         return at;
+    }
+
+    // ---- tilt moves (moving heads) ----
+
+    /// <summary>
+    /// A tilt clip at a time: the track's moving heads sweep from -45° to +45° over it, to change in its properties. A
+    /// track without a tilt channel gets it too, with a notice: it moves nothing until one is added.
+    /// </summary>
+    public LightingClip? AddTiltAt(TrackRowViewModel row, TimeSpan time)
+    {
+        if (!row.IsLighting) return null;
+        if (row.Track.Channels.Count == 0)
+        {
+            EditChannels(row);
+            return null;
+        }
+        var clip = new LightingClip { Name = LightingClip.TiltName, Start = time, Tilt = new TiltMove { StartDegrees = -45, EndDegrees = 45 } };
+        Edit("Add tilt move", () => row.Track.Events.Add(clip), roots: Only(row.Track));
+        if (TiltLimitOf(clip) is null) Notice?.Invoke($"{row.Name} has no moving head's tilt channel: add one (Channels…) for the move to tilt it.");
+        _selectedPoints.Clear();
+        _selection.Clear();
+        _selection.Add(clip.Id);
+        SelectionChanged();
+        return clip;
+    }
+
+    /// <summary>Changes a tilt clip's move (one undoable edit; dragging or typing in one field merges).</summary>
+    public void ChangeTilt(LightingClip clip, string description, Action<TiltMove> change, string field)
+    {
+        if (clip.Tilt is not { } current || clip.Locked) return;
+        var changed = current.Clone();
+        change(changed);
+        if ((changed.StartDegrees, changed.EndDegrees) == (current.StartDegrees, current.EndDegrees)) return;
+        Edit(description, () => clip.Tilt = changed, (clip.Id, "tilt:" + field), Only(clip));
+    }
+
+    /// <summary>
+    /// How far a tilt clip's moving heads tilt each way from straight ahead (half the widest travel among its track's
+    /// tilt channels: ±115° for a 230° bar); null if its track has no tilt channel.
+    /// </summary>
+    public double? TiltLimitOf(LightingClip clip)
+    {
+        if (TrackOf(clip) is not { } track) return null;
+        var tilts = LevelsOf(track).Select(l => l.Tilt).OfType<TiltChannel>().Where(t => !t.IsFine).ToList();
+        return tilts.Count == 0 ? null : tilts.Max(t => t.Range) / 2;
     }
 
     TrackRowViewModel? EffectsTrack() => SelectedTrack is { IsLighting: true } selected ? selected : Tracks.FirstOrDefault(t => t.IsLighting);
@@ -541,7 +589,7 @@ public sealed partial class TimelineEditorViewModel
     {
         var candidates = _selection.Count > 0 ? SelectedEvents() : SelectedTrack?.Track.Events ?? [];
         // Effects are made whole (a split would make two different effects): convert one first to split it.
-        var splits = candidates.Where(e => !e.Locked && e is LightingClip { Effect: null } or AudioEvent && e.Start < at && at < e.Start + LengthOf(e))
+        var splits = candidates.Where(e => !e.Locked && e is LightingClip { IsGenerated: false } or AudioEvent && e.Start < at && at < e.Start + LengthOf(e))
                                .Select(e => (Track: TrackContaining(e)!, Event: e)).ToList();
         if (splits.Count == 0) return;
         var added = new List<TimelineEvent>();

@@ -12,7 +12,7 @@
     {
       "name": "5 channel",
       "channels": [
-        { "name": "Tilt", "function": "Tilt", "defaultValue": 128 },
+        { "name": "Tilt", "function": "Tilt", "defaultValue": 128, "rangeDegrees": 230 },
         { "name": "Red", "function": "Red" },
         { "name": "Green", "function": "Green" },
         { "name": "Blue", "function": "Blue" },
@@ -22,7 +22,7 @@
     {
       "name": "7 channel",
       "channels": [
-        { "name": "Tilt", "function": "Tilt", "defaultValue": 128 },
+        { "name": "Tilt", "function": "Tilt", "defaultValue": 128, "rangeDegrees": 230 },
         { "name": "Total dimming", "function": "Intensity" },
         { "name": "Strobe", "function": "Strobe" },
         { "name": "Red", "function": "Red" },
@@ -34,8 +34,8 @@
     {
       "name": "14 channel",
       "channels": [
-        { "name": "Tilt", "function": "Tilt", "defaultValue": 128 },
-        { "name": "Tilt fine" },
+        { "name": "Tilt", "function": "Tilt", "defaultValue": 128, "rangeDegrees": 230 },
+        { "name": "Tilt fine", "function": "TiltFine", "rangeDegrees": 230 },
         { "name": "Total dimming", "function": "Intensity" },
         { "name": "Strobe", "function": "Strobe" },
         { "name": "Red", "function": "Red" },
@@ -53,8 +53,8 @@
     {
       "name": "18 channel",
       "channels": [
-        { "name": "Tilt", "function": "Tilt", "defaultValue": 128 },
-        { "name": "Tilt fine" },
+        { "name": "Tilt", "function": "Tilt", "defaultValue": 128, "rangeDegrees": 230 },
+        { "name": "Tilt fine", "function": "TiltFine", "rangeDegrees": 230 },
         { "name": "Total dimming", "function": "Intensity" },
         { "name": "Strobe", "function": "Strobe" },
         { "name": "Module 1 color", "function": "Effect" },
@@ -76,8 +76,8 @@
     {
       "name": "42 channel",
       "channels": [
-        { "name": "Tilt", "function": "Tilt", "defaultValue": 128 },
-        { "name": "Tilt fine" },
+        { "name": "Tilt", "function": "Tilt", "defaultValue": 128, "rangeDegrees": 230 },
+        { "name": "Tilt fine", "function": "TiltFine", "rangeDegrees": 230 },
         { "name": "Red 1", "function": "Red" },
         { "name": "Green 1", "function": "Green" },
         { "name": "Blue 1", "function": "Blue" },
@@ -123,8 +123,8 @@
     {
       "name": "54 channel",
       "channels": [
-        { "name": "Tilt", "function": "Tilt", "defaultValue": 128 },
-        { "name": "Tilt fine" },
+        { "name": "Tilt", "function": "Tilt", "defaultValue": 128, "rangeDegrees": 230 },
+        { "name": "Tilt fine", "function": "TiltFine", "rangeDegrees": 230 },
         { "name": "Total dimming", "function": "Intensity" },
         { "name": "Strobe", "function": "Strobe" },
         { "name": "Red", "function": "Red" },

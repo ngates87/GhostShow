@@ -38,6 +38,9 @@ sealed class TimelineRig : IDisposable
         ],
     };
 
+    /// <summary>A real moving head: the SHEHDS beam bar (tilts 0-230°, 16-bit in its 14-channel mode).</summary>
+    public static readonly FixtureProfile BeamBar = Core.Storage.FixtureProfileLoader.LoadBuiltIn().Single(p => p.Id == "shehds/led-beam-bar-10x40w-rgbw");
+
     public static readonly FixtureProfile MoverProfile = new()
     {
         Id = "test/acme/mover", Manufacturer = "Acme", Model = "Mover", Type = "Moving Head",
@@ -61,7 +64,7 @@ sealed class TimelineRig : IDisposable
 
     public TimelineRig()
     {
-        Session = new ShowSession(new ShowEngine(), new FixtureProfileLibrary([TestRig.Par, TestRig.Dimmer, RgbProfile, MoverProfile]), NullLogger<ShowSession>.Instance);
+        Session = new ShowSession(new ShowEngine(), new FixtureProfileLibrary([TestRig.Par, TestRig.Dimmer, RgbProfile, MoverProfile, BeamBar]), NullLogger<ShowSession>.Instance);
         Par = new FixtureInstance { Name = "Par 1", ProfileId = TestRig.Par.Id, ModeName = "5ch", StartAddress = 10 };
         Rgb = new FixtureInstance { Name = "Entry LED", ProfileId = RgbProfile.Id, ModeName = "4ch", StartAddress = 20 };
         Session.Project.Fixtures.AddRange([Par, Rgb]);
@@ -724,8 +727,43 @@ public class TimelineEditorTests : IDisposable
         Assert.Equal(S(2), _rig.LightingTrack.Events.Single(e => e.Name == "Strobe").Start);      // fits, just
 
         _rig.Playback.Seek(S(20));
-        Editor.AddChoiceCommand.Execute(TimelineEditorViewModel.EffectChoices.Single(c => c.Kind is null));
+        Editor.AddChoiceCommand.Execute(TimelineEditorViewModel.EffectChoices.Single(c => c.Kind is null && !c.IsTilt));
         Assert.Contains(_rig.LightingTrack.Events, e => e is LightingClip { Effect: null } && e.Start == S(20));   // free: at the playhead
+    }
+
+    [Fact]
+    public void A_tilt_clip_moves_the_track_s_moving_heads_from_one_angle_to_another_undoably()
+    {
+        var bar = new FixtureInstance { Name = "Beam bar", ProfileId = TimelineRig.BeamBar.Id, ModeName = "14 channel", StartAddress = 100 };
+        _rig.Session.Project.Fixtures.Add(bar);
+        _rig.Session.Apply();
+        var lighting = _rig.Track(TrackKind.Lighting);
+        Editor.SetTrackChannels(lighting.Track, [LaneTarget.FixtureChannel(bar.Id, 1), LaneTarget.FixtureChannel(bar.Id, 2)]);
+        Editor.SelectedTrack = lighting;
+
+        Editor.AddChoiceCommand.Execute(TimelineEditorViewModel.EffectChoices.Single(c => c.IsTilt));
+
+        var clip = Clip();
+        Assert.Equal(("Tilt", -45.0, 45.0), (clip.Name, clip.Tilt!.StartDegrees, clip.Tilt.EndDegrees));
+        var properties = Editor.Properties!;
+        Assert.Equal(("Tilt move", true, false, 115.0, true), (properties.Kind, properties.IsTilt, properties.IsLevelControl, properties.TiltLimit, properties.HasTiltChannel));
+
+        properties.NudgeCommand.Execute("1");   // the end, picked to start with
+        Assert.Equal(46, clip.Tilt!.EndDegrees);
+        properties.SelectedDegrees = 200;       // as far as it tilts
+        Assert.Equal(115, clip.Tilt.EndDegrees);
+        properties.SwapTiltCommand.Execute(null);
+        Assert.Equal((115.0, -45.0), (clip.Tilt.StartDegrees, clip.Tilt.EndDegrees));
+
+        // Drawn as it plays: the coarse tilt from -45° down to where it ends.
+        var tilt = new TiltChannel(230, false, true);
+        var handles = Editor.LevelsOf(lighting.Track)[0].Find(clip)!.Handles;
+        Assert.Equal((tilt.ValueAt(115), tilt.ValueAt(-45)), (handles[0].Value, handles[^1].Value));
+        Assert.Null(Editor.AddHandle(clip, lighting.Track.Channels[0].Target, S(1)));   // a move's handles are made from its angles
+
+        Editor.UndoCommand.Execute(null);   // the swap
+        Editor.UndoCommand.Execute(null);   // the end angle (the nudge and the typing were one edit)
+        Assert.Equal((-45.0, 45.0), (clip.Tilt!.StartDegrees, clip.Tilt.EndDegrees));
     }
 
     [Fact]
