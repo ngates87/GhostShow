@@ -187,6 +187,71 @@
       <Setter Property="Theme" Value="{StaticResource CompactSpinner}" />
     </Style>
 
+    <!-- Tool windows, as in Visual Studio: a slim title bar naming the open tab (its buttons on the right), the content,
+         then the tabs along the bottom edge, the open one boxed onto the panel. Used by the Buttons panel and the
+         timeline's workspace. The panel itself has no padding: the bars run edge to edge. -->
+    <Style Selector="TextBlock.toolTitle">
+      <Setter Property="FontSize" Value="13" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="Opacity" Value="0.9" />
+    </Style>
+    <Style Selector="Button.toolButton">
+      <Setter Property="Padding" Value="6,1" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="MinWidth" Value="0" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Border.toolTabs">
+      <Setter Property="Background" Value="#1C1C1C" />
+      <Setter Property="BorderBrush" Value="#3A3A3A" />
+      <Setter Property="BorderThickness" Value="0,1,0,0" />
+      <Setter Property="Padding" Value="6,0,6,4" />
+    </Style>
+    <Style Selector="Button.toolTab">
+      <Setter Property="Padding" Value="12,4" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="CornerRadius" Value="0,0,3,3" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="1,0,1,1" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="Opacity" Value="0.8" />
+      <Setter Property="Margin" Value="0,-1,0,0" />
+    </Style>
+    <Style Selector="Button.toolTab.selected">
+      <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}" />
+      <Setter Property="BorderBrush" Value="#555555" />
+      <Setter Property="Opacity" Value="1" />
+    </Style>
+    <Style Selector="ListBox.toolTabs">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Padding" Value="0" />
+    </Style>
+    <Style Selector="ListBox.toolTabs > ListBoxItem">
+      <Setter Property="Padding" Value="12,4" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="Margin" Value="0,-1,0,0" />
+      <Setter Property="Opacity" Value="0.8" />
+    </Style>
+    <Style Selector="ListBox.toolTabs > ListBoxItem /template/ ContentPresenter">
+      <Setter Property="CornerRadius" Value="0,0,3,3" />
+      <Setter Property="BorderThickness" Value="1,0,1,1" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+    </Style>
+    <Style Selector="ListBox.toolTabs > ListBoxItem:selected">
+      <Setter Property="Opacity" Value="1" />
+    </Style>
+    <Style Selector="ListBox.toolTabs > ListBoxItem:selected /template/ ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}" />
+      <Setter Property="BorderBrush" Value="#555555" />
+    </Style>
+    <Style Selector="ListBox.toolTabs > ListBoxItem:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#2A2A2A" />
+    </Style>
+    <Style Selector="ListBox.toolTabs > ListBoxItem:selected:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}" />
+    </Style>
+
     <!-- Help that would otherwise be a paragraph on screen: an ⓘ by a heading, or a short "info line", with the whole
          text in a tooltip that comes up quickly. -->
     <Style Selector="PathIcon.info">

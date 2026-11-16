@@ -839,14 +839,16 @@
     <controls:VerticalPanelGrip Grid.Row="1" PanelHeight="{Binding $parent[views:TimelineView].BottomWorkspace.PanelHeight}"
                                 IsVisible="{Binding $parent[views:TimelineView].BottomWorkspace.IsOpen}" MinPanelHeight="100" MaxPanelHeight="520" KeepRoom="220"
                                 DefaultPanelHeight="{x:Static vm:BottomWorkspaceViewModel.UsualHeight}" />
-    <Border x:Name="Workspace" Grid.Row="2" Classes="card" Padding="6,4,6,6" Margin="0"
+    <!-- A tool window, as in Visual Studio: a title bar naming the open view, the view, and the views' tabs along the
+         bottom. Folded, only its tabs show (a tab clicked opens it). -->
+    <Border x:Name="Workspace" Grid.Row="2" Classes="card" Padding="0" Margin="0,6,0,0" ClipToBounds="True"
             Height="{Binding $parent[views:TimelineView].BottomWorkspace.ActualHeight}"
             DataContext="{Binding $parent[views:TimelineView].BottomWorkspace}">
       <DockPanel>
-        <DockPanel DockPanel.Dock="Top">
-          <Button DockPanel.Dock="Right" Classes="bottomPaneClose" Content="{Binding ToggleLabel}" Command="{Binding ToggleOpenCommand}"
-                  ToolTip.Tip="Fold the workspace to its tabs, or open it" />
-          <Button DockPanel.Dock="Right" Classes="bottomPaneClose" Content="+" ToolTip.Tip="Add a view">
+        <DockPanel DockPanel.Dock="Top" Margin="10,4,6,4" IsVisible="{Binding IsOpen}">
+          <Button DockPanel.Dock="Right" Classes="toolButton" Content="{Binding ToggleLabel}" Command="{Binding ToggleOpenCommand}"
+                  ToolTip.Tip="Fold the workspace to its tabs" />
+          <Button DockPanel.Dock="Right" Classes="toolButton" Content="+" ToolTip.Tip="Add a view">
             <Button.Flyout>
               <MenuFlyout>
                 <MenuItem Header="Input monitor" Command="{Binding AddPaneCommand}" CommandParameter="{x:Static vm:BottomPaneKind.InputMonitor}" IsVisible="{Binding HasInputMonitor}" />
@@ -858,25 +860,32 @@
               </MenuFlyout>
             </Button.Flyout>
           </Button>
-          <ListBox x:Name="WorkspaceTabs" Classes="tabs" ItemsSource="{Binding Panes}" SelectedItem="{Binding SelectedPane}" Background="Transparent"
-                   ScrollViewer.HorizontalScrollBarVisibility="Auto" ScrollViewer.VerticalScrollBarVisibility="Disabled">
-            <ListBox.ItemsPanel>
-              <ItemsPanelTemplate>
-                <StackPanel Orientation="Horizontal" Spacing="2" />
-              </ItemsPanelTemplate>
-            </ListBox.ItemsPanel>
-            <ListBox.ItemTemplate>
-              <DataTemplate x:DataType="vm:BottomPaneViewModel">
+          <TextBlock Classes="toolTitle" Text="{Binding SelectedPane.Title, TargetNullValue=Views, FallbackValue=Views}" />
+        </DockPanel>
+        <Border DockPanel.Dock="Bottom" Classes="toolTabs">
+          <DockPanel>
+            <Button DockPanel.Dock="Right" Classes="toolButton" Content="{Binding ToggleLabel}" Command="{Binding ToggleOpenCommand}"
+                    IsVisible="{Binding !IsOpen}" ToolTip.Tip="Open the workspace" />
+            <ListBox x:Name="WorkspaceTabs" Classes="toolTabs" ItemsSource="{Binding Panes}" SelectedItem="{Binding SelectedPane}"
+                     ScrollViewer.HorizontalScrollBarVisibility="Auto" ScrollViewer.VerticalScrollBarVisibility="Disabled">
+              <ListBox.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <StackPanel Orientation="Horizontal" />
+                </ItemsPanelTemplate>
+              </ListBox.ItemsPanel>
+              <ListBox.ItemTemplate>
+                <DataTemplate x:DataType="vm:BottomPaneViewModel">
                 <StackPanel Orientation="Horizontal" Spacing="6">
                   <TextBlock Text="{Binding Title}" VerticalAlignment="Center" />
                   <Button Classes="bottomPaneClose" Content="×" IsVisible="{Binding CanClose}" ToolTip.Tip="Close this view"
                           Command="{Binding $parent[ListBox].((vm:BottomWorkspaceViewModel)DataContext).ClosePaneCommand}" CommandParameter="{Binding}" />
                 </StackPanel>
-              </DataTemplate>
-            </ListBox.ItemTemplate>
-          </ListBox>
-        </DockPanel>
-        <Panel IsVisible="{Binding IsOpen}" Margin="0,6,0,0">
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+          </DockPanel>
+        </Border>
+        <Panel IsVisible="{Binding IsOpen}" Margin="8,2,8,8">
           <TextBlock Text="No views open: + adds one (the input monitor, fixture sliders, the DMX monitor, …)." Opacity="0.6"
                      HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding IsEmpty}" />
           <ContentControl Content="{Binding SelectedPane}" />

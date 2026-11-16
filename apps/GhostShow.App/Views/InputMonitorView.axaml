@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:GhostShow.App.ViewModels"
+             xmlns:views="using:GhostShow.App.Views"
              x:Class="GhostShow.App.Views.InputMonitorView"
              x:DataType="vm:InputMonitorViewModel">
   <!-- Inputs → Input monitor: every input event and what it did; an input's Monitor button shows only its own. -->
@@ -12,7 +13,8 @@
       </StackPanel>
       <StackPanel Spacing="2">
         <StackPanel Orientation="Horizontal" Spacing="12">
-          <StackPanel Orientation="Horizontal" Spacing="6">
+          <!-- In the timeline's workspace its tab and title bar say what it is. -->
+          <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding !$parent[views:InputMonitorView].IsTimelinePanel}">
             <TextBlock Text="Input monitor" Classes="heading" />
             <PathIcon Classes="info" ToolTip.Tip="Every input as it arrives, and what it did. It keeps listening on every screen, so trip a sensor in the room and look here after. Shortcuts (Ctrl+…) and letters typed into a field aren't inputs." />
           </StackPanel>

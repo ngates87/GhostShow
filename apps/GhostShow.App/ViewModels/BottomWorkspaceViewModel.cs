@@ -51,7 +51,8 @@ public sealed partial class BottomWorkspaceViewModel : ObservableObject
 
     /// <summary>The height a view of faders needs to show them whole (they shrink only so far: see ChannelsView).</summary>
     public const double FaderHeight = 320;
-    public const double HeaderHeight = 36;
+    /// <summary>Its height folded: only its tabs.</summary>
+    public const double HeaderHeight = 32;
 
     readonly PlaybackViewModel _playback;
     readonly InputMonitorViewModel? _inputMonitor;

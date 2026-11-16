@@ -46,15 +46,6 @@
       <Setter Property="Foreground" Value="#FFD54F" />
       <Setter Property="Background" Value="Transparent" />
     </Style>
-    <Style Selector="Button.panelTab">
-      <Setter Property="Padding" Value="10,3" />
-      <Setter Property="MinHeight" Value="0" />
-      <Setter Property="Background" Value="Transparent" />
-    </Style>
-    <Style Selector="Button.panelTab.selected">
-      <Setter Property="Background" Value="#2D4A66" />
-      <Setter Property="FontWeight" Value="SemiBold" />
-    </Style>
     <Style Selector="Border.count">
       <Setter Property="Background" Value="#4CAF50" />
       <Setter Property="CornerRadius" Value="8" />
@@ -85,30 +76,37 @@
       </LayoutTransformControl>
     </Button>
 
-    <Border Classes="card" Width="{Binding PanelWidth}" Margin="8,0,0,0" Padding="8" IsVisible="{Binding IsOpen}">
+    <!-- A tool window, as in Visual Studio: title bar, content, and its tabs (Buttons | Playing) along the bottom. -->
+    <Border Classes="card" Width="{Binding PanelWidth}" Margin="8,0,0,0" Padding="0" ClipToBounds="True" IsVisible="{Binding IsOpen}">
       <DockPanel>
-        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
-          <Button DockPanel.Dock="Right" Classes="small" Content="»" Command="{Binding ToggleOpenCommand}" Margin="4,0,0,0" ToolTip.Tip="Fold the buttons away" />
-          <Button DockPanel.Dock="Right" Classes="small" Content="+" Command="{Binding AddCommand}" Margin="4,0,0,0" ToolTip.Tip="Add a button"
+        <DockPanel DockPanel.Dock="Top" Margin="10,6,6,6">
+          <Button DockPanel.Dock="Right" Classes="toolButton" Content="»" Command="{Binding ToggleOpenCommand}" Margin="4,0,0,0" ToolTip.Tip="Fold the buttons away" />
+          <Button DockPanel.Dock="Right" Classes="toolButton" Content="+" Command="{Binding AddCommand}" Margin="4,0,0,0" ToolTip.Tip="Add a button"
                   IsVisible="{Binding !IsPlayingTab}" />
           <ToggleButton DockPanel.Dock="Right" Classes="small" Content="{Binding EditLabel}" IsChecked="{Binding IsEditing}" Padding="8,1" MinHeight="0"
                         IsVisible="{Binding !IsPlayingTab}"
                         ToolTip.Tip="Edit mode (or right-click a button): click a button to change its name, colour, triggers and actions (instead of pressing it). Done, or Esc, finishes." />
-          <!-- Two tabs: the buttons, and what's playing (with the height it needs for a long list). -->
-          <StackPanel Orientation="Horizontal" Spacing="2">
-            <Button x:Name="ButtonsTab" Classes="panelTab" Classes.selected="{Binding !IsPlayingTab}" Content="Buttons" Command="{Binding ShowButtonsTabCommand}" />
-            <Button x:Name="PlayingTab" Classes="panelTab" Classes.selected="{Binding IsPlayingTab}" Command="{Binding ShowPlayingTabCommand}"
+          <Panel>
+            <TextBlock Classes="toolTitle" Text="Buttons" IsVisible="{Binding !IsPlayingTab}" />
+            <TextBlock Classes="toolTitle" Text="Playing" IsVisible="{Binding IsPlayingTab}" />
+          </Panel>
+        </DockPanel>
+        <!-- Its tabs: the buttons, and what's playing (with the height a long list needs). -->
+        <Border DockPanel.Dock="Bottom" Classes="toolTabs">
+          <StackPanel Orientation="Horizontal">
+            <Button x:Name="ButtonsTab" Classes="toolTab" Classes.selected="{Binding !IsPlayingTab}" Content="Buttons" Command="{Binding ShowButtonsTabCommand}" />
+            <Button x:Name="PlayingTab" Classes="toolTab" Classes.selected="{Binding IsPlayingTab}" Command="{Binding ShowPlayingTabCommand}"
                     ToolTip.Tip="The timelines playing now, each copy, with how it was run; stop one, or all">
               <StackPanel Orientation="Horizontal" Spacing="5">
-                <TextBlock Text="Playing" />
+                <TextBlock Text="Playing" VerticalAlignment="Center" />
                 <Border Classes="count" IsVisible="{Binding !!Playback.Running.Count}">
                   <TextBlock Text="{Binding Playback.Running.Count}" />
                 </Border>
               </StackPanel>
             </Button>
           </StackPanel>
-        </DockPanel>
-        <Panel>
+        </Border>
+        <Panel Margin="8,0,8,8">
         <views:PlayingListView DataContext="{Binding Playback}" IsVisible="{Binding $parent[UserControl].((vm:ButtonsViewModel)DataContext).IsPlayingTab}" />
         <DockPanel IsVisible="{Binding !IsPlayingTab}">
         <!-- Arming: on when a show opens; off while working on it. Red when off, so it isn't forgotten. -->
