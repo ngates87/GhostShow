@@ -47,15 +47,6 @@
         <Transitions />
       </Setter>
     </Style>
-    <Style Selector="Button.inspectorTab">
-      <Setter Property="Padding" Value="12,4" />
-      <Setter Property="MinHeight" Value="0" />
-      <Setter Property="Background" Value="Transparent" />
-    </Style>
-    <Style Selector="Button.inspectorTab.selected">
-      <Setter Property="Background" Value="#2D4A66" />
-      <Setter Property="FontWeight" Value="SemiBold" />
-    </Style>
     <Style Selector="Button.bottomPaneClose">
       <Setter Property="Padding" Value="4,0" />
       <Setter Property="MinWidth" Value="0" />
@@ -201,21 +192,26 @@
 
       <Border Classes="slideOut" Classes.resizing="{Binding #InspectorGrip.IsDragging}" Width="{Binding InspectorSlideWidth}" HorizontalAlignment="Right">
         <!-- Not enabled while closed, so Tab can't land on a control that's out of sight. -->
-        <Border x:Name="InspectorPanel" Classes="card" Width="{Binding InspectorWidth}" Margin="8,0,0,0" Padding="8" HorizontalAlignment="Left"
+        <!-- A tool window, as in Visual Studio: title bar, content, and its tabs (the selection | Timeline) along the bottom. -->
+        <Border x:Name="InspectorPanel" Classes="card" Width="{Binding InspectorWidth}" Margin="8,0,0,0" Padding="0" ClipToBounds="True" HorizontalAlignment="Left"
                 IsEnabled="{Binding IsInspectorOpen}">
           <DockPanel>
-            <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
-              <Button DockPanel.Dock="Right" Content="»" Padding="6,1" MinHeight="0" Command="{Binding ToggleInspectorCommand}"
+            <DockPanel DockPanel.Dock="Top" Margin="10,6,6,6">
+              <Button DockPanel.Dock="Right" Classes="toolButton" Content="»" Command="{Binding ToggleInspectorCommand}"
                       ToolTip.Tip="Fold the inspector away" />
-              <StackPanel Orientation="Horizontal" Spacing="2">
-                <Button x:Name="SelectionTab" Classes="inspectorTab" Classes.selected="{Binding !IsTimelineTab}" Content="{Binding SelectionTabLabel}"
-                        Command="{Binding ShowSelectionTabCommand}" IsEnabled="{Binding !ShowPropertiesHint}" ToolTip.Tip="What's selected" />
-                <Button x:Name="TimelineTab" Classes="inspectorTab" Classes.selected="{Binding IsTimelineTab}" Content="Timeline"
+              <TextBlock x:Name="InspectorTitle" Classes="toolTitle" Text="{Binding InspectorTitle}" TextTrimming="CharacterEllipsis" />
+            </DockPanel>
+            <Border DockPanel.Dock="Bottom" Classes="toolTabs">
+              <StackPanel Orientation="Horizontal">
+                <Button x:Name="SelectionTab" Classes="toolTab" Classes.selected="{Binding !IsTimelineTab}" Content="{Binding SelectionTabLabel}"
+                        Command="{Binding ShowSelectionTabCommand}" IsEnabled="{Binding !ShowPropertiesHint}" MaxWidth="180"
+                        ToolTip.Tip="What's selected: a clip, a handle, or the highlighted track" />
+                <Button x:Name="TimelineTab" Classes="toolTab" Classes.selected="{Binding IsTimelineTab}" Content="Timeline"
                         Command="{Binding ShowTimelineTabCommand}"
                         ToolTip.Tip="The open timeline: its length, looping, how it plays alongside others, and its triggers" />
               </StackPanel>
-            </DockPanel>
-            <Panel>
+            </Border>
+            <Panel Margin="8,0,8,8">
               <!-- The selection: the channel picker while it's open, else the selected handle, event or track -->
               <ScrollViewer IsVisible="{Binding !IsTimelineTab}">
                 <Panel>

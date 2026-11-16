@@ -258,6 +258,7 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
             if (e.PropertyName != nameof(ShowPropertiesHint)) return;
             IsTimelineTab = ShowPropertiesHint;
             OnPropertyChanged(nameof(SelectionTabLabel));
+            OnPropertyChanged(nameof(InspectorTitle));
             OnPropertyChanged(nameof(InspectorSummary));
         };
         _history.HistoryChanged += () =>
@@ -437,6 +438,7 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
 
     /// <summary>The inspector shows the timeline's properties, not the selection's. Selecting something shows that.</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(InspectorTitle))]
     public partial bool IsTimelineTab { get; set; } = true;
 
     [RelayCommand]
@@ -448,12 +450,18 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
         if (!ShowPropertiesHint) IsTimelineTab = false;
     }
 
-    /// <summary>The selection tab's name: what's being inspected ("Clip", "Track", "Handle", "Channels"), or "Selection" with nothing.</summary>
+    /// <summary>
+    /// The selection tab's name: what's being inspected, by name ("Lighting 1", "Explosion"), or "Handle", "Channels";
+    /// "Selection" with nothing.
+    /// </summary>
     public string SelectionTabLabel => ChannelPicker is not null ? "Channels"
                                      : PointProperties is not null ? "Handle"
-                                     : Properties is not null ? (Properties.IsEffect || Properties.IsLevelControl || Properties.IsAudio ? "Clip" : "Event")
-                                     : TrackProperties is not null ? "Track"
+                                     : Properties is not null ? Properties.Event.Name is { Length: > 0 } name ? name : Properties.Kind
+                                     : TrackProperties is not null ? TrackProperties.Row.Name
                                      : "Selection";
+
+    /// <summary>The inspector's title bar: its open tab's name, as a Visual Studio tool window's.</summary>
+    public string InspectorTitle => IsTimelineTab ? "Timeline" : SelectionTabLabel;
 
     /// <summary>On the folded inspector's strip: what's selected, or how the timeline plays.</summary>
     public string InspectorSummary => ShowPropertiesHint ? $"Timeline: {PlaybackSummary}" : SelectionLabel;
@@ -1084,6 +1092,7 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
             Properties = single is null ? null : new EventPropertiesViewModel(single, _session, _pickAudioFile, _playback, ResizeEvent, this);
         else
             Properties?.Refresh();
+        ShowSelectedTrack();   // nothing picked: the highlighted track's properties
     }
 
     // True while the track rows are being replaced. The list is empty for a moment then, and the track list on screen

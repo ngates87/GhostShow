@@ -1280,7 +1280,7 @@ public class UiTests
         // Selecting a track shows it; the Timeline tab is a click away, and the selection tab brings it back.
         rig.Editor.EditTrackProperties(rig.Editor.Tracks.First(t => t.IsAudio));
         WindowRig.Pump();
-        Assert.Equal((false, "Track", true), (rig.Editor.IsTimelineTab, selectionTab.Content as string, selectionTab.IsEnabled));
+        Assert.Equal((false, "Audio", true), (rig.Editor.IsTimelineTab, selectionTab.Content as string, selectionTab.IsEnabled));
         rig.Click(rig.CenterOf(rig.Find<Button>(b => b.Name == "TimelineTab")));
         Assert.True(rig.Editor.IsTimelineTab);
         rig.Click(rig.CenterOf(selectionTab));
@@ -1452,6 +1452,8 @@ public class UiTests
         Assert.Same(audio, rig.Editor.TrackProperties?.Row);
 
         // Another timeline: its highlighted track's, and the timeline properties are that timeline's and say so.
+        rig.Editor.ShowTimelineTabCommand.Execute(null);
+        WindowRig.Pump();
         var name = rig.Find<TextBlock>(t => t.Name == "TimelinePropertiesName");
         rig.Editor.OpenTimeline(other);
         WindowRig.Pump();
@@ -1464,10 +1466,16 @@ public class UiTests
         Assert.Equal((main.Name, 0m), (name.Text, rig.Editor.Priority));
         Assert.Contains(rig.Editor.TrackProperties!.Track, main.Tracks);
 
-        // Closed, they stay closed.
+        // The inspector is context aware: closing shows the Timeline tab; another track highlighted shows its own, and
+        // its tab and title say which.
+        var shown = rig.Editor.TrackProperties.Row;
         rig.Editor.TrackProperties.CloseCommand.Execute(null);
-        ClickName(rig.Editor.Tracks.First(t => t.IsLighting));
-        Assert.Null(rig.Editor.TrackProperties);
+        Assert.True(rig.Editor.IsTimelineTab);
+        var lightingRow = rig.Editor.Tracks.First(t => t != shown);
+        ClickName(lightingRow);
+        Assert.Same(lightingRow, rig.Editor.TrackProperties?.Row);
+        Assert.False(rig.Editor.IsTimelineTab);
+        Assert.Equal((lightingRow.Name, lightingRow.Name), (rig.Editor.SelectionTabLabel, rig.Find<TextBlock>(t => t.Name == "InspectorTitle").Text));
 
         // The channel picker holds choices for its own track, so another track closes it.
         rig.Editor.EditChannels(rig.Editor.Tracks.First(t => t.IsLighting));

@@ -744,7 +744,8 @@ public sealed partial class TimelineEditorViewModel
         TrackProperties = NewTrackProperties(row);
     }
 
-    TrackPropertiesViewModel NewTrackProperties(TrackRowViewModel row) => new(row, this, () => TrackProperties = null);
+    /// <summary>A track's properties; closing them shows the Timeline tab (the selection tab keeps the track, a click away).</summary>
+    TrackPropertiesViewModel NewTrackProperties(TrackRowViewModel row) => new(row, this, () => IsTimelineTab = true);
 
     /// <summary>
     /// The panel goes with the highlighted track: while a track's properties are open, highlighting another track, or
@@ -753,9 +754,24 @@ public sealed partial class TimelineEditorViewModel
     /// </summary>
     void PanelsFollowSelectedTrack()
     {
-        if (TrackProperties is not null && TrackProperties.Row != SelectedTrack)
-            TrackProperties = SelectedTrack is { } row ? NewTrackProperties(row) : null;
         if (ChannelPicker is not null && ChannelPicker.Track != SelectedTrack?.Track) ChannelPicker = null;
+        ShowSelectedTrack();
+    }
+
+    /// <summary>
+    /// The inspector is context aware: with no clip or handle picked (and the channel picker closed), it shows the
+    /// highlighted track's properties.
+    /// </summary>
+    void ShowSelectedTrack()
+    {
+        if (ChannelPicker is not null || Properties is not null || PointProperties is not null || _selection.Count > 0 || _selectedPoints.Count > 0) return;
+        if (TrackProperties?.Row == SelectedTrack) return;
+        TrackProperties = SelectedTrack is { } row ? NewTrackProperties(row) : null;
+    }
+
+    partial void OnChannelPickerChanged(ChannelPickerViewModel? value)
+    {
+        if (value is null) ShowSelectedTrack();
     }
 
     /// <summary>
