@@ -1,0 +1,1449 @@
+{
+  "$schema": "https://raw.githubusercontent.com/OpenLightingProject/open-fixture-library/master/schemas/fixture.json",
+  "name": "LED Beam Bar 10x40W RGBW",
+  "categories": [
+    "Moving Head",
+    "Pixel Bar",
+    "Color Changer"
+  ],
+  "meta": {
+    "authors": [
+      "TODO: your name"
+    ],
+    "createDate": "2026-11-16",
+    "lastModifyDate": "2026-11-16"
+  },
+  "links": {
+    "manual": [
+      "TODO: a public link to the user manual"
+    ]
+  },
+  "physical": {
+    "dimensions": [
+      1100,
+      900,
+      230
+    ],
+    "weight": 13.6,
+    "power": 500,
+    "bulb": {
+      "type": "LED"
+    },
+    "lens": {
+      "degreesMinMax": [
+        2,
+        2
+      ]
+    }
+  },
+  "matrix": {
+    "pixelKeys": [
+      [
+        [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9",
+          "10"
+        ]
+      ]
+    ]
+  },
+  "availableChannels": {
+    "Tilt": {
+      "fineChannelAliases": [
+        "Tilt fine"
+      ],
+      "defaultValue": "50%",
+      "capability": {
+        "type": "Tilt",
+        "angleStart": "0deg",
+        "angleEnd": "230deg"
+      }
+    },
+    "Dimmer": {
+      "capability": {
+        "type": "Intensity"
+      }
+    },
+    "Strobe": {
+      "capabilities": [
+        {
+          "dmxRange": [
+            0,
+            19
+          ],
+          "type": "ShutterStrobe",
+          "shutterEffect": "Open"
+        },
+        {
+          "dmxRange": [
+            20,
+            255
+          ],
+          "type": "ShutterStrobe",
+          "shutterEffect": "Strobe",
+          "speedStart": "slow",
+          "speedEnd": "fast"
+        }
+      ]
+    },
+    "Red": {
+      "capability": {
+        "type": "ColorIntensity",
+        "color": "Red"
+      }
+    },
+    "Green": {
+      "capability": {
+        "type": "ColorIntensity",
+        "color": "Green"
+      }
+    },
+    "Blue": {
+      "capability": {
+        "type": "ColorIntensity",
+        "color": "Blue"
+      }
+    },
+    "White": {
+      "capability": {
+        "type": "ColorIntensity",
+        "color": "White"
+      }
+    },
+    "Color Macros": {
+      "capabilities": [
+        {
+          "dmxRange": [
+            0,
+            10
+          ],
+          "type": "NoFunction"
+        },
+        {
+          "dmxRange": [
+            11,
+            30
+          ],
+          "type": "ColorPreset",
+          "comment": "Red 100%, green 50-100-50%, blue 0"
+        },
+        {
+          "dmxRange": [
+            31,
+            50
+          ],
+          "type": "ColorPreset",
+          "comment": "Red 100%-0, green 100%, blue 0"
+        },
+        {
+          "dmxRange": [
+            51,
+            70
+          ],
+          "type": "ColorPreset",
+          "comment": "Red 0, green 100%, blue 0-100%"
+        },
+        {
+          "dmxRange": [
+            71,
+            90
+          ],
+          "type": "ColorPreset",
+          "comment": "Red 0, green 100%-0, blue 100%"
+        },
+        {
+          "dmxRange": [
+            91,
+            110
+          ],
+          "type": "ColorPreset",
+          "comment": "Red 0-100%, green 0, blue 100%"
+        },
+        {
+          "dmxRange": [
+            111,
+            130
+          ],
+          "type": "ColorPreset",
+          "comment": "Red 100%, green 0, blue 100%-0"
+        },
+        {
+          "dmxRange": [
+            131,
+            150
+          ],
+          "type": "ColorPreset",
+          "comment": "Red 100%, green 0-100%, blue 0-100%"
+        },
+        {
+          "dmxRange": [
+            151,
+            170
+          ],
+          "type": "ColorPreset",
+          "comment": "Red 100%-0, green 100%-0, blue 100%"
+        },
+        {
+          "dmxRange": [
+            171,
+            200
+          ],
+          "type": "ColorPreset",
+          "comment": "White (red, green and blue 100%)",
+          "colors": [
+            "#ffffff"
+          ]
+        },
+        {
+          "dmxRange": [
+            201,
+            205
+          ],
+          "type": "ColorPreset",
+          "comment": "Macro color 1"
+        },
+        {
+          "dmxRange": [
+            206,
+            210
+          ],
+          "type": "ColorPreset",
+          "comment": "Macro color 2"
+        },
+        {
+          "dmxRange": [
+            211,
+            215
+          ],
+          "type": "ColorPreset",
+          "comment": "Macro color 3"
+        },
+        {
+          "dmxRange": [
+            216,
+            220
+          ],
+          "type": "ColorPreset",
+          "comment": "Macro color 4"
+        },
+        {
+          "dmxRange": [
+            221,
+            225
+          ],
+          "type": "ColorPreset",
+          "comment": "Macro color 5"
+        },
+        {
+          "dmxRange": [
+            226,
+            230
+          ],
+          "type": "ColorPreset",
+          "comment": "Macro color 6"
+        },
+        {
+          "dmxRange": [
+            231,
+            235
+          ],
+          "type": "ColorPreset",
+          "comment": "Macro color 7"
+        },
+        {
+          "dmxRange": [
+            236,
+            240
+          ],
+          "type": "ColorPreset",
+          "comment": "Macro color 8"
+        },
+        {
+          "dmxRange": [
+            241,
+            245
+          ],
+          "type": "ColorPreset",
+          "comment": "Macro color 9"
+        },
+        {
+          "dmxRange": [
+            246,
+            250
+          ],
+          "type": "ColorPreset",
+          "comment": "Macro color 10"
+        },
+        {
+          "dmxRange": [
+            251,
+            255
+          ],
+          "type": "ColorPreset",
+          "comment": "Macro color 11"
+        }
+      ]
+    },
+    "Foreground Dimmer": {
+      "capability": {
+        "type": "Intensity",
+        "comment": "Foreground (the colour and effects above)"
+      }
+    },
+    "Effect Dimmer": {
+      "capability": {
+        "type": "Intensity",
+        "comment": "Effects"
+      }
+    },
+    "Background Color": {
+      "capabilities": [
+        {
+          "dmxRange": [
+            0,
+            10
+          ],
+          "type": "NoFunction"
+        },
+        {
+          "dmxRange": [
+            11,
+            255
+          ],
+          "type": "ColorPreset",
+          "comment": "Background color"
+        }
+      ]
+    },
+    "Background Dimmer": {
+      "capability": {
+        "type": "Intensity",
+        "comment": "Background color"
+      }
+    },
+    "Scenes": {
+      "capabilities": [
+        {
+          "dmxRange": [
+            0,
+            10
+          ],
+          "type": "NoFunction"
+        },
+        {
+          "dmxRange": [
+            11,
+            15
+          ],
+          "type": "Effect",
+          "effectName": "Scene 1"
+        },
+        {
+          "dmxRange": [
+            16,
+            20
+          ],
+          "type": "Effect",
+          "effectName": "Scene 2"
+        },
+        {
+          "dmxRange": [
+            21,
+            25
+          ],
+          "type": "Effect",
+          "effectName": "Scene 3"
+        },
+        {
+          "dmxRange": [
+            26,
+            30
+          ],
+          "type": "Effect",
+          "effectName": "Scene 4"
+        },
+        {
+          "dmxRange": [
+            31,
+            35
+          ],
+          "type": "Effect",
+          "effectName": "Scene 5"
+        },
+        {
+          "dmxRange": [
+            36,
+            40
+          ],
+          "type": "Effect",
+          "effectName": "Scene 6"
+        },
+        {
+          "dmxRange": [
+            41,
+            45
+          ],
+          "type": "Effect",
+          "effectName": "Scene 7"
+        },
+        {
+          "dmxRange": [
+            46,
+            50
+          ],
+          "type": "Effect",
+          "effectName": "Scene 8"
+        },
+        {
+          "dmxRange": [
+            51,
+            55
+          ],
+          "type": "Effect",
+          "effectName": "Scene 9"
+        },
+        {
+          "dmxRange": [
+            56,
+            60
+          ],
+          "type": "Effect",
+          "effectName": "Scene 10"
+        },
+        {
+          "dmxRange": [
+            61,
+            65
+          ],
+          "type": "Effect",
+          "effectName": "Scene 11"
+        },
+        {
+          "dmxRange": [
+            66,
+            70
+          ],
+          "type": "Effect",
+          "effectName": "Scene 12"
+        },
+        {
+          "dmxRange": [
+            71,
+            75
+          ],
+          "type": "Effect",
+          "effectName": "Scene 13"
+        },
+        {
+          "dmxRange": [
+            76,
+            80
+          ],
+          "type": "Effect",
+          "effectName": "Scene 14"
+        },
+        {
+          "dmxRange": [
+            81,
+            85
+          ],
+          "type": "Effect",
+          "effectName": "Scene 15"
+        },
+        {
+          "dmxRange": [
+            86,
+            90
+          ],
+          "type": "Effect",
+          "effectName": "Scene 16"
+        },
+        {
+          "dmxRange": [
+            91,
+            95
+          ],
+          "type": "Effect",
+          "effectName": "Scene 17"
+        },
+        {
+          "dmxRange": [
+            96,
+            100
+          ],
+          "type": "Effect",
+          "effectName": "Scene 18"
+        },
+        {
+          "dmxRange": [
+            101,
+            105
+          ],
+          "type": "Effect",
+          "effectName": "Scene 19"
+        },
+        {
+          "dmxRange": [
+            106,
+            110
+          ],
+          "type": "Effect",
+          "effectName": "Scene 20"
+        },
+        {
+          "dmxRange": [
+            111,
+            115
+          ],
+          "type": "Effect",
+          "effectName": "Scene 21"
+        },
+        {
+          "dmxRange": [
+            116,
+            120
+          ],
+          "type": "Effect",
+          "effectName": "Scene 22"
+        },
+        {
+          "dmxRange": [
+            121,
+            125
+          ],
+          "type": "Effect",
+          "effectName": "Scene 23"
+        },
+        {
+          "dmxRange": [
+            126,
+            130
+          ],
+          "type": "Effect",
+          "effectName": "Scene 24"
+        },
+        {
+          "dmxRange": [
+            131,
+            135
+          ],
+          "type": "Effect",
+          "effectName": "Scene 25"
+        },
+        {
+          "dmxRange": [
+            136,
+            140
+          ],
+          "type": "Effect",
+          "effectName": "Scene 26"
+        },
+        {
+          "dmxRange": [
+            141,
+            145
+          ],
+          "type": "Effect",
+          "effectName": "Scene 27"
+        },
+        {
+          "dmxRange": [
+            146,
+            150
+          ],
+          "type": "Effect",
+          "effectName": "Scene 28"
+        },
+        {
+          "dmxRange": [
+            151,
+            155
+          ],
+          "type": "Effect",
+          "effectName": "Scene 29"
+        },
+        {
+          "dmxRange": [
+            156,
+            160
+          ],
+          "type": "Effect",
+          "effectName": "Scene 30"
+        },
+        {
+          "dmxRange": [
+            161,
+            165
+          ],
+          "type": "Effect",
+          "effectName": "Scene 31"
+        },
+        {
+          "dmxRange": [
+            166,
+            170
+          ],
+          "type": "Effect",
+          "effectName": "Scene 32"
+        },
+        {
+          "dmxRange": [
+            171,
+            175
+          ],
+          "type": "Effect",
+          "effectName": "Scene 33"
+        },
+        {
+          "dmxRange": [
+            176,
+            180
+          ],
+          "type": "Effect",
+          "effectName": "Scene 34"
+        },
+        {
+          "dmxRange": [
+            181,
+            185
+          ],
+          "type": "Effect",
+          "effectName": "Scene 35"
+        },
+        {
+          "dmxRange": [
+            186,
+            190
+          ],
+          "type": "Effect",
+          "effectName": "Scene 36"
+        },
+        {
+          "dmxRange": [
+            191,
+            195
+          ],
+          "type": "Effect",
+          "effectName": "Scene 37"
+        },
+        {
+          "dmxRange": [
+            196,
+            200
+          ],
+          "type": "Effect",
+          "effectName": "Scene 38"
+        },
+        {
+          "dmxRange": [
+            201,
+            205
+          ],
+          "type": "Effect",
+          "effectName": "Scene 39"
+        },
+        {
+          "dmxRange": [
+            206,
+            210
+          ],
+          "type": "Effect",
+          "effectName": "Scene 40"
+        },
+        {
+          "dmxRange": [
+            211,
+            215
+          ],
+          "type": "Effect",
+          "effectName": "Scene 41"
+        },
+        {
+          "dmxRange": [
+            216,
+            220
+          ],
+          "type": "Effect",
+          "effectName": "Scene 42"
+        },
+        {
+          "dmxRange": [
+            221,
+            235
+          ],
+          "type": "Effect",
+          "effectName": "Scene 43"
+        },
+        {
+          "dmxRange": [
+            236,
+            245
+          ],
+          "type": "Effect",
+          "effectName": "Sound 1",
+          "soundControlled": true
+        },
+        {
+          "dmxRange": [
+            246,
+            255
+          ],
+          "type": "Effect",
+          "effectName": "Sound 2",
+          "soundControlled": true
+        }
+      ]
+    },
+    "Scenes 2": {
+      "capabilities": [
+        {
+          "dmxRange": [
+            0,
+            10
+          ],
+          "type": "NoFunction"
+        },
+        {
+          "dmxRange": [
+            11,
+            15
+          ],
+          "type": "Effect",
+          "effectName": "Scene 1"
+        },
+        {
+          "dmxRange": [
+            16,
+            20
+          ],
+          "type": "Effect",
+          "effectName": "Scene 2"
+        },
+        {
+          "dmxRange": [
+            21,
+            25
+          ],
+          "type": "Effect",
+          "effectName": "Scene 3"
+        },
+        {
+          "dmxRange": [
+            26,
+            30
+          ],
+          "type": "Effect",
+          "effectName": "Scene 4"
+        },
+        {
+          "dmxRange": [
+            31,
+            35
+          ],
+          "type": "Effect",
+          "effectName": "Scene 5"
+        },
+        {
+          "dmxRange": [
+            36,
+            40
+          ],
+          "type": "Effect",
+          "effectName": "Scene 6"
+        },
+        {
+          "dmxRange": [
+            41,
+            45
+          ],
+          "type": "Effect",
+          "effectName": "Scene 7"
+        },
+        {
+          "dmxRange": [
+            46,
+            50
+          ],
+          "type": "Effect",
+          "effectName": "Scene 8"
+        },
+        {
+          "dmxRange": [
+            51,
+            55
+          ],
+          "type": "Effect",
+          "effectName": "Scene 9"
+        },
+        {
+          "dmxRange": [
+            56,
+            60
+          ],
+          "type": "Effect",
+          "effectName": "Scene 10"
+        },
+        {
+          "dmxRange": [
+            61,
+            65
+          ],
+          "type": "Effect",
+          "effectName": "Scene 11"
+        },
+        {
+          "dmxRange": [
+            66,
+            70
+          ],
+          "type": "Effect",
+          "effectName": "Scene 12"
+        },
+        {
+          "dmxRange": [
+            71,
+            75
+          ],
+          "type": "Effect",
+          "effectName": "Scene 13"
+        },
+        {
+          "dmxRange": [
+            76,
+            80
+          ],
+          "type": "Effect",
+          "effectName": "Scene 14"
+        },
+        {
+          "dmxRange": [
+            81,
+            85
+          ],
+          "type": "Effect",
+          "effectName": "Scene 15"
+        },
+        {
+          "dmxRange": [
+            86,
+            90
+          ],
+          "type": "Effect",
+          "effectName": "Scene 16"
+        },
+        {
+          "dmxRange": [
+            91,
+            95
+          ],
+          "type": "Effect",
+          "effectName": "Scene 17"
+        },
+        {
+          "dmxRange": [
+            96,
+            100
+          ],
+          "type": "Effect",
+          "effectName": "Scene 18"
+        },
+        {
+          "dmxRange": [
+            101,
+            105
+          ],
+          "type": "Effect",
+          "effectName": "Scene 19"
+        },
+        {
+          "dmxRange": [
+            106,
+            110
+          ],
+          "type": "Effect",
+          "effectName": "Scene 20"
+        },
+        {
+          "dmxRange": [
+            111,
+            115
+          ],
+          "type": "Effect",
+          "effectName": "Scene 21"
+        },
+        {
+          "dmxRange": [
+            116,
+            120
+          ],
+          "type": "Effect",
+          "effectName": "Scene 22"
+        },
+        {
+          "dmxRange": [
+            121,
+            125
+          ],
+          "type": "Effect",
+          "effectName": "Scene 23"
+        },
+        {
+          "dmxRange": [
+            126,
+            130
+          ],
+          "type": "Effect",
+          "effectName": "Scene 24"
+        },
+        {
+          "dmxRange": [
+            131,
+            135
+          ],
+          "type": "Effect",
+          "effectName": "Scene 25"
+        },
+        {
+          "dmxRange": [
+            136,
+            140
+          ],
+          "type": "Effect",
+          "effectName": "Scene 26"
+        },
+        {
+          "dmxRange": [
+            141,
+            145
+          ],
+          "type": "Effect",
+          "effectName": "Scene 27"
+        },
+        {
+          "dmxRange": [
+            146,
+            150
+          ],
+          "type": "Effect",
+          "effectName": "Scene 28"
+        },
+        {
+          "dmxRange": [
+            151,
+            155
+          ],
+          "type": "Effect",
+          "effectName": "Scene 29"
+        },
+        {
+          "dmxRange": [
+            156,
+            160
+          ],
+          "type": "Effect",
+          "effectName": "Scene 30"
+        },
+        {
+          "dmxRange": [
+            161,
+            165
+          ],
+          "type": "Effect",
+          "effectName": "Scene 31"
+        },
+        {
+          "dmxRange": [
+            166,
+            170
+          ],
+          "type": "Effect",
+          "effectName": "Scene 32"
+        },
+        {
+          "dmxRange": [
+            171,
+            175
+          ],
+          "type": "Effect",
+          "effectName": "Scene 33"
+        },
+        {
+          "dmxRange": [
+            176,
+            180
+          ],
+          "type": "Effect",
+          "effectName": "Scene 34"
+        },
+        {
+          "dmxRange": [
+            181,
+            185
+          ],
+          "type": "Effect",
+          "effectName": "Scene 35"
+        },
+        {
+          "dmxRange": [
+            186,
+            190
+          ],
+          "type": "Effect",
+          "effectName": "Scene 36"
+        },
+        {
+          "dmxRange": [
+            191,
+            195
+          ],
+          "type": "Effect",
+          "effectName": "Scene 37"
+        },
+        {
+          "dmxRange": [
+            196,
+            200
+          ],
+          "type": "Effect",
+          "effectName": "Scene 38"
+        },
+        {
+          "dmxRange": [
+            201,
+            205
+          ],
+          "type": "Effect",
+          "effectName": "Scene 39"
+        },
+        {
+          "dmxRange": [
+            206,
+            210
+          ],
+          "type": "Effect",
+          "effectName": "Scene 40"
+        },
+        {
+          "dmxRange": [
+            211,
+            215
+          ],
+          "type": "Effect",
+          "effectName": "Scene 41"
+        },
+        {
+          "dmxRange": [
+            216,
+            220
+          ],
+          "type": "Effect",
+          "effectName": "Scene 42"
+        },
+        {
+          "dmxRange": [
+            221,
+            225
+          ],
+          "type": "Effect",
+          "effectName": "Scene 43"
+        },
+        {
+          "dmxRange": [
+            226,
+            230
+          ],
+          "type": "Effect",
+          "effectName": "Scene 44"
+        },
+        {
+          "dmxRange": [
+            231,
+            235
+          ],
+          "type": "Effect",
+          "effectName": "Scene 45"
+        },
+        {
+          "dmxRange": [
+            236,
+            245
+          ],
+          "type": "Effect",
+          "effectName": "Sound 1",
+          "soundControlled": true
+        },
+        {
+          "dmxRange": [
+            246,
+            255
+          ],
+          "type": "Effect",
+          "effectName": "Sound 2",
+          "soundControlled": true
+        }
+      ]
+    },
+    "Scene Speed": {
+      "capability": {
+        "type": "EffectSpeed",
+        "speedStart": "slow",
+        "speedEnd": "fast"
+      }
+    },
+    "Scene Speed XY": {
+      "capabilities": [
+        {
+          "dmxRange": [
+            0,
+            127
+          ],
+          "type": "EffectSpeed",
+          "speedStart": "slow",
+          "speedEnd": "fast",
+          "comment": "Tilt moves with the scene"
+        },
+        {
+          "dmxRange": [
+            128,
+            255
+          ],
+          "type": "EffectSpeed",
+          "speedStart": "slow",
+          "speedEnd": "fast",
+          "comment": "Tilt set by its channel"
+        }
+      ]
+    }
+  },
+  "templateChannels": {
+    "Red $pixelKey": {
+      "capability": {
+        "type": "ColorIntensity",
+        "color": "Red"
+      }
+    },
+    "Green $pixelKey": {
+      "capability": {
+        "type": "ColorIntensity",
+        "color": "Green"
+      }
+    },
+    "Blue $pixelKey": {
+      "capability": {
+        "type": "ColorIntensity",
+        "color": "Blue"
+      }
+    },
+    "White $pixelKey": {
+      "capability": {
+        "type": "ColorIntensity",
+        "color": "White"
+      }
+    },
+    "Color $pixelKey": {
+      "capabilities": [
+        {
+          "dmxRange": [
+            0,
+            10
+          ],
+          "type": "NoFunction"
+        },
+        {
+          "dmxRange": [
+            11,
+            25
+          ],
+          "type": "ColorPreset",
+          "comment": "Red",
+          "colors": [
+            "#ff0000"
+          ]
+        },
+        {
+          "dmxRange": [
+            26,
+            40
+          ],
+          "type": "ColorPreset",
+          "comment": "Green",
+          "colors": [
+            "#00ff00"
+          ]
+        },
+        {
+          "dmxRange": [
+            41,
+            55
+          ],
+          "type": "ColorPreset",
+          "comment": "Blue",
+          "colors": [
+            "#0000ff"
+          ]
+        },
+        {
+          "dmxRange": [
+            56,
+            70
+          ],
+          "type": "ColorPreset",
+          "comment": "White",
+          "colors": [
+            "#ffffff"
+          ]
+        },
+        {
+          "dmxRange": [
+            71,
+            85
+          ],
+          "type": "ColorPreset",
+          "comment": "Red + green",
+          "colors": [
+            "#ff0000",
+            "#00ff00"
+          ]
+        },
+        {
+          "dmxRange": [
+            86,
+            100
+          ],
+          "type": "ColorPreset",
+          "comment": "Red + blue",
+          "colors": [
+            "#ff0000",
+            "#0000ff"
+          ]
+        },
+        {
+          "dmxRange": [
+            101,
+            115
+          ],
+          "type": "ColorPreset",
+          "comment": "Green + blue",
+          "colors": [
+            "#00ff00",
+            "#0000ff"
+          ]
+        },
+        {
+          "dmxRange": [
+            116,
+            130
+          ],
+          "type": "ColorPreset",
+          "comment": "Red + white",
+          "colors": [
+            "#ff0000",
+            "#ffffff"
+          ]
+        },
+        {
+          "dmxRange": [
+            131,
+            145
+          ],
+          "type": "ColorPreset",
+          "comment": "Green + white",
+          "colors": [
+            "#00ff00",
+            "#ffffff"
+          ]
+        },
+        {
+          "dmxRange": [
+            146,
+            160
+          ],
+          "type": "ColorPreset",
+          "comment": "Blue + white",
+          "colors": [
+            "#0000ff",
+            "#ffffff"
+          ]
+        },
+        {
+          "dmxRange": [
+            161,
+            175
+          ],
+          "type": "ColorPreset",
+          "comment": "Red + green + white",
+          "colors": [
+            "#ff0000",
+            "#00ff00",
+            "#ffffff"
+          ]
+        },
+        {
+          "dmxRange": [
+            176,
+            190
+          ],
+          "type": "ColorPreset",
+          "comment": "Red + blue + white",
+          "colors": [
+            "#ff0000",
+            "#0000ff",
+            "#ffffff"
+          ]
+        },
+        {
+          "dmxRange": [
+            191,
+            205
+          ],
+          "type": "ColorPreset",
+          "comment": "Green + blue + white",
+          "colors": [
+            "#00ff00",
+            "#0000ff",
+            "#ffffff"
+          ]
+        },
+        {
+          "dmxRange": [
+            206,
+            255
+          ],
+          "type": "ColorPreset",
+          "comment": "Red + green + blue + white",
+          "colors": [
+            "#ff0000",
+            "#00ff00",
+            "#0000ff",
+            "#ffffff"
+          ]
+        }
+      ]
+    }
+  },
+  "modes": [
+    {
+      "name": "5-channel",
+      "shortName": "5ch",
+      "channels": [
+        "Tilt",
+        "Red",
+        "Green",
+        "Blue",
+        "White"
+      ]
+    },
+    {
+      "name": "7-channel",
+      "shortName": "7ch",
+      "channels": [
+        "Tilt",
+        "Dimmer",
+        "Strobe",
+        "Red",
+        "Green",
+        "Blue",
+        "White"
+      ]
+    },
+    {
+      "name": "14-channel",
+      "shortName": "14ch",
+      "channels": [
+        "Tilt",
+        "Tilt fine",
+        "Dimmer",
+        "Strobe",
+        "Red",
+        "Green",
+        "Blue",
+        "White",
+        "Color Macros",
+        "Foreground Dimmer",
+        "Background Color",
+        "Background Dimmer",
+        "Scenes",
+        "Scene Speed XY"
+      ]
+    },
+    {
+      "name": "18-channel",
+      "shortName": "18ch",
+      "channels": [
+        "Tilt",
+        "Tilt fine",
+        "Dimmer",
+        "Strobe",
+        {
+          "insert": "matrixChannels",
+          "repeatFor": "eachPixelXYZ",
+          "channelOrder": "perPixel",
+          "templateChannels": [
+            "Color $pixelKey"
+          ]
+        },
+        "Effect Dimmer",
+        "Background Dimmer",
+        "Scenes 2",
+        "Scene Speed XY"
+      ]
+    },
+    {
+      "name": "42-channel",
+      "shortName": "42ch",
+      "channels": [
+        "Tilt",
+        "Tilt fine",
+        {
+          "insert": "matrixChannels",
+          "repeatFor": "eachPixelXYZ",
+          "channelOrder": "perPixel",
+          "templateChannels": [
+            "Red $pixelKey",
+            "Green $pixelKey",
+            "Blue $pixelKey",
+            "White $pixelKey"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "54-channel",
+      "shortName": "54ch",
+      "channels": [
+        "Tilt",
+        "Tilt fine",
+        "Dimmer",
+        "Strobe",
+        "Red",
+        "Green",
+        "Blue",
+        "White",
+        "Color Macros",
+        "Foreground Dimmer",
+        "Background Color",
+        "Background Dimmer",
+        "Scenes",
+        "Scene Speed",
+        {
+          "insert": "matrixChannels",
+          "repeatFor": "eachPixelXYZ",
+          "channelOrder": "perPixel",
+          "templateChannels": [
+            "Red $pixelKey",
+            "Green $pixelKey",
+            "Blue $pixelKey",
+            "White $pixelKey"
+          ]
+        }
+      ]
+    }
+  ]
+}

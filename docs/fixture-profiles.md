@@ -12,6 +12,9 @@ Loaded at startup in this order; a later source replaces an earlier profile with
    4-channel dimmer pack, incandescent/halogen lamp, RGB, RGBW, RGBWA+UV, UV blacklight, strobe, fog machine, hazer,
    snow machine, bubble machine, and 4- and 8-channel relay packs for props. These cover haunt staples that the QLC+
    library barely has (it has 1 snow machine, no bubble machines and no relay packs).
+   Also a few specific fixtures written from their manuals, the first being the SHEHDS LED Beam 10x40W RGBW tilting
+   beam bar (`shehds/led-beam-bar-10x40w-rgbw`). Their Open Fixture Library versions, ready to contribute so the
+   community has them too, are in [community/open-fixture-library](community/open-fixture-library/).
 2. **QLC+ fixture library**, if QLC+ happens to be installed (optional). QLC+ is free and open source (Apache 2.0) and ships about 1,400
    definitions. Searched folders:
    - Linux: `/usr/share/qlcplus/fixtures`, `~/.qlcplus/fixtures`

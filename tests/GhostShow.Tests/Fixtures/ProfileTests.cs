@@ -16,6 +16,19 @@ public class BuiltInProfileTests
     }
 
     [Fact]
+    public void The_SHEHDS_beam_bar_has_every_mode_its_manual_lists_starting_mid_tilt()
+    {
+        var bar = FixtureProfileLoader.LoadBuiltIn().Single(p => p.Id == "shehds/led-beam-bar-10x40w-rgbw");
+
+        Assert.Equal(FixtureCategory.MovingHead, bar.EffectiveCategory);
+        Assert.Equal([5, 7, 14, 18, 42, 54], bar.Modes.Select(m => m.Channels.Count));
+        Assert.All(bar.Modes, m => Assert.Equal((ChannelFunction.Tilt, 128), (m.Channels[0].Function, m.Channels[0].DefaultValue)));
+        var full = bar.Modes.Single(m => m.Name == "54 channel");
+        Assert.Equal(["Total dimming", "Red", "White 10"], new[] { full.Channels[2].Name, full.Channels[4].Name, full.Channels[53].Name });
+        Assert.Equal(11, full.Channels.Count(c => c.Function == ChannelFunction.Red));   // the bar's, then each module's
+    }
+
+        [Fact]
     public void Profile_json_round_trips()
     {
         var original = TestProfiles.Spot;
