@@ -709,8 +709,8 @@
     <!-- The transport, under the timeline (VenueMagic's place for it), with how the lanes are viewed (zoom, snap) on the right. -->
     <Border DockPanel.Dock="Bottom" Classes="card transport" Margin="0,8,0,0" Padding="8,6"
             IsVisible="{Binding SelectedTimeline, Converter={x:Static ObjectConverters.IsNotNull}}">
-      <Grid x:Name="TransportBar" ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto,Auto">
-        <StackPanel x:Name="TransportTools" Orientation="Horizontal" Spacing="6" Margin="0,0,20,0">
+      <Grid x:Name="TransportBar" ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto,Auto,Auto">
+        <WrapPanel x:Name="TransportTools" ItemSpacing="6" Margin="0,0,20,0">
           <Button Classes="icon transport" Command="{Binding Playback.ToStartCommand}" ToolTip.Tip="Back to the start (Home)">
             <PathIcon Data="{StaticResource Icon.ToStart}" />
           </Button>
@@ -730,19 +730,19 @@
             <TextBlock Text="{Binding Playback.TimeLabel}" FontFamily="monospace" FontSize="20" />
             <TextBlock Text="{Binding Playback.StateLabel}" FontSize="11" Opacity="0.7" />
           </StackPanel>
-        </StackPanel>
-        <Panel Grid.Column="1" VerticalAlignment="Center">
+        </WrapPanel>
+        <Panel x:Name="TransportHint" Grid.Column="1" VerticalAlignment="Center">
           <TextBlock Text="{Binding SelectionLabel}" Opacity="0.75" TextTrimming="CharacterEllipsis" IsVisible="{Binding !ShowPropertiesHint}" VerticalAlignment="Center" />
           <TextBlock Opacity="0.6" IsVisible="{Binding ShowPropertiesHint}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
                      Text="Double-click a row to add a clip · drag to move · drag edges to resize · double-click a lighting clip to edit its envelopes · ▸ shows them on the track" />
         </Panel>
-        <StackPanel x:Name="ViewTools" Grid.Column="2" Orientation="Horizontal" Spacing="4" Margin="16,0,0,0" VerticalAlignment="Center">
+        <WrapPanel x:Name="ViewTools" Grid.Column="2" ItemSpacing="4" Margin="16,0,0,0" VerticalAlignment="Center">
           <Button Classes="icon" Command="{Binding ZoomOutCommand}" ToolTip.Tip="Zoom out (Ctrl+wheel)"><PathIcon Data="{StaticResource Icon.ZoomOut}" /></Button>
           <Button Classes="icon" Command="{Binding ZoomInCommand}" ToolTip.Tip="Zoom in (Ctrl+wheel)"><PathIcon Data="{StaticResource Icon.ZoomIn}" /></Button>
           <Button Classes="icon" Click="OnZoomToFit" ToolTip.Tip="Show the whole timeline"><PathIcon Data="{StaticResource Icon.Fit}" /></Button>
           <TextBlock Text="Snap" Classes="label" Margin="8,0,4,0" />
           <ComboBox ItemsSource="{x:Static vm:TimelineEditorViewModel.SnapOptions}" SelectedItem="{Binding Snap}" MinWidth="90" />
-        </StackPanel>
+        </WrapPanel>
       </Grid>
     </Border>
 
@@ -850,7 +850,7 @@
           DataContext="{Binding $parent[views:TimelineView].BottomWorkspace}">
     <DockPanel>
       <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4">
-        <Button DockPanel.Dock="Right" Content="+ View">
+        <Button DockPanel.Dock="Right" Classes="bottomPaneClose" Content="+" ToolTip.Tip="Add a view to the workspace">
           <Button.Flyout>
             <MenuFlyout>
               <MenuItem Header="Input monitor" Command="{Binding AddPaneCommand}" CommandParameter="{x:Static vm:BottomPaneKind.InputMonitor}" IsEnabled="{Binding HasInputMonitor}" />

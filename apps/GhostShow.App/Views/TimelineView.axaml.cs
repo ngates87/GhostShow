@@ -327,11 +327,21 @@ public partial class TimelineView : UserControl
     void FitTransport()
     {
         bool under = TransportTools.DesiredSize.Width + ViewTools.DesiredSize.Width + 40 > TransportBar.Bounds.Width;
-        Grid.SetRow(ViewTools, under ? 1 : 0);
+        var widths = TransportBar.ColumnDefinitions;
+        widths[0].Width = under ? new GridLength(1, GridUnitType.Star) : GridLength.Auto;
+        widths[1].Width = under ? new GridLength(0) : new GridLength(1, GridUnitType.Star);
+        widths[2].Width = under ? new GridLength(0) : GridLength.Auto;
+        Grid.SetRow(TransportTools, 0);
+        Grid.SetColumn(TransportTools, 0);
+        Grid.SetColumnSpan(TransportTools, 1);
+        Grid.SetRow(ViewTools, under ? 2 : 0);
         Grid.SetColumn(ViewTools, under ? 0 : 2);
-        Grid.SetColumnSpan(ViewTools, under ? 3 : 1);
+        Grid.SetColumnSpan(ViewTools, 1);
+        Grid.SetRow(TransportHint, under ? 1 : 0);
+        Grid.SetColumn(TransportHint, under ? 0 : 1);
         ViewTools.HorizontalAlignment = under ? HorizontalAlignment.Left : HorizontalAlignment.Stretch;
         ViewTools.Margin = under ? new Thickness(0, 6, 0, 0) : new Thickness(16, 0, 0, 0);
+        TransportTools.Margin = under ? new Thickness(0) : new Thickness(0, 0, 20, 0);
     }
 
     // ---- the Effects menu: click an effect to add it, or drag it onto a lighting track ----

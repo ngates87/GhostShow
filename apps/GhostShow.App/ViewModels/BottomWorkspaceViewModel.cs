@@ -48,7 +48,7 @@ public sealed class DiagnosticsPaneViewModel(object diagnostics) : BottomPaneVie
 public sealed partial class BottomWorkspaceViewModel : ObservableObject
 {
     public const double UsualHeight = 210;
-    public const double HeaderHeight = 34;
+    public const double HeaderHeight = 36;
 
     readonly PlaybackViewModel _playback;
     readonly InputMonitorViewModel? _inputMonitor;
