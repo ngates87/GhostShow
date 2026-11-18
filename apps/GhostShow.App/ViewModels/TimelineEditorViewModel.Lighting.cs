@@ -6,7 +6,7 @@ using GhostShow.Core.Timeline;
 namespace GhostShow.App.ViewModels;
 
 /// <summary>One entry of the effects list, dragged onto a lighting track. No kind: a Level Control clip, or a tilt move.</summary>
-public sealed record EffectChoice(string Name, string Description, EffectKind? Kind, TimeSpan Length, bool IsTilt = false);
+public sealed record EffectChoice(string Name, string Description, EffectKind? Kind, TimeSpan Length, bool IsTilt = false, bool IsHome = false);
 
 /// <summary>A track's row in the lanes area. The header list and the canvas both lay out from these, so they always line up.</summary>
 public sealed record TimelineRow(int TrackIndex, TrackRowViewModel Track, double Top, double Height)
@@ -150,6 +150,18 @@ public sealed partial class TimelineEditorViewModel
                 }
         (_pointIndex, _laneIndex, _indexedRevision, _indexedTimeline) = (points, lanes, Revision, SelectedTimeline);
         _levels = new Dictionary<TimelineTrack, IReadOnlyList<TrackLevels>>(ReferenceEqualityComparer.Instance);
+        _lights = new Dictionary<TimelineTrack, IReadOnlyList<LightPreview.Light>>(ReferenceEqualityComparer.Instance);
+    }
+
+    Dictionary<TimelineTrack, IReadOnlyList<LightPreview.Light>> _lights = new();
+
+    /// <summary>A lighting track's lights (its fixtures, by the channels that make light), for its colour strip and header.</summary>
+    public IReadOnlyList<LightPreview.Light> LightsOf(TimelineTrack track)
+    {
+        var levels = LevelsOf(track);   // brings the index up to date first
+        if (_lights.TryGetValue(track, out var lights)) return lights;
+        var patched = _session.Patch.Fixtures.ToDictionary(f => f.Id);
+        return _lights[track] = LightPreview.LightsOf(levels, target => TimelineCompiler.FunctionOf(target, patched));
     }
 
     (ChannelLane Lane, LightingClip Clip)? Locate(CurvePoint point)
@@ -289,7 +301,7 @@ public sealed partial class TimelineEditorViewModel
         }
         var info = EffectInfo.Of(kind);
         var clip = new LightingClip { Name = info.Name, Start = time, Length = info.DefaultLength, Effect = LightingEffect.Create(kind, Random.Shared.Next()) };
-        Edit($"Add {info.Name} effect", () => track.Events.Add(clip), roots: Only(track));
+        Edit(info.IsLook ? "Add look" : $"Add {info.Name} effect", () => track.Events.Add(clip), roots: Only(track));
         _selectedPoints.Clear();
         _selection.Clear();
         _selection.Add(clip.Id);
@@ -297,19 +309,26 @@ public sealed partial class TimelineEditorViewModel
         return clip;
     }
 
-    /// <summary>What the effects list offers: Level Control, then the built-in effects (VenueMagic's library of fixture effects).</summary>
+    /// <summary>
+    /// What the effects list offers: Level Control, a look, the moving-head moves, then the built-in effects
+    /// (VenueMagic's library of fixture effects).
+    /// </summary>
     public static IReadOnlyList<EffectChoice> EffectChoices { get; } =
     [
         new(LightingClip.DefaultName, "Handles you set yourself", null, new LightingClip().Length),
-        new(LightingClip.TiltName, "Moving heads tilt from one angle to another over the clip", null, LightingClip.DefaultLength, IsTilt: true),
-        .. EffectInfo.All.Select(info => new EffectChoice(info.Name, info.Description, info.Kind, info.DefaultLength)),
+        Choice(EffectInfo.Of(EffectKind.Look)),
+        new(LightingClip.TiltName, "Moving heads tilt from one angle to another over the clip (for a track with moving heads)", null, LightingClip.DefaultLength, IsTilt: true),
+        new(LightingClip.HomeName, "Moving heads go home (their rest position) with their light off, then it comes back (for a track with moving heads)", null, TimeSpan.FromSeconds(2), IsTilt: true, IsHome: true),
+        .. EffectInfo.All.Where(info => !info.IsLook).Select(Choice),
     ];
+
+    static EffectChoice Choice(EffectInfo info) => new(info.Name, info.Description, info.Kind, info.DefaultLength);
 
     /// <summary>A choice from the effects list, let go over a lighting track.</summary>
     public void DropEffect(EffectChoice choice, TrackRowViewModel row, TimeSpan time)
     {
         if (choice.Kind is { } kind) AddEffectAt(row, time, kind);
-        else if (choice.IsTilt) AddTiltAt(row, time);
+        else if (choice.IsTilt) AddTiltAt(row, time, choice.IsHome);
         else AddClipAt(row, time);
     }
 
@@ -352,20 +371,28 @@ public sealed partial class TimelineEditorViewModel
     // ---- tilt moves (moving heads) ----
 
     /// <summary>
-    /// A tilt clip at a time: the track's moving heads sweep from -45° to +45° over it, to change in its properties. A
-    /// track without a tilt channel gets it too, with a notice: it moves nothing until one is added.
+    /// A tilt clip at a time: the track's moving heads sweep from -45° to +45° over it, to change in its properties; or,
+    /// home, go to their rest position in the dark. A track whose moving heads' tilt channels aren't on it yet gets them
+    /// (fine ones too); a track with no moving heads gets nothing, with a notice.
     /// </summary>
-    public LightingClip? AddTiltAt(TrackRowViewModel row, TimeSpan time)
+    public LightingClip? AddTiltAt(TrackRowViewModel row, TimeSpan time, bool home = false)
     {
         if (!row.IsLighting) return null;
-        if (row.Track.Channels.Count == 0)
+        var missing = MissingTiltChannels(row.Track);
+        if (!HasTiltChannel(row.Track) && missing.Count == 0)
         {
-            EditChannels(row);
+            Notice?.Invoke($"{row.Name} has no moving heads to tilt: add a fixture that tilts to it (Channels…) first.");
             return null;
         }
-        var clip = new LightingClip { Name = LightingClip.TiltName, Start = time, Tilt = new TiltMove { StartDegrees = -45, EndDegrees = 45 } };
-        Edit("Add tilt move", () => row.Track.Events.Add(clip), roots: Only(row.Track));
-        if (TiltLimitOf(clip) is null) Notice?.Invoke($"{row.Name} has no moving head's tilt channel: add one (Channels…) for the move to tilt it.");
+        if (missing.Count > 0)
+        {
+            SetTrackChannels(row.Track, [.. row.Track.Channels.Select(c => c.Target), .. missing]);
+            Notice?.Invoke($"Added the moving heads' tilt channels to {row.Name}.");
+        }
+        var clip = home
+            ? new LightingClip { Name = LightingClip.HomeName, Start = time, Length = TimeSpan.FromSeconds(2), Tilt = new TiltMove { Home = true } }
+            : new LightingClip { Name = LightingClip.TiltName, Start = time, Tilt = new TiltMove { StartDegrees = -45, EndDegrees = 45 } };
+        Edit(home ? "Add home move" : "Add tilt move", () => row.Track.Events.Add(clip), roots: Only(row.Track));
         _selectedPoints.Clear();
         _selection.Clear();
         _selection.Add(clip.Id);
@@ -379,7 +406,7 @@ public sealed partial class TimelineEditorViewModel
         if (clip.Tilt is not { } current || clip.Locked) return;
         var changed = current.Clone();
         change(changed);
-        if ((changed.StartDegrees, changed.EndDegrees) == (current.StartDegrees, current.EndDegrees)) return;
+        if ((changed.StartDegrees, changed.EndDegrees, changed.Dark, changed.Home) == (current.StartDegrees, current.EndDegrees, current.Dark, current.Home)) return;
         Edit(description, () => clip.Tilt = changed, (clip.Id, "tilt:" + field), Only(clip));
     }
 
@@ -392,6 +419,37 @@ public sealed partial class TimelineEditorViewModel
         if (TrackOf(clip) is not { } track) return null;
         var tilts = LevelsOf(track).Select(l => l.Tilt).OfType<TiltChannel>().Where(t => !t.IsFine).ToList();
         return tilts.Count == 0 ? null : tilts.Max(t => t.Range) / 2;
+    }
+
+    /// <summary>Whether a track has a moving head's tilt channel on it.</summary>
+    public bool HasTiltChannel(TimelineTrack track) => LevelsOf(track).Any(l => l.Tilt is not null);
+
+    /// <summary>Whether a tilt clip can go on a track: it has a tilt channel, or a moving head whose tilt channels can be added.</summary>
+    public bool CanTilt(TimelineTrack track) => HasTiltChannel(track) || MissingTiltChannels(track).Count > 0;
+
+    /// <summary>The Effects menu offers Tilt and Home only when the track it adds to (the selected lighting one) can tilt.</summary>
+    public bool CanTiltHere => EffectsTrack() is { } row && CanTilt(row.Track);
+
+    /// <summary>The Effects menu is opening: whether it can offer Tilt depends on the selected track as it is now.</summary>
+    public void RefreshEffectChoices() => OnPropertyChanged(nameof(CanTiltHere));
+
+    /// <summary>
+    /// The tilt channels (coarse and fine) of the moving heads a track has channels of, but not their tilt: what a tilt
+    /// clip adds. A fixture with any tilt channel on the track already is left as it is.
+    /// </summary>
+    IReadOnlyList<LaneTarget> MissingTiltChannels(TimelineTrack track)
+    {
+        var patched = _session.Patch.Fixtures.ToDictionary(f => f.Id);
+        var missing = new List<LaneTarget>();
+        foreach (var id in track.Channels.Select(c => c.Target.FixtureId).OfType<Guid>().Distinct())
+        {
+            if (!patched.TryGetValue(id, out var fixture)) continue;
+            if (track.Channels.Any(c => c.Target.FixtureId == id && TimelineCompiler.TiltOf(c.Target, patched) is not null)) continue;
+            for (int n = 1; n <= fixture.Mode.Channels.Count; n++)
+                if (fixture.Mode.Channels[n - 1].Function is ChannelFunction.Tilt or ChannelFunction.TiltFine)
+                    missing.Add(LaneTarget.FixtureChannel(id, n));
+        }
+        return missing;
     }
 
     TrackRowViewModel? EffectsTrack() => SelectedTrack is { IsLighting: true } selected ? selected : Tracks.FirstOrDefault(t => t.IsLighting);
@@ -776,11 +834,26 @@ public sealed partial class TimelineEditorViewModel
         if (!row.IsLighting) return;
         SelectedTrack = row;
         TrackProperties = null;
+        // A new track still called "Lighting 2" takes its fixtures' name with its first channels.
+        bool rename = row.Track.Channels.Count == 0 && DefaultLightingName().IsMatch(row.Track.Name ?? "");
         ChannelPicker = new ChannelPickerViewModel(row.Track, _session, this, ShowFixtures, targets =>
         {
-            SetTrackChannels(row.Track, targets);
+            SetTrackChannels(row.Track, targets, rename ? NameFor(targets) : null);
             ChannelPicker = null;
         }, () => ChannelPicker = null);
+        // Where it can be seen: the inspector open, on its selection tab.
+        IsInspectorOpen = true;
+        IsTimelineTab = false;
+    }
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"^Lighting( \d+)?$")]
+    private static partial System.Text.RegularExpressions.Regex DefaultLightingName();
+
+    /// <summary>A track's name from the fixtures it controls: one's name, or "A + B"; null for none or more than two.</summary>
+    string? NameFor(IReadOnlyList<LaneTarget> targets)
+    {
+        var names = targets.Select(t => t.FixtureId).OfType<Guid>().Distinct().Select(id => FixtureName(id)).OfType<string>().ToList();
+        return names.Count switch { 1 => names[0], 2 => $"{names[0]} + {names[1]}", _ => null };
     }
 
     /// <summary>Right-click → Properties…: the track's name, options and (lighting) each channel's start level.</summary>
@@ -826,7 +899,8 @@ public sealed partial class TimelineEditorViewModel
     /// Sets which channels a track controls, in the given order. Channels it keeps keep their envelopes; removed
     /// ones lose theirs (undo brings them back). A track getting its first channels is expanded, to show them.
     /// </summary>
-    public void SetTrackChannels(TimelineTrack track, IReadOnlyList<LaneTarget> targets)
+    /// <param name="rename">A new name for the track, in the same edit (a new track named after its fixtures).</param>
+    public void SetTrackChannels(TimelineTrack track, IReadOnlyList<LaneTarget> targets, string? rename = null)
     {
         var before = track.Channels.ToList();
         var after = targets.Distinct().Select(t => before.FirstOrDefault(l => l.Target == t) ?? new ChannelLane { Target = t }).ToList();
@@ -835,12 +909,24 @@ public sealed partial class TimelineEditorViewModel
         // A channel taken off the track takes its envelopes in every clip with it (undo brings them back).
         var kept = after.Select(l => l.Target).ToHashSet();
         var clips = track.Events.OfType<LightingClip>().ToList();
-        Edit("Change channels", () =>
+        Edit(rename is null ? "Change channels" : "Choose fixtures", () =>
         {
             track.Channels = after.ToList();
+            if (rename is not null) track.Name = rename;
             foreach (var c in clips) c.Lanes = c.Lanes.Where(l => kept.Contains(l.Target)).ToList();
         }, roots: [Only(track), .. clips.Select(Only)]);
-        if (Tracks.FirstOrDefault(t => t.Track == track) is { } row && _expanded.Contains(track.Id)) row.IsExpanded = true;
+        if (Tracks.FirstOrDefault(t => t.Track == track) is { } row)
+        {
+            if (_expanded.Contains(track.Id)) row.IsExpanded = true;
+            if (rename is not null) row.Refresh();
+        }
+    }
+
+    /// <summary>Whether a track's moving heads move in black (see <see cref="TimelineTrack.MoveInBlack"/>).</summary>
+    public void SetMoveInBlack(TimelineTrack track, bool move)
+    {
+        if (track.MoveInBlack == move) return;
+        Edit(move ? "Move in black" : "Don't move in black", () => track.MoveInBlack = move, roots: Only(track));
     }
 
     /// <summary>VenueMagic's track option: draw each channel's held level between clips.</summary>

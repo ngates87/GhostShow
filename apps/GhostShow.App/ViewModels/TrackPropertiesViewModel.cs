@@ -40,6 +40,12 @@ public sealed partial class TrackPropertiesViewModel : ObservableObject
         set => _editor.SetDrawLevelsBetweenClips(Track, value);
     }
 
+    public bool MoveInBlack
+    {
+        get => Track.MoveInBlack;
+        set => _editor.SetMoveInBlack(Track, value);
+    }
+
     /// <summary>Audio: 0-100, multiplied into every clip's own volume.</summary>
     public decimal VolumePercent
     {
@@ -72,6 +78,7 @@ public sealed partial class TrackPropertiesViewModel : ObservableObject
         foreach (var channel in Channels) channel.Refresh();
         OnPropertyChanged(nameof(Name));
         OnPropertyChanged(nameof(DrawLevelsBetweenClips));
+        OnPropertyChanged(nameof(MoveInBlack));
         OnPropertyChanged(nameof(VolumePercent));
     }
 }

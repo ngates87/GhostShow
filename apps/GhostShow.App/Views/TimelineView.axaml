@@ -57,16 +57,34 @@
       <Setter Property="Width" Value="18" />
       <Setter Property="Height" Value="18" />
     </Style>
-    <!-- A tilt move's Start | End: which handle the arc and the value box edit. -->
-    <Style Selector="Button.tiltHandle">
-      <Setter Property="Padding" Value="12,4" />
-      <Setter Property="MinHeight" Value="0" />
+    <!-- A tilt move's Start and End cards: each in its handle's colour; the picked one (what the arc sets) outlined. -->
+    <Style Selector="Border.tiltCard">
+      <Setter Property="Padding" Value="8,6" />
+      <Setter Property="CornerRadius" Value="4" />
+      <Setter Property="BorderThickness" Value="1.5" />
+      <Setter Property="BorderBrush" Value="#3A4048" />
       <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Cursor" Value="Hand" />
     </Style>
-    <Style Selector="Button.tiltHandle.selected">
-      <Setter Property="Background" Value="#3A2459" />
-      <Setter Property="BorderBrush" Value="#B04BFF" />
-      <Setter Property="BorderThickness" Value="1" />
+    <Style Selector="Border.tiltCard.picked">
+      <Setter Property="BorderBrush" Value="#66BB6A" />
+      <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}" />
+    </Style>
+    <Style Selector="Border.tiltCard.end.picked">
+      <Setter Property="BorderBrush" Value="{DynamicResource SystemControlHighlightAccentBrush}" />
+    </Style>
+    <Style Selector="TextBlock.tiltCardTitle">
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Opacity" Value="0.8" />
+    </Style>
+    <Style Selector="Button.tiltNudge">
+      <Setter Property="Padding" Value="6,0" />
+      <Setter Property="MinWidth" Value="0" />
+      <Setter Property="FontSize" Value="18" />
+      <Setter Property="VerticalAlignment" Value="Stretch" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="Background" Value="Transparent" />
     </Style>
   </UserControl.Styles>
 
@@ -350,6 +368,8 @@
                           <StackPanel Spacing="6" IsVisible="{Binding IsLighting}">
                             <CheckBox Content="Draw levels between clips" IsChecked="{Binding DrawLevelsBetweenClips}"
                                       ToolTip.Tip="Expanded, each channel's held level is drawn as a line between clips" />
+                            <CheckBox Content="Move in black" IsChecked="{Binding MoveInBlack}"
+                                      ToolTip.Tip="When this track's lights are out before a tilt clip, its moving heads go to where it starts as soon as they're dark, so the audience doesn't see them swing there" />
                             <DockPanel Margin="0,8,0,0">
                               <Button DockPanel.Dock="Right" Content="Channels…" Command="{Binding EditChannelsCommand}" Padding="6,1" MinHeight="0" />
                               <TextBlock Text="Starting levels" FontWeight="SemiBold" VerticalAlignment="Center" />
@@ -442,38 +462,63 @@
                             </StackPanel>
 
                             <!-- Tilt move (moving heads): from the start angle to the end one over the clip -->
-                            <StackPanel Spacing="8" IsVisible="{Binding IsTilt}" IsEnabled="{Binding IsUnlocked}">
+                            <!-- Home move: to the rest position in the dark -->
+                            <StackPanel Classes="infoLine" IsVisible="{Binding IsHome}"
+                                        ToolTip.Tip="The track's moving heads go home (each to its rest position, from its profile) with their light off; it comes back as the clip ends. Make it long enough for them to get there.">
+                              <PathIcon Classes="info" />
+                              <TextBlock Text="How going home works" />
+                            </StackPanel>
+                            <StackPanel Spacing="8" IsVisible="{Binding IsAngleMove}" IsEnabled="{Binding IsUnlocked}">
                               <TextBlock Text="The track has no moving head's tilt channel: add one (Channels…) for this to move it."
                                          Classes="fault" TextWrapping="Wrap" FontSize="12" IsVisible="{Binding !HasTiltChannel}" />
-                              <StackPanel Orientation="Horizontal" Spacing="2" HorizontalAlignment="Center">
-                                <Button x:Name="TiltStart" Classes="tiltHandle" Classes.selected="{Binding IsStartSelected}" Command="{Binding SelectStartCommand}"
-                                        ToolTip.Tip="Where the move starts (the ring on the arc)">
-                                  <TextBlock><Run Text="Start " /><Run Text="{Binding StartDegrees, StringFormat='{}{0:+0;−0;0}°'}" /></TextBlock>
-                                </Button>
-                                <Button x:Name="TiltEnd" Classes="tiltHandle" Classes.selected="{Binding IsEndSelected}" Command="{Binding SelectEndCommand}"
-                                        ToolTip.Tip="Where the move ends (the filled handle)">
-                                  <TextBlock><Run Text="End " /><Run Text="{Binding EndDegrees, StringFormat='{}{0:+0;−0;0}°'}" /></TextBlock>
-                                </Button>
-                              </StackPanel>
-                              <controls:TiltArc x:Name="TiltArc" Height="230" Limit="{Binding TiltLimit}" StartDegrees="{Binding StartDegrees}"
+                              <controls:TiltArc x:Name="TiltArc" Limit="{Binding TiltLimit}" StartDegrees="{Binding StartDegrees}"
                                                 EndDegrees="{Binding EndDegrees}" IsEndSelected="{Binding IsEndSelected}"
-                                                ToolTip.Tip="Drag to set the selected angle (Shift: 5° steps); press a handle to pick it; the wheel nudges it" />
-                              <Grid ColumnDefinitions="Auto,*,Auto" HorizontalAlignment="Center" Width="220">
-                                <Button Content="‹" Command="{Binding NudgeCommand}" CommandParameter="-1" Padding="12,0" FontSize="22" VerticalAlignment="Stretch" VerticalContentAlignment="Center"
-                                        ToolTip.Tip="A degree less" />
-                                <Border Grid.Column="1" Margin="6,0" Padding="6,4" CornerRadius="6" BorderThickness="1.5" BorderBrush="#B04BFF" Background="#24183A">
-                                  <StackPanel HorizontalAlignment="Center">
-                                    <NumericUpDown Value="{Binding SelectedDegrees}" Minimum="-180" Maximum="180" Increment="1" FormatString="0"
-                                                   ShowButtonSpinner="False" HorizontalContentAlignment="Center" FontSize="18" MinWidth="90"
-                                                   ToolTip.Tip="The selected handle's angle: 0 straight ahead" />
-                                    <TextBlock Text="{Binding SelectedLabel}" HorizontalAlignment="Center" FontSize="11" Opacity="0.75" />
+                                                StartBrush="#66BB6A" EndBrush="{DynamicResource SystemControlHighlightAccentBrush}"
+                                                ToolTip.Tip="Drag to set the picked angle (Shift: 5° steps); press S or E to pick it; the wheel nudges it" />
+                              <!-- Start and End: each its own colour, as its handle; the picked one (what the arc sets) outlined. -->
+                              <Grid ColumnDefinitions="*,Auto,*">
+                                <Border x:Name="TiltStartCard" Classes="tiltCard" Classes.picked="{Binding IsStartSelected}"
+                                        ToolTip.Tip="Where the move starts: the S handle">
+                                  <StackPanel Spacing="4">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                      <Ellipse Width="9" Height="9" Fill="#66BB6A" VerticalAlignment="Center" />
+                                      <TextBlock Text="START" Classes="tiltCardTitle" />
+                                    </StackPanel>
+                                    <Grid ColumnDefinitions="Auto,*,Auto">
+                                      <Button Classes="tiltNudge" Content="‹" Command="{Binding NudgeStartCommand}" CommandParameter="-1" ToolTip.Tip="A degree less" />
+                                      <NumericUpDown Grid.Column="1" Value="{Binding StartDegrees}" Minimum="-180" Maximum="180" Increment="1" FormatString="0°"
+                                                     ShowButtonSpinner="False" HorizontalContentAlignment="Center" FontSize="16" MinWidth="0" />
+                                      <Button Grid.Column="2" Classes="tiltNudge" Content="›" Command="{Binding NudgeStartCommand}" CommandParameter="1" ToolTip.Tip="A degree more" />
+                                    </Grid>
                                   </StackPanel>
                                 </Border>
-                                <Button Grid.Column="2" Content="›" Command="{Binding NudgeCommand}" CommandParameter="1" Padding="12,0" FontSize="22" VerticalAlignment="Stretch" VerticalContentAlignment="Center"
-                                        ToolTip.Tip="A degree more" />
+                                <Button Grid.Column="1" Classes="toolButton" Command="{Binding SwapTiltCommand}" Margin="4,0" VerticalAlignment="Center"
+                                        ToolTip.Tip="Swap start and end: move back the other way">
+                                  <Path Data="M3,6 L15,6 M12,3 L15,6 L12,9 M15,13 L3,13 M6,10 L3,13 L6,16" Width="18" Height="19"
+                                        Stroke="{DynamicResource SystemControlForegroundBaseHighBrush}" StrokeThickness="1.6"
+                                        StrokeLineCap="Round" StrokeJoin="Round" />
+                                </Button>
+                                <Border x:Name="TiltEndCard" Grid.Column="2" Classes="tiltCard end" Classes.picked="{Binding IsEndSelected}"
+                                        ToolTip.Tip="Where the move ends: the E handle">
+                                  <StackPanel Spacing="4">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                      <Ellipse Width="9" Height="9" Fill="{DynamicResource SystemControlHighlightAccentBrush}" VerticalAlignment="Center" />
+                                      <TextBlock Text="END" Classes="tiltCardTitle" />
+                                    </StackPanel>
+                                    <Grid ColumnDefinitions="Auto,*,Auto">
+                                      <Button Classes="tiltNudge" Content="‹" Command="{Binding NudgeEndCommand}" CommandParameter="-1" ToolTip.Tip="A degree less" />
+                                      <NumericUpDown Grid.Column="1" Value="{Binding EndDegrees}" Minimum="-180" Maximum="180" Increment="1" FormatString="0°"
+                                                     ShowButtonSpinner="False" HorizontalContentAlignment="Center" FontSize="16" MinWidth="0" />
+                                      <Button Grid.Column="2" Classes="tiltNudge" Content="›" Command="{Binding NudgeEndCommand}" CommandParameter="1" ToolTip.Tip="A degree more" />
+                                    </Grid>
+                                  </StackPanel>
+                                </Border>
                               </Grid>
-                              <Button Content="Swap start and end" Command="{Binding SwapTiltCommand}" HorizontalAlignment="Center"
-                                      ToolTip.Tip="Move back the other way" />
+                              <CheckBox Content="Dark while moving" IsChecked="{Binding Dark}"
+                                        ToolTip.Tip="The light is off while the heads move, and back where it was as the clip ends, so the audience doesn't see the move" />
+                              <TextBlock HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" FontSize="11" Opacity="0.7">
+                                <Run Text="Dragging the arc sets the " /><Run Text="{Binding SelectedLabel}" FontWeight="SemiBold" />
+                              </TextBlock>
                               <StackPanel Classes="infoLine"
                                           ToolTip.Tip="The track's moving heads tilt from the start angle to the end one over the clip: place and stretch it to set when, and how fast. 0° is straight ahead, the middle of their travel (a fixture's travel comes from its profile; ±90° if it doesn't say). A fixture with a fine tilt channel moves smoothly in 16 bits. The track's other channels hold where the clip before left them.">
                                 <PathIcon Classes="info" />
@@ -498,7 +543,7 @@
                                   <NumericUpDown Grid.Column="1" Value="{Binding StrengthPercent}" Minimum="0" Maximum="100" Increment="5" FormatString="0" />
                                   <TextBlock Grid.Row="2" Text="{Binding RateLabel}" Classes="label" Margin="0,0,8,0" IsVisible="{Binding HasRate}" />
                                   <NumericUpDown Grid.Row="2" Grid.Column="1" Value="{Binding Rate}" Minimum="{Binding RateMinimum}" Maximum="{Binding RateMaximum}"
-                                                 Increment="1" FormatString="0.##" IsVisible="{Binding HasRate}" />
+                                                 Increment="{Binding RateIncrement}" FormatString="0.##" IsVisible="{Binding HasRate}" />
                                 </Grid>
                                 <StackPanel Spacing="4" IsVisible="{Binding HasColor}">
                                   <TextBlock Text="Colour" Classes="label" />
@@ -523,10 +568,16 @@
                                     </ItemsControl.ItemTemplate>
                                   </ItemsControl>
                                 </StackPanel>
-                                <CheckBox Content="Leave the lights out at the end" IsChecked="{Binding EndsDark}"
+                                <CheckBox Content="Leave the lights out at the end" IsChecked="{Binding EndsDark}" IsVisible="{Binding !IsLook}"
                                           ToolTip.Tip="Off: when it ends, the lights go back where they were before it" />
+                                <Grid ColumnDefinitions="Auto,*" IsVisible="{Binding IsLook}">
+                                  <TextBlock Text="At the end" Classes="label" Margin="0,0,8,0" VerticalAlignment="Center" />
+                                  <ComboBox Grid.Column="1" ItemsSource="{x:Static vm:EventPropertiesViewModel.LookEndings}" SelectedIndex="{Binding LookEndingIndex}"
+                                            HorizontalAlignment="Stretch"
+                                            ToolTip.Tip="Stays on: the next clip carries on from the look. Otherwise it fades away over the fade time as the clip ends" />
+                                </Grid>
                                 <WrapPanel>
-                                  <Button Content="New random pattern" Command="{Binding NewPatternCommand}" Margin="0,0,6,6"
+                                  <Button Content="New random pattern" Command="{Binding NewPatternCommand}" Margin="0,0,6,6" IsVisible="{Binding IsRandom}"
                                           ToolTip.Tip="Same settings, different timing (other strikes, another flicker)" />
                                   <Button Content="Convert to Level Control" Command="{Binding ConvertToLevelControlCommand}" Margin="0,0,6,6"
                                           ToolTip.Tip="Turn the effect into envelope handles you can edit one by one" />
@@ -601,8 +652,8 @@
               <!-- The timeline: how it plays (alone and alongside others), and what runs it -->
               <ScrollViewer IsVisible="{Binding IsTimelineTab}">
                 <StackPanel Spacing="8">
-                  <!-- Which timeline these are for: the open tab's. -->
-                  <TextBlock x:Name="TimelinePropertiesName" Text="{Binding TimelineName}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                  <!-- What it is, as the selection's heading says; which timeline is the title bar's (the open tab's). -->
+                  <TextBlock Text="Timeline" Classes="heading" />
                   <Grid ColumnDefinitions="*,140">
                     <TextBlock Text="Length (s)" VerticalAlignment="Center" />
                     <NumericUpDown Grid.Column="1" Value="{Binding LengthSeconds}" Minimum="0" Increment="1" FormatString="0.##"
@@ -707,7 +758,14 @@
               <ItemsControl.ItemTemplate>
                 <DataTemplate x:DataType="vm:EffectChoice">
                   <Border Classes="effectChoice" Background="Transparent" Padding="6,4" CornerRadius="3" Cursor="Hand" ToolTip.Tip="{Binding Description}"
-                          ToolTip.Placement="Right">
+                          ToolTip.Placement="Right" ToolTip.ShowOnDisabled="True">
+                    <Border.IsEnabled>
+                      <!-- Tilt and Home: only for a track with moving heads -->
+                      <MultiBinding Converter="{x:Static BoolConverters.Or}">
+                        <Binding Path="!IsTilt" />
+                        <Binding Path="$parent[ItemsControl].((vm:TimelineEditorViewModel)DataContext).CanTiltHere" />
+                      </MultiBinding>
+                    </Border.IsEnabled>
                     <StackPanel Orientation="Horizontal" Spacing="10">
                       <controls:EffectThumbnail Kind="{Binding Kind}" IsTilt="{Binding IsTilt}" Width="56" Height="22" VerticalAlignment="Center" />
                       <TextBlock Text="{Binding Name}" VerticalAlignment="Center" />
@@ -805,6 +863,15 @@
         <Grid ColumnDefinitions="180,*">
           <ListBox x:Name="TrackHeaders" Classes="tracks" ItemsSource="{Binding Tracks}" SelectedItem="{Binding SelectedTrack}"
                    Margin="0,26,0,0" Background="Transparent">
+            <!-- Right-click under the headers: add a track (a header has its own menu). -->
+            <ListBox.ContextMenu>
+              <ContextMenu>
+                <MenuItem Header="Add lighting track" Command="{Binding AddTrackCommand}" CommandParameter="{x:Static tl:TrackKind.Lighting}" />
+                <MenuItem Header="Add audio track" Command="{Binding AddTrackCommand}" CommandParameter="{x:Static tl:TrackKind.Audio}" />
+                <MenuItem Header="Add event track" Command="{Binding AddTrackCommand}" CommandParameter="{x:Static tl:TrackKind.Event}"
+                          ToolTip.Tip="Events that run or stop other timelines when the playhead gets to them" />
+              </ContextMenu>
+            </ListBox.ContextMenu>
             <ListBox.ItemTemplate>
               <DataTemplate x:DataType="vm:TrackRowViewModel">
                 <!-- Same height as the canvas row (TimelineEditorViewModel.HeightOf). -->
@@ -842,7 +909,7 @@
                     </Panel>
                   </DockPanel>
                   <TextBlock DockPanel.Dock="Top" Text="{Binding Subtitle}" FontSize="10" Opacity="0.6" Margin="22,-6,0,2"
-                             IsVisible="{Binding ShowSubtitle}" TextTrimming="CharacterEllipsis" />
+                             IsVisible="{Binding ShowSubtitle}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding SubtitleTip}" />
                   <!-- Audio: the track's volume (multiplied into every clip's own) -->
                   <DockPanel DockPanel.Dock="Top" IsVisible="{Binding IsAudio}" Margin="8,-9,6,0"
                              ToolTip.Tip="Track volume: every clip on this track plays at this much of its own volume">

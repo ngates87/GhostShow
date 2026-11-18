@@ -5,7 +5,7 @@ namespace GhostShow.Core.Timeline;
 
 /// <summary>The built-in effects a lighting clip can be instead of a Level Control (see <see cref="LightingEffect"/>).</summary>
 [JsonConverter(typeof(JsonStringEnumConverter<EffectKind>))]
-public enum EffectKind { Lightning, BrownOut, Explosion, Flicker, Fire, Strobe, Heartbeat, Police }
+public enum EffectKind { Lightning, BrownOut, Explosion, Flicker, Fire, Strobe, Heartbeat, Police, Look }
 
 /// <summary>Where an effect leaves the lights when it ends.</summary>
 [JsonConverter(typeof(JsonStringEnumConverter<EffectEnding>))]
@@ -16,6 +16,9 @@ public enum EffectEnding
 
     /// <summary>Out: brightness (and colour on fixtures without a dimmer) at 0.</summary>
     Dark,
+
+    /// <summary>Where it got to: the next clip carries on from there (a look stays on).</summary>
+    Hold,
 }
 
 /// <summary>
@@ -25,7 +28,7 @@ public enum EffectEnding
 /// Random parts (when lightning strikes, how a flame flickers) come from <see cref="Seed"/>: the same settings always
 /// play the same way.
 /// </summary>
-public sealed class LightingEffect
+public sealed class LightingEffect : IClipGenerator
 {
     public EffectKind Kind { get; set; }
 
@@ -46,10 +49,22 @@ public sealed class LightingEffect
 
     public LightingEffect Clone() => (LightingEffect)MemberwiseClone();
 
+    string IClipGenerator.KindName => EffectInfo.Of(Kind).Name;
+    bool IClipGenerator.MovesHeads => false;
+
+    /// <summary>Its keys, made once; each channel's envelope from them by its role (see <see cref="LightingEffects.EnvelopeFor"/>).</summary>
+    IClipEnvelopes IClipGenerator.Generate(TimeSpan length) => new Envelopes(LightingEffects.Keys(this, length), length);
+
+    sealed class Envelopes(IReadOnlyList<LightingEffects.Key> keys, TimeSpan length) : IClipEnvelopes
+    {
+        public IReadOnlyList<CurvePoint> For(GeneratedChannel channel, byte startLevel) =>
+            LightingEffects.EnvelopeFor(keys, channel.Role, channel.Function, startLevel, length);
+    }
+
     public static LightingEffect Create(EffectKind kind, int seed)
     {
         var info = EffectInfo.Of(kind);
-        return new() { Kind = kind, Strength = info.DefaultStrength, Rate = info.DefaultRate, Seed = seed };
+        return new() { Kind = kind, Strength = info.DefaultStrength, Rate = info.DefaultRate, Seed = seed, Ending = info.DefaultEnding };
     }
 }
 
@@ -57,12 +72,21 @@ public sealed class LightingEffect
 /// <param name="RateLabel">What <see cref="LightingEffect.Rate"/> means for this kind; null if it has no rate.</param>
 /// <param name="DefaultColor">The flash or glow colour; null if the kind has no colour setting.</param>
 /// <param name="DefaultStrength">Where <see cref="LightingEffect.Strength"/> starts (a flame flickering all the way to black looks like a fault).</param>
+/// <param name="DefaultEnding">Where it leaves the lights, to start with.</param>
 public sealed record EffectInfo(EffectKind Kind, string Name, string Description, TimeSpan DefaultLength, string StrengthLabel,
                                 string? RateLabel, double DefaultRate, double MinRate, double MaxRate, string? DefaultColor,
-                                double DefaultStrength = 1)
+                                double DefaultStrength = 1, EffectEnding DefaultEnding = EffectEnding.BackToBefore)
 {
+    /// <summary>A look: the lights fade to a colour and brightness and stay there. Not random, and it holds by default.</summary>
+    public bool IsLook => Kind == EffectKind.Look;
+
+    /// <summary>Whether its timing comes from <see cref="LightingEffect.Seed"/> (a new pattern changes it).</summary>
+    public bool IsRandom => Kind is not (EffectKind.Look or EffectKind.Strobe or EffectKind.Heartbeat or EffectKind.Police);
+
     public static IReadOnlyList<EffectInfo> All { get; } =
     [
+        new(EffectKind.Look, "Look", "The lights fade to a colour and brightness, and stay there.",
+            TimeSpan.FromSeconds(4), "Brightness", "Fade (s)", 1, 0, 60, "#FFFFFF", DefaultEnding: EffectEnding.Hold),
         new(EffectKind.Lightning, "Lightning", "Strikes of cold flickering flashes, then back to how it was.",
             TimeSpan.FromSeconds(4), "Brightness", "Strikes", 2, 1, 10, "#DCE6FF"),
         new(EffectKind.BrownOut, "Brown out", "The power sags: the lights dim, stutter and drop out, then recover.",
@@ -210,6 +234,7 @@ public static class LightingEffects
         bool back = effect.Ending == EffectEnding.BackToBefore;
         switch (effect.Kind)
         {
+            case EffectKind.Look: Look(keys, strength, rate, colour, effect.Ending); break;
             case EffectKind.Lightning: Lightning(keys, strength, (int)Math.Round(rate), colour); break;
             case EffectKind.BrownOut: BrownOut(keys, strength, rate, back); break;
             case EffectKind.Explosion: Explosion(keys, strength, colour, back); break;
@@ -219,7 +244,7 @@ public static class LightingEffects
             case EffectKind.Heartbeat: Heartbeat(keys, strength, rate, colour); break;
             case EffectKind.Police: Police(keys, strength, rate); break;
         }
-        keys.End(back);
+        keys.End(effect.Ending);
         return keys.List;
     }
 
@@ -240,13 +265,18 @@ public static class LightingEffects
             List.Add(new Key(time, dim, mix, bright, colour, curve));
         }
 
-        /// <summary>The end key: back to the earlier levels, or dark.</summary>
-        public void End(bool back)
+        /// <summary>The end key: back to the earlier levels, dark, or held where the last key left them.</summary>
+        public void End(EffectEnding ending)
         {
             var last = List.Count > 0 ? List[^1] : new Key(0, 1, 0, 0, Rgb.White, CurveKind.Linear);
+            if (ending == EffectEnding.Hold)
+            {
+                List.Add(last with { Time = Total, Curve = CurveKind.Linear });
+                return;
+            }
             // Hard-edged effects (strobe, flicker) switch at the end; smooth ones (a flame) fade over their last moment.
             var curve = last.Curve == CurveKind.Step ? CurveKind.Step : CurveKind.Linear;
-            List.Add(new Key(Total, back ? 1 : 0, 0, 0, last.Colour, curve));
+            List.Add(new Key(Total, ending == EffectEnding.BackToBefore ? 1 : 0, 0, 0, last.Colour, curve));
         }
     }
 
@@ -268,6 +298,19 @@ public static class LightingEffects
     }
 
     // ---- the effects ----
+
+    /// <summary>
+    /// A fade over <paramref name="fade"/> seconds to the colour at the brightness, then held. Ending anywhere but
+    /// held, it fades away again over the same time at the end (a fade of 0 switches).
+    /// </summary>
+    static void Look(KeyList k, double strength, double fade, Rgb colour, EffectEnding ending)
+    {
+        bool holds = ending == EffectEnding.Hold;
+        fade = Math.Min(fade, holds ? k.Total : k.Total / 2);
+        if (fade <= 0) k.Add(0.001, 1, 1, strength, colour, CurveKind.Step);   // straight there; a step at the end switches back
+        else k.Add(Math.Min(fade, k.Total - 0.001), 1, 1, strength, colour);
+        if (!holds && fade > 0) k.Add(k.Total - fade, 1, 1, strength, colour);
+    }
 
     static void Lightning(KeyList k, double strength, int strikes, Rgb colour)
     {

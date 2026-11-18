@@ -9,6 +9,7 @@ using Avalonia.VisualTree;
 using GhostShow.App.ViewModels;
 using GhostShow.Core.Fixtures;
 using GhostShow.Core.Inputs;
+using GhostShow.Core.Model;
 using GhostShow.Core.Storage;
 using GhostShow.Core.Timeline;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -178,7 +179,7 @@ public class UiTests
         using var rig = new WindowRig();
         var header = rig.Find<ListBoxItem>(i => i.DataContext is TrackRowViewModel { IsLighting: true });
 
-        var summary = header.GetVisualDescendants().OfType<TextBlock>().First(t => t.Text == "1 channel");   // not the name box (it has its own menu)
+        var summary = header.GetVisualDescendants().OfType<TextBlock>().First(t => t.Text == "Entry LED");   // its fixtures, under the name (not the name box: it has its own menu)
         rig.Click(rig.CenterOf(summary), MouseButton.Right);
         var menu = summary.GetVisualAncestors().OfType<Control>().Select(c => c.ContextMenu).OfType<ContextMenu>().First();
         WindowRig.Pump();
@@ -192,6 +193,105 @@ public class UiTests
 
         Assert.NotNull(rig.Editor.ChannelPicker);
         Assert.True(rig.Editor.ChannelPicker!.Fixtures.Single(f => f.Name == "Entry LED").Channels[1].IsChecked);   // Red is on the track
+    });
+
+    [Fact]
+    public Task Pressing_a_tilt_move_s_start_or_end_card_picks_the_handle_the_arc_sets() => Ui.Run(() =>
+    {
+        FixtureInstance bar = new() { Name = "Beam bar", ProfileId = "shehds/led-beam-bar-10x40w-rgbw", ModeName = "14 channel", StartAddress = 100 };
+        using var rig = new WindowRig(setUp: session => session.Project.Fixtures.Add(bar));
+        var row = rig.TrackRow("Lighting");
+        rig.Editor.SetTrackChannels(rig.Lighting, [LaneTarget.FixtureChannel(bar.Id, 3)]);   // its dimmer: tilt clips add its tilt
+        rig.Editor.AddTiltAt(row.Track, S(1));
+        WindowRig.Pump();
+        Assert.True(rig.Editor.Properties!.IsEndSelected);   // the end, to start with
+
+        rig.Click(rig.CenterOf(rig.Find<Border>(b => b.Name == "TiltStartCard")));
+        Assert.False(rig.Editor.Properties.IsEndSelected);
+        Assert.False(rig.Find<Controls.TiltArc>().IsEndSelected);
+
+        rig.Click(rig.CenterOf(rig.Find<Border>(b => b.Name == "TiltEndCard")));
+        Assert.True(rig.Editor.Properties.IsEndSelected);
+    });
+
+    [Fact]
+    public Task A_clip_too_narrow_to_see_is_still_moved_by_its_middle_and_stretched_by_an_edge() => Ui.Run(() =>
+    {
+        using var rig = new WindowRig();
+        var row = rig.TrackRow("Lighting");
+        rig.Editor.DropEffect(TimelineEditorViewModel.EffectChoices[0], row.Track, S(10));   // Level Control
+        var clip = rig.Lighting.Events.OfType<LightingClip>().Single();
+        clip.Length = S(1);
+        row.Track.IsExpanded = true;            // handles shown: they don't get in the way of a clip this thin
+        rig.Editor.PixelsPerSecond = 10;        // zoomed out: the clip is 10 px wide
+        WindowRig.Pump();
+
+        rig.Drag(rig.At(row, 10.5), rig.At(row, 20.5));
+        Assert.Equal((S(20), S(1)), (clip.Start, clip.Length));   // moved, not stretched
+
+        var end = rig.At(row, 21);
+        rig.Drag(end + new Vector(4, 0), end + new Vector(44, 0));   // just past its end: still its edge
+        Assert.Equal((S(20), S(5)), (clip.Start, clip.Length));
+    });
+
+    [Fact]
+    public Task A_new_lighting_track_asks_for_its_fixtures_takes_their_name_and_lists_them() => Ui.Run(() =>
+    {
+        using var rig = new WindowRig();
+        rig.Editor.IsTimelineTab = true;
+        rig.Editor.AddTrackCommand.Execute(TrackKind.Lighting);
+        WindowRig.Pump();
+
+        var picker = Assert.IsType<ChannelPickerViewModel>(rig.Editor.ChannelPicker);   // asked straight away, where it shows
+        Assert.False(rig.Editor.IsTimelineTab);
+        var row = rig.Editor.SelectedTrack!;
+        Assert.Equal("Lighting 2", row.Name);
+        foreach (var channel in picker.Fixtures.Single(f => f.Name == "Entry LED").Channels) channel.IsChecked = true;
+        picker.OkCommand.Execute(null);
+        WindowRig.Pump();
+
+        Assert.Equal("Entry LED", row.Name);   // named after it, in the same undo step
+        Assert.Equal("5 channels", row.Subtitle);   // not its name again
+        Assert.Contains("5 channels", row.SubtitleTip);
+        rig.Editor.UndoCommand.Execute(null);
+        Assert.Equal(("Lighting 2", 0), (row.Track.Name, row.Track.Channels.Count));
+
+        // The first track (Red of Entry LED, already named): what it controls is under its name.
+        Assert.Equal("Entry LED", rig.Editor.Tracks[0].Subtitle);
+    });
+
+    [Fact]
+    public Task A_lighting_row_draws_its_lights_colour_strip_under_its_clips() => Ui.Run(() =>
+    {
+        using var rig = new WindowRig();
+        var row = rig.TrackRow("Lighting");
+        rig.Editor.AddEffectAt(row.Track, S(1), EffectKind.Look);
+        WindowRig.Pump();
+
+        var lights = rig.Editor.LightsOf(rig.Lighting);
+        Assert.Equal(rig.Rgb.Id, Assert.Single(lights).FixtureId);
+        // The clip's bottom stops above the strip, and the envelopes with it.
+        Assert.True(Controls.TimelineCanvas.LevelY(row, 0) < Controls.TimelineCanvas.RulerHeight + row.Bottom - 9);
+    });
+
+    [Fact]
+    public Task Right_clicking_under_the_tracks_adds_a_track() => Ui.Run(() =>
+    {
+        using var rig = new WindowRig();
+        int tracks = rig.Editor.Tracks.Count;
+
+        // Under the lanes.
+        rig.Click(rig.Canvas.TranslatePoint(new Point(200, Controls.TimelineCanvas.RulerHeight + rig.Editor.ContentHeight + 30), rig.Window)!.Value, MouseButton.Right);
+        rig.ClickMenuItem(rig.MenuItem("Add audio track"));
+        Assert.Equal((tracks + 1, TrackKind.Audio), (rig.Editor.Tracks.Count, rig.Editor.Tracks[^1].Kind));
+
+        // Under the track headers, on the left.
+        var area = rig.Find<Border>(b => b.Name == "LanesArea");
+        rig.Click(area.TranslatePoint(new Point(90, area.Bounds.Height - 30), rig.Window)!.Value, MouseButton.Right);
+        var menu = rig.Find<ListBox>(l => l.Name == "TrackHeaders").ContextMenu!;
+        Assert.True(menu.IsOpen);
+        rig.ClickMenuItem(menu.Items.OfType<MenuItem>().First(i => i.Header as string == "Add lighting track"));
+        Assert.Equal((tracks + 2, TrackKind.Lighting), (rig.Editor.Tracks.Count, rig.Editor.Tracks[^1].Kind));
     });
 
     [Fact]
@@ -1280,7 +1380,8 @@ public class UiTests
         // Selecting a track shows it; the Timeline tab is a click away, and the selection tab brings it back.
         rig.Editor.EditTrackProperties(rig.Editor.Tracks.First(t => t.IsAudio));
         WindowRig.Pump();
-        Assert.Equal((false, "Audio", true), (rig.Editor.IsTimelineTab, selectionTab.Content as string, selectionTab.IsEnabled));
+        Assert.Equal((false, "Track", true), (rig.Editor.IsTimelineTab, selectionTab.Content as string, selectionTab.IsEnabled));
+        Assert.Equal("Audio", rig.Find<TextBlock>(t => t.Name == "InspectorTitle").Text);   // the tab says what sort; the title, which
         rig.Click(rig.CenterOf(rig.Find<Button>(b => b.Name == "TimelineTab")));
         Assert.True(rig.Editor.IsTimelineTab);
         rig.Click(rig.CenterOf(selectionTab));
@@ -1307,9 +1408,11 @@ public class UiTests
     {
         var settings = new MachineSettings();
         using var rig = new WindowRig(settings: settings);
+        rig.Window.Width = 1700;   // room for the lanes with every panel out (else the tree folds to make it)
         rig.ViewModel.Buttons.IsOpen = true;
         WindowRig.Pump(300);
         var editor = rig.Editor;
+        Assert.True(editor.IsTreeOpen);
         var inspector = rig.Find<Controls.PanelGrip>(g => g.Name == "InspectorGrip");
         var tree = rig.Find<Controls.PanelGrip>(g => g.Name == "TreeGrip");
 
@@ -1331,7 +1434,9 @@ public class UiTests
         rig.Click(rig.CenterOf(rig.Find<Button>(b => b.Name == "TreeStrip")));
         Assert.True(editor.IsTreeOpen);
 
-        // However far it's dragged, the lanes keep room to work in.
+        // However far it's dragged, the lanes keep room to work in (and the tree, opened by hand, stays out).
+        rig.Window.Width = 1400;
+        WindowRig.Pump(300);
         rig.Drag(rig.CenterOf(inspector), rig.CenterOf(inspector) - new Point(800, 0));
         WindowRig.Pump(300);
         Assert.InRange(rig.Find<Border>(b => b.Name == "LanesArea").Bounds.Width, 415, 425);
@@ -1418,10 +1523,11 @@ public class UiTests
             return rig.Window.GetVisualDescendants().OfType<Border>().Where(b => b.DataContext is EffectChoice && b.IsEffectivelyVisible).ToList();
         }
         var entries = Entries();
-        Assert.Equal(["Level Control", "Tilt", .. EffectInfo.All.Select(i => i.Name)], entries.Select(b => ((EffectChoice)b.DataContext!).Name));
+        Assert.Equal(["Level Control", "Look", "Tilt", "Home", .. EffectInfo.All.Where(i => !i.IsLook).Select(i => i.Name)], entries.Select(b => ((EffectChoice)b.DataContext!).Name));
+        Assert.Equal([true, true, false, false, true], entries.Take(5).Select(b => b.IsEnabled));   // no moving heads here: no Tilt or Home
         rig.Click(rig.CenterOf(entries[0]));   // a click adds it
         rig.Editor.Playback.Seek(S(10));
-        rig.Click(rig.CenterOf(Entries()[2]));   // Lightning
+        rig.Click(rig.CenterOf(Entries()[4]));   // Lightning
 
         Assert.Equal(["Level Control", "Lightning"], rig.Lighting.Events.Select(e => e.Name));
         Assert.Equal([null, EffectKind.Lightning], rig.Lighting.Events.Cast<LightingClip>().Select(c => c.Effect?.Kind));
@@ -1454,14 +1560,17 @@ public class UiTests
         // Another timeline: its highlighted track's, and the timeline properties are that timeline's and say so.
         rig.Editor.ShowTimelineTabCommand.Execute(null);
         WindowRig.Pump();
-        var name = rig.Find<TextBlock>(t => t.Name == "TimelinePropertiesName");
+        var name = rig.Find<TextBlock>(t => t.Name == "InspectorTitle");
         rig.Editor.OpenTimeline(other);
         WindowRig.Pump();
         Assert.NotNull(rig.Editor.SelectedTrack);
         Assert.Same(rig.Editor.SelectedTrack, rig.Editor.TrackProperties?.Row);
         Assert.Contains(rig.Editor.TrackProperties!.Track, other.Tracks);
+        rig.Editor.ShowTimelineTabCommand.Execute(null);
+        WindowRig.Pump();
         Assert.Equal((other.Name, 10m), (name.Text, rig.Editor.Priority));
         rig.Editor.OpenTimeline(main);
+        rig.Editor.ShowTimelineTabCommand.Execute(null);
         WindowRig.Pump();
         Assert.Equal((main.Name, 0m), (name.Text, rig.Editor.Priority));
         Assert.Contains(rig.Editor.TrackProperties!.Track, main.Tracks);
@@ -1475,12 +1584,92 @@ public class UiTests
         ClickName(lightingRow);
         Assert.Same(lightingRow, rig.Editor.TrackProperties?.Row);
         Assert.False(rig.Editor.IsTimelineTab);
-        Assert.Equal((lightingRow.Name, lightingRow.Name), (rig.Editor.SelectionTabLabel, rig.Find<TextBlock>(t => t.Name == "InspectorTitle").Text));
+        Assert.Equal(("Track", lightingRow.Name), (rig.Editor.SelectionTabLabel, rig.Find<TextBlock>(t => t.Name == "InspectorTitle").Text));
 
         // The channel picker holds choices for its own track, so another track closes it.
         rig.Editor.EditChannels(rig.Editor.Tracks.First(t => t.IsLighting));
         WindowRig.Pump();
         ClickName(rig.Editor.Tracks.First(t => t.IsAudio));
         Assert.Null(rig.Editor.ChannelPicker);
+    });
+
+    [Fact]
+    public Task The_timeline_tree_folds_while_the_lanes_are_cramped_and_comes_back_when_there_s_room() => Ui.Run(() =>
+    {
+        using var rig = new WindowRig();
+        var editor = rig.Editor;
+        double Lanes() => rig.Find<Border>(b => b.Name == "LanesArea").Bounds.Width;
+        Assert.True(editor.IsTreeOpen);
+
+        // The Buttons panel out at 1400: the tree folds to its strip, and the lanes get its room.
+        rig.ViewModel.Buttons.IsOpen = true;
+        WindowRig.Pump(300);
+        Assert.False(editor.IsTreeOpen);
+        Assert.True(Lanes() >= TimelineEditorViewModel.RoomyLanes - 100, $"lanes {Lanes()}");
+
+        // Room again: it's back.
+        rig.ViewModel.Buttons.IsOpen = false;
+        WindowRig.Pump(300);
+        Assert.True(editor.IsTreeOpen);
+
+        // Opened by hand, it stays however cramped it gets; folded by hand, it stays folded.
+        rig.ViewModel.Buttons.IsOpen = true;
+        WindowRig.Pump(300);
+        rig.Click(rig.CenterOf(rig.Find<Button>(b => b.Name == "TreeStrip")));
+        WindowRig.Pump(300);
+        Assert.True(editor.IsTreeOpen);
+        rig.Window.Width = 1300;
+        WindowRig.Pump(300);
+        Assert.True(editor.IsTreeOpen);
+        editor.ToggleTreeCommand.Execute(null);
+        rig.Window.Width = 1900;
+        rig.ViewModel.Buttons.IsOpen = false;
+        WindowRig.Pump(300);
+        Assert.False(editor.IsTreeOpen);
+    });
+
+    [Fact]
+    public Task Without_a_timeline_open_a_tree_folded_for_room_comes_back_to_open_one_from() => Ui.Run(() =>
+    {
+        using var rig = new WindowRig();
+        rig.ViewModel.Buttons.IsOpen = true;
+        WindowRig.Pump(300);
+        Assert.False(rig.Editor.IsTreeOpen);
+
+        rig.Editor.SelectedTimeline = null;
+        WindowRig.Pump(300);
+
+        Assert.True(rig.Editor.IsTreeOpen);
+    });
+
+    [Fact]
+    public Task The_inspector_s_tabs_say_what_sort_of_thing_its_title_which_and_its_heading_what_kind() => Ui.Run(() =>
+    {
+        using var rig = new WindowRig();
+        var title = rig.Find<TextBlock>(t => t.Name == "InspectorTitle");
+        var tab = rig.Find<Button>(b => b.Name == "SelectionTab");
+        string? Heading() => rig.Find<Border>(b => b.Name == "InspectorPanel").GetVisualDescendants().OfType<TextBlock>()
+                                .FirstOrDefault(t => t.Classes.Contains("heading") && t.IsEffectivelyVisible)?.Text;
+
+        // The timeline: by name.
+        rig.Editor.ShowTimelineTabCommand.Execute(null);
+        WindowRig.Pump();
+        Assert.Equal(("Main", "Timeline"), (title.Text, Heading()));
+
+        // An unnamed look: a clip, called what it is.
+        var look = rig.Editor.AddEffectAt(rig.TrackRow("Lighting").Track, S(1), EffectKind.Look)!;
+        rig.Editor.SelectEvent(look.Id, additive: false);
+        WindowRig.Pump();
+        Assert.Equal(("Clip", "Look", "Look"), (tab.Content as string, title.Text, Heading()));
+
+        // Named: the title follows the name; the heading still says what it is.
+        rig.Editor.Properties!.Name = "Red wash";
+        WindowRig.Pump();
+        Assert.Equal(("Red wash", "Look"), (title.Text, Heading()));
+
+        // A track: by its name, a lighting track.
+        rig.Editor.EditTrackProperties(rig.Editor.Tracks[0]);
+        WindowRig.Pump();
+        Assert.Equal(("Track", "Lighting", "Lighting track"), (tab.Content as string, title.Text, Heading()));
     });
 }

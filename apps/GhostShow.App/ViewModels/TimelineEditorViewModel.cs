@@ -66,8 +66,40 @@ public sealed partial class TrackRowViewModel : ObservableObject
 
     public string ChannelSummary => Lanes.Count switch { 0 => "No channels: right-click → Channels…", 1 => "1 channel", var n => $"{n} channels" };
 
-    /// <summary>Under the name, where there's room: what the track controls (lighting) or its kind.</summary>
-    public string Subtitle => IsLighting ? ChannelSummary : KindLabel;
+    /// <summary>
+    /// What the track's channels belong to, in the track's order: its fixtures' names, then "3 raw channels" for
+    /// channels by DMX address.
+    /// </summary>
+    public IReadOnlyList<string> FixtureNames()
+    {
+        var names = Track.Channels.Select(c => c.Target.FixtureId).OfType<Guid>().Distinct()
+            .Select(id => _editor.FixtureName(id) ?? "Missing fixture").ToList();
+        int raw = Track.Channels.Count(c => c.Target.FixtureId is null);
+        if (raw > 0) names.Add(raw == 1 ? "1 raw channel" : $"{raw} raw channels");
+        return names;
+    }
+
+    /// <summary>"Entry LED, Beam bar +2": the fixtures it controls, as many as are worth a line.</summary>
+    public string FixtureSummary
+    {
+        get
+        {
+            var names = FixtureNames();
+            if (names.Count == 0) return ChannelSummary;
+            return names.Count <= 2 ? string.Join(", ", names) : $"{names[0]}, {names[1]} +{names.Count - 2}";
+        }
+    }
+
+    /// <summary>The header's tooltip: every fixture, the channel count, and what the colour strip shows.</summary>
+    public string? SubtitleTip => IsLighting && Lanes.Count > 0
+        ? $"{string.Join("\n", FixtureNames())}\n({ChannelSummary})\nThe strip under its clips shows their colour and brightness as it plays."
+        : null;
+
+    /// <summary>
+    /// Under the name, where there's room: what the track controls (lighting; its channel count when it's named after
+    /// them already) or its kind.
+    /// </summary>
+    public string Subtitle => !IsLighting ? KindLabel : FixtureSummary == Track.Name ? ChannelSummary : FixtureSummary;
 
     public bool ShowSubtitle => IsLighting && Height > TimelineEditorViewModel.CollapsedTrackHeight;
 
@@ -203,6 +235,7 @@ public sealed partial class TrackRowViewModel : ObservableObject
     public void Refresh()
     {
         OnPropertyChanged(nameof(Name));
+        OnPropertyChanged(nameof(Subtitle));
         OnPropertyChanged(nameof(Enabled));
         OnPropertyChanged(nameof(MuteLabel));
         OnPropertyChanged(nameof(VolumePercent));
@@ -219,6 +252,8 @@ public sealed partial class TrackRowViewModel : ObservableObject
         foreach (var lane in lanes) Lanes.Add(new LaneRowViewModel(lane, _editor.LaneLabel(lane.Target), TimelineEditorViewModel.LaneColor(lane)));
         OnPropertyChanged(nameof(Height));
         OnPropertyChanged(nameof(ChannelSummary));
+        OnPropertyChanged(nameof(FixtureSummary));
+        OnPropertyChanged(nameof(SubtitleTip));
         OnPropertyChanged(nameof(Subtitle));
     }
 }
@@ -265,6 +300,7 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
         {
             OnPropertyChanged(nameof(UndoLabel));
             OnPropertyChanged(nameof(RedoLabel));
+            OnPropertyChanged(nameof(InspectorTitle));   // a rename, or a clip turned into another kind
         };
         AudioDevices = audioDevices;
         if (audioDevices is not null) audioDevices.Changed += () =>
@@ -430,7 +466,35 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
     public partial bool IsTreeOpen { get; set; } = true;
 
     [RelayCommand]
-    void ToggleTree() => IsTreeOpen = !IsTreeOpen;
+    void ToggleTree()
+    {
+        IsTreeOpen = !IsTreeOpen;
+        _treeFoldedForRoom = false;
+        _treeKeptOpen = IsTreeOpen;   // opened by hand: it stays, however little room the lanes have
+    }
+
+    /// <summary>The lanes (headers and canvas) are cramped below this width, so the tree folds away to make room.</summary>
+    public const double RoomyLanes = 640;
+
+    bool _treeFoldedForRoom, _treeKeptOpen;
+
+    /// <summary>
+    /// As the lanes' width changes: folds the tree while they're cramped (the open timeline's tab still says which it is),
+    /// and brings it back once there's room for both, unless it was folded or opened by hand.
+    /// </summary>
+    public void MakeRoomForLanes(double lanesWidth)
+    {
+        if (IsTreeOpen && !_treeKeptOpen && lanesWidth < RoomyLanes)
+        {
+            IsTreeOpen = false;
+            _treeFoldedForRoom = true;
+        }
+        else if (!IsTreeOpen && _treeFoldedForRoom && lanesWidth - TreeWidth - 8 >= RoomyLanes + 40)   // 40: not on the edge
+        {
+            IsTreeOpen = true;
+            _treeFoldedForRoom = false;
+        }
+    }
 
     /// <summary>The timeline tree's width, as dragged by its grip.</summary>
     [ObservableProperty]
@@ -451,17 +515,27 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
     }
 
     /// <summary>
-    /// The selection tab's name: what's being inspected, by name ("Lighting 1", "Explosion"), or "Handle", "Channels";
-    /// "Selection" with nothing.
+    /// The selection tab's name: what sort of thing is inspected, as the other tab is "Timeline": "Clip", "Event",
+    /// "Track", "Handle" or "Channels"; "Selection" with nothing. (The title bar names it; the panel's heading says
+    /// what kind it is.)
     /// </summary>
     public string SelectionTabLabel => ChannelPicker is not null ? "Channels"
                                      : PointProperties is not null ? "Handle"
-                                     : Properties is not null ? Properties.Event.Name is { Length: > 0 } name ? name : Properties.Kind
-                                     : TrackProperties is not null ? TrackProperties.Row.Name
+                                     : Properties is not null ? Properties.Event is TimelineCommandEvent ? "Event" : "Clip"
+                                     : TrackProperties is not null ? "Track"
                                      : "Selection";
 
-    /// <summary>The inspector's title bar: its open tab's name, as a Visual Studio tool window's.</summary>
-    public string InspectorTitle => IsTimelineTab ? "Timeline" : SelectionTabLabel;
+    /// <summary>
+    /// The inspector's title bar: the name of what its open tab shows, as it's named on the timeline: the clip
+    /// (its name, or what it is), the track, the handle's clip, the track whose channels are picked, or the timeline.
+    /// </summary>
+    public string InspectorTitle => IsTimelineTab ? TimelineName
+                                  : ChannelPicker is not null ? ChannelPicker.TrackName
+                                  : PointProperties is not null ? PointProperties.ClipName
+                                  : Properties is not null ? Properties.Event.Name is { Length: > 0 } name ? name
+                                                             : Properties.Event is LightingClip clip ? clip.KindName : Properties.Kind
+                                  : TrackProperties is not null ? TrackProperties.Row.Name
+                                  : TimelineName;
 
     /// <summary>On the folded inspector's strip: what's selected, or how the timeline plays.</summary>
     public string InspectorSummary => ShowPropertiesHint ? $"Timeline: {PlaybackSummary}" : SelectionLabel;
@@ -574,11 +648,17 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
     partial void OnSelectedTimelineChanged(ShowTimeline? value)
     {
         if (SelectedTab?.Timeline != value) SelectedTab = value is null ? null : Tabs.FirstOrDefault(t => t.Timeline == value) ?? AddTab(value);
+        if (value is null && _treeFoldedForRoom)
+        {
+            IsTreeOpen = true;   // nothing open: the tree is where one is opened
+            _treeFoldedForRoom = false;
+        }
         ClearSelection();
         EnvelopeEditor?.Show(null);   // its clip was on the other timeline
         RebuildTracks();
         _playback.SetTimeline(value);
         OnPropertyChanged(nameof(TimelineName));
+        OnPropertyChanged(nameof(InspectorTitle));
         OnPropertyChanged(nameof(Triggers));
         OnPropertyChanged(nameof(Loop));
         OnPropertyChanged(nameof(LengthSeconds));
@@ -653,6 +733,7 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
         foreach (var tab in Tabs) tab.Refresh();
         Tree.RefreshTitles();
         OnPropertyChanged(nameof(TimelineName));
+        OnPropertyChanged(nameof(InspectorTitle));
     }
 
     TimelineTabViewModel AddTab(ShowTimeline timeline)
@@ -969,6 +1050,9 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
         var track = new TimelineTrack { Kind = kind, Name = kind switch { TrackKind.Lighting => $"Lighting {count}", TrackKind.Event => $"Events {count}", _ => $"Audio {count}" } };
         Edit("Add track", () => timeline.Tracks.Add(track), roots: Only(timeline));
         SelectedTrack = Tracks.FirstOrDefault(t => t.Track == track);
+        // A lighting track does nothing until it has fixtures: ask which, straight away (there's nothing to pick from
+        // in a show with none yet; the track says how to add them later).
+        if (kind == TrackKind.Lighting && SelectedTrack is { } row && _session.Project.Fixtures.Count > 0) EditChannels(row);
     }
 
     [RelayCommand]

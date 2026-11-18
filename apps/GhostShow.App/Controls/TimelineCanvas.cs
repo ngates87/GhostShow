@@ -44,7 +44,9 @@ public sealed class TimelineCanvas : Control
 {
     public const double RulerHeight = 26;
     const double EventMark = 15;   // half an event's symbol
-    const double EdgeGrab = 6, MinBlockWidth = 6, DragThreshold = 3, HandleSize = 3.5, HandleGrab = 7, ClipPad = 3, ClipTitle = 15;
+    // A clip narrower than NarrowClip (zoomed out) is grabbed by its body and edges, not its envelope handles.
+    const double NarrowClip = 28;
+    const double EdgeGrab = 6, MinBlockWidth = 8, DragThreshold = 3, HandleSize = 3.5, HandleGrab = 7, ClipPad = 3, ClipTitle = 15;
     static readonly TimeSpan TailRoom = TimeSpan.FromSeconds(10);
     static readonly double[] RulerSteps = [0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600];
 
@@ -145,6 +147,7 @@ public sealed class TimelineCanvas : Control
     public bool PreviewEffect(EffectChoice choice, Point? at)
     {
         _effectPreview = at is { } point && Editor is { } editor && RowAt(point.Y) is { Track.IsLighting: true } row
+                         && (!choice.IsTilt || editor.CanTilt(row.Track.Track))
             ? (row, editor.SnapTime(TimeAt(point.X)), choice.Length, choice.Name)
             : null;
         InvalidateVisual();
@@ -308,7 +311,12 @@ public sealed class TimelineCanvas : Control
 
     /// <summary>Where an expanded lighting row draws envelopes: below the clips' titles, to just above the row's bottom.</summary>
     public static (double Top, double Bottom) EnvelopeBand(TimelineRow row) =>
-        (RulerHeight + row.Top + ClipPad + ClipTitle + 4, RulerHeight + row.Bottom - ClipPad - 5);
+        (RulerHeight + row.Top + ClipPad + ClipTitle + 4, RulerHeight + row.Bottom - ClipPad - StripRoom(row) - 5);
+
+    /// <summary>A lighting row's colour strip, under its clips: what its lights look like over time.</summary>
+    const double ColourStrip = 9;
+
+    static double StripRoom(TimelineRow row) => row.Track.IsLighting ? ColourStrip : 0;
 
     /// <summary>Where a level (0-255) is drawn in an expanded lighting row, and back.</summary>
     public static double LevelY(TimelineRow row, double value)
@@ -379,7 +387,9 @@ public sealed class TimelineCanvas : Control
             using (context.PushOpacity(row.Track.Track.Enabled ? 1 : 0.35))
             {
                 if (row.Track.IsLighting && row.Track.Track.Channels.Count == 0)
-                    DrawText(context, "Right-click the track name → Channels… to choose what this track controls",
+                    DrawText(context, editor.ChannelPicker?.Track == row.Track.Track
+                                 ? "Tick its fixtures in the Channels panel, then OK"
+                                 : "Right-click the track name → Channels… to choose what this track controls",
                              new Point(Math.Max(left, 0) + 8, RulerHeight + row.Top + (row.Height - 16) / 2), 600, HintText, 12);
                 else DrawEvents(context, editor, row, left, right);
             }
@@ -399,6 +409,7 @@ public sealed class TimelineCanvas : Control
         var events = row.Track.Track.Events;
         double top = RulerHeight + row.Top;
         var levels = row.Track.IsLighting ? editor.LevelsOf(row.Track.Track) : [];
+        if (row.Track.IsLighting) DrawColourStrip(context, editor, row, left, right);
         if (row.Track.IsLighting && row.Track.Track.DrawLevelsBetweenClips) DrawHolds(context, editor, row, levels, left, right);
         // Labels stop at the next clip in the row so they don't run over it: every start, sorted once per row
         // (finding "the next one" by searching per clip made a row of 500 clips cost 250,000 comparisons).
@@ -415,7 +426,7 @@ public sealed class TimelineCanvas : Control
             double labelRoom = next < starts.Length ? X(starts[next]) - x - 6 : 400;
             int labelLine = 0;
             if (labels is not null && labels.TryGetValue(e.Id, out var label)) (labelLine, labelRoom) = label;
-            var rect = new Rect(x, top + ClipPad, width, row.Height - 2 * ClipPad);
+            var rect = new Rect(x, top + ClipPad, width, row.Height - 2 * ClipPad - StripRoom(row));
             using (context.PushOpacity(e.Enabled ? 1 : 0.4))
                 DrawEvent(context, editor, row, e, rect, labelRoom, eventLength, levels, labelLine);
         }
@@ -444,6 +455,53 @@ public sealed class TimelineCanvas : Control
         }
         return layout;
     }
+
+    static readonly IBrush StripBack = new SolidColorBrush(Color.Parse("#141414"));
+    const double StripSample = 2;   // pixels between samples
+    const int MaxStripes = 4;
+
+    /// <summary>
+    /// A lighting row's colour strip: a stripe per light on the track (its fixtures, in the order of the track's
+    /// channels; the first <see cref="MaxStripes"/>), coloured as the light is at each moment: its colour scaled by its
+    /// brightness, black when it's out. Where the timeline leaves a light alone (before its first clip) the stripe is
+    /// left empty. Drawn from what plays, so it's the show at a glance.
+    /// </summary>
+    void DrawColourStrip(DrawingContext context, TimelineEditorViewModel editor, TimelineRow row, double left, double right)
+    {
+        double from = Math.Max(0, left), to = right;
+        if (to <= from) return;
+        var band = new Rect(from, RulerHeight + row.Bottom - ClipPad - ColourStrip + 2, to - from, ColourStrip - 2);
+        context.FillRectangle(StripBack, band);
+        var lights = editor.LightsOf(row.Track.Track);
+        int stripes = Math.Min(MaxStripes, lights.Count);
+        if (stripes == 0) return;
+        double height = band.Height / stripes;
+        int samples = (int)Math.Ceiling((to - from) / StripSample);
+        var times = Enumerable.Range(0, samples + 1).Select(i => TimeAt(from + i * StripSample)).ToList();
+        for (int s = 0; s < stripes; s++)
+        {
+            double y = band.Y + s * height;
+            double runStart = from;
+            Color? run = null;
+            int i = 0;
+            foreach (var rgb in LightPreview.Sample(lights[s], times))
+            {
+                double x = from + i * StripSample;
+                Color? colour = rgb is { } c ? Color.FromRgb(Shade(c.R), Shade(c.G), Shade(c.B)) : null;
+                if (i > 0 && colour != run)
+                {
+                    if (run is { } done) context.FillRectangle(new SolidColorBrush(done), new Rect(runStart, y, x - runStart, height));
+                    runStart = x;
+                }
+                run = colour;
+                i++;
+            }
+            if (run is { } last) context.FillRectangle(new SolidColorBrush(last), new Rect(runStart, y, to - runStart, height));
+        }
+    }
+
+    /// <summary>A light's level as a screen shade: lifted a little, so a dim light still shows its colour.</summary>
+    static byte Shade(double level) => (byte)Math.Round(Math.Pow(Math.Clamp(level, 0, 1), 0.6) * 255);
 
     /// <summary>
     /// Between a lighting track's clips (and before the first, for a channel held at a fixed level from the start;
@@ -501,10 +559,19 @@ public sealed class TimelineCanvas : Control
                 context.DrawRectangle(effect ? EffectBorder : ClipBorder, rect.Deflate(0.5), 4);
                 double titleY = rect.Y + 0.5;
                 double icons = DrawClipIcons(context, clip, rect, titleY);
-                string title = effect ? $"⚡ {clip.Name ?? clip.KindName}" : clip.Name ?? clip.KindName;
-                DrawText(context, title, new Point(rect.X + 4, titleY), Math.Min(labelRoom, rect.Width - 8 - icons), size: 11);
+                double titleX = rect.X + 4;
+                string title = clip.Name ?? clip.KindName;
+                if (clip.Effect is { Kind: EffectKind.Look } look && rect.Width > 24)
+                {
+                    // A look shows its colour, as a swatch where an effect has its ⚡.
+                    var swatch = Color.TryParse(look.Color ?? EffectInfo.Of(EffectKind.Look).DefaultColor, out var c) ? c : Colors.White;
+                    context.DrawRectangle(new SolidColorBrush(swatch), HandleOutline, new Rect(titleX, titleY + 3, 9, 9), 2);
+                    titleX += 13;
+                }
+                else if (effect) title = $"⚡ {title}";
+                DrawText(context, title, new Point(titleX, titleY), Math.Min(labelRoom, rect.Right - titleX - 4 - icons), size: 11);
                 // Some effects only dim what's already lit, so in the dark they're a flat line that looks broken: say why.
-                if (effect && levels.Count > 0 && levels.All(channel => (channel.Find(clip)?.Handles ?? clip.EnvelopeFor(channel.Channel.Target, channel.StartLevelOf(clip))).All(p => p.Value == 0)))
+                if (clip.Effect is not null && levels.Count > 0 && levels.All(channel => (channel.Find(clip)?.Handles ?? clip.EnvelopeFor(channel.Channel.Target, channel.StartLevelOf(clip))).All(p => p.Value == 0)))
                     DrawText(context, "Nothing to dim: the lights are at 0 here", new Point(rect.X + 4, rect.Y + ClipTitle + 2), Math.Min(labelRoom, rect.Width - 8), size: 11);
                 break;
             }
@@ -885,9 +952,10 @@ public sealed class TimelineCanvas : Control
             if (events[i] is not (AudioEvent or LightingClip) || events[i].Locked) continue;
             var e = events[i];
             double x = X(e.Start), width = Math.Max(MinBlockWidth, X(editor.LengthOf(e)));
-            if (width <= EdgeGrab * 2) continue;
-            if (point.X >= x + width - EdgeGrab && point.X <= x + width + 2) return (e, Edge.Right);
-            if (point.X >= x - 2 && point.X <= x + EdgeGrab) return (e, Edge.Left);
+            // A narrow clip keeps the middle half to move it by; its edges reach out past it instead.
+            double inside = Math.Min(EdgeGrab, width / 4), outside = width < NarrowClip ? EdgeGrab : 2;
+            if (point.X >= x + width - inside && point.X <= x + width + outside) return (e, Edge.Right);
+            if (point.X >= x - outside && point.X <= x + inside) return (e, Edge.Left);
         }
         for (int i = events.Count - 1; i >= 0; i--)
         {
@@ -915,9 +983,12 @@ public sealed class TimelineCanvas : Control
             if (d <= bestDistance) (best, bestDistance) = ((point, startOf), d);
         }
         var levels = editor.LevelsOf(row.Track.Track);
+        double titleBottom = RulerHeight + row.Top + ClipPad + ClipTitle;
         foreach (var clip in row.Track.Track.Events.OfType<LightingClip>())
         {
             if (at.X < X(clip.Start) - HandleGrab || at.X > X(clip.Start + clip.Length) + HandleGrab) continue;
+            // Too narrow to tell its handles from the clip, or on its title bar: that's for the clip itself.
+            if (X(clip.Length) < NarrowClip || (at.Y < titleBottom && at.X >= X(clip.Start) && at.X <= X(clip.Start + clip.Length))) continue;
             foreach (var channel in levels)
             {
                 if (editor.FirstClipOf(channel) == clip) Consider(X(clip.Start), LevelY(row, channel.Channel.StartLevel), null, channel.Channel);
@@ -957,7 +1028,12 @@ public sealed class TimelineCanvas : Control
 
         if (properties.IsRightButtonPressed)
         {
-            if (RowAt(point.Y) is not { } rightRow) return;
+            if (RowAt(point.Y) is not { } rightRow)
+            {
+                if (point.Y >= RulerHeight) ShowAddTrackMenu(editor);   // below the tracks
+                e.Handled = true;
+                return;
+            }
             if (HitHandle(editor, rightRow, point) is { Point: { } rightPoint })
             {
                 if (!editor.SelectedPoints.Contains(rightPoint)) editor.SelectPoint(rightPoint, additive: false);
@@ -1105,11 +1181,15 @@ public sealed class TimelineCanvas : Control
         var items = new List<object>();
         if (clicked is LightingClip { Effect: not null } effectClip)
         {
-            var pattern = new MenuItem { Header = "New random pattern", IsEnabled = !effectClip.Locked };
-            pattern.Click += (_, _) => editor.NewEffectPattern(effectClip);
+            if (EffectInfo.Of(effectClip.Effect.Kind).IsRandom)
+            {
+                var pattern = new MenuItem { Header = "New random pattern", IsEnabled = !effectClip.Locked };
+                pattern.Click += (_, _) => editor.NewEffectPattern(effectClip);
+                items.Add(pattern);
+            }
             var convert = new MenuItem { Header = "Convert to Level Control (editable handles)", IsEnabled = !effectClip.Locked };
             convert.Click += (_, _) => editor.ConvertToLevelControl(effectClip);
-            items.AddRange([pattern, convert, new Separator()]);
+            items.AddRange([convert, new Separator()]);
         }
         else if (clicked is LightingClip clip)
         {
@@ -1180,8 +1260,11 @@ public sealed class TimelineCanvas : Control
         var items = new List<object> { add };
         if (row.Track.IsLighting)
         {
+            var look = new MenuItem { Header = "Add look here (colour and brightness)" };
+            look.Click += (_, _) => editor.AddEffectAt(row.Track, editor.SnapTime(at), EffectKind.Look);
+            items.Add(look);
             var effects = new MenuItem { Header = "Add effect here" };
-            effects.ItemsSource = EffectInfo.All.Select(info =>
+            effects.ItemsSource = EffectInfo.All.Where(info => !info.IsLook).Select(info =>
             {
                 var item = new MenuItem { Header = info.Name };
                 ToolTip.SetTip(item, info.Description);
@@ -1191,6 +1274,19 @@ public sealed class TimelineCanvas : Control
             items.Add(effects);
         }
         items.Add(paste);
+        Open(new ContextMenu { ItemsSource = items });
+    }
+
+    /// <summary>Right-click below the tracks: add one (as the toolbar's Add track).</summary>
+    void ShowAddTrackMenu(TimelineEditorViewModel editor)
+    {
+        var items = new[] { (TrackKind.Lighting, "Add lighting track"), (TrackKind.Audio, "Add audio track"), (TrackKind.Event, "Add event track") }
+            .Select(choice =>
+            {
+                var item = new MenuItem { Header = choice.Item2 };
+                item.Click += (_, _) => editor.AddTrackCommand.Execute(choice.Item1);
+                return item;
+            }).ToList();
         Open(new ContextMenu { ItemsSource = items });
     }
 

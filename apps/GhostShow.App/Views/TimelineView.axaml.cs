@@ -43,6 +43,10 @@ public partial class TimelineView : UserControl
         {
             if (e.WidthChanged) FitTransport();
         };
+        LanesArea.SizeChanged += (_, e) =>
+        {
+            if (e.WidthChanged && LanesArea.IsEffectivelyVisible) _editor?.MakeRoomForLanes(e.NewSize.Width);
+        };
 
         TimelineTree.DoubleTapped += (_, e) =>
         {
@@ -58,6 +62,11 @@ public partial class TimelineView : UserControl
         AddHandler(PointerMovedEvent, OnEffectMoved, RoutingStrategies.Bubble, handledEventsToo: true);
         AddHandler(PointerReleasedEvent, OnEffectReleased, RoutingStrategies.Bubble, handledEventsToo: true);
         AddHandler(PointerCaptureLostEvent, (_, _) => EndEffectDrag(), RoutingStrategies.Bubble, handledEventsToo: true);
+        // A tilt move's Start and End cards: pressing or tabbing into one picks that handle (what the arc then sets).
+        // Tunnel, so a press on the card's value box or arrows picks it too.
+        AddHandler(PointerPressedEvent, (_, e) => PickTiltCard(e.Source), RoutingStrategies.Tunnel);
+        AddHandler(GotFocusEvent, (_, e) => PickTiltCard(e.Source), RoutingStrategies.Bubble);
+        EffectsPopup.Opened += (_, _) => _editor?.RefreshEffectChoices();
         TimelineTree.AddHandler(DragDrop.DragOverEvent, OnTreeDragOver);
         TimelineTree.AddHandler(DragDrop.DropEvent, OnTreeDrop);
         // The in-place rename box: focus it when it appears, commit when focus leaves it.
@@ -259,6 +268,14 @@ public partial class TimelineView : UserControl
         _ => "",
     };
 
+    /// <summary>Pressed or tabbed into a tilt move's Start or End card: that handle is picked, for the arc to set.</summary>
+    static void PickTiltCard(object? source)
+    {
+        if ((source as Visual)?.GetSelfAndVisualAncestors().OfType<Border>().FirstOrDefault(b => b.Classes.Contains("tiltCard")) is { } card
+            && card.DataContext is EventPropertiesViewModel properties)
+            properties.IsEndSelected = card.Classes.Contains("end");
+    }
+
     void OnTreeDragOver(object? sender, DragEventArgs e)
     {
         e.DragEffects = Controls.TimelineCanvas.NodeIn(e.DataTransfer) is not null ? DragDropEffects.Move : DragDropEffects.None;
@@ -374,7 +391,7 @@ public partial class TimelineView : UserControl
             ShowEffectChip(choice, e);
         }
         bool lands = Canvas.PreviewEffect(choice, PointOnLanes(e));
-        MoveEffectChip(e, lands ? choice.Name : $"{choice.Name}: drop on a lighting track");
+        MoveEffectChip(e, lands ? choice.Name : choice.IsTilt ? $"{choice.Name}: drop on a track with moving heads" : $"{choice.Name}: drop on a lighting track");
     }
 
     void OnEffectReleased(object? sender, PointerReleasedEventArgs e)

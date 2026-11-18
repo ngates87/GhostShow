@@ -261,16 +261,20 @@ public static class TimelineCompiler
             yield return new LevelStep(0, 0, channel.Slot, channel.Index, levels.Channel.StartLevel, levels.Channel.StartLevel);
         foreach (var clip in levels.Clips)
         {
-            if (clip.Clip.Tilt is { } move && levels.Tilt is { IsSixteenBit: true } tilt)
+            if (clip.Fade is { } fade)
             {
                 // Both bytes of one 16-bit fade, so a slow move is smooth (the next clip takes over where it starts).
                 yield return new LevelStep(clip.Clip.Start.Ticks, clip.Clip.Length.Ticks, channel.Slot, channel.Index,
-                                           tilt.ValueAt(move.StartDegrees), tilt.ValueAt(move.EndDegrees),
-                                           tilt.Position(move.StartDegrees), tilt.Position(move.EndDegrees), tilt.IsFine ? StepByte.Low : StepByte.High);
-                continue;
+                                           clip.Handles[0].Value, clip.Handles[^1].Value, fade.From, fade.To, fade.Low ? StepByte.Low : StepByte.High);
             }
-            var end = clip.PlaysFor < clip.Clip.Length ? clip.PlaysFor : (TimeSpan?)null;
-            foreach (var step in LaneSteps(clip.Handles, channel, clip.Clip.Start, end, levels.Channel.Id, null)) yield return step;
+            else
+            {
+                var end = clip.PlaysFor < clip.Clip.Length ? clip.PlaysFor : (TimeSpan?)null;
+                foreach (var step in LaneSteps(clip.Handles, channel, clip.Clip.Start, end, levels.Channel.Id, null)) yield return step;
+            }
+            // Moved in black: to the next tilt clip's start as soon as this one ends, while the lights are out.
+            if (clip.MovedInBlackTo is { } moved)
+                yield return new LevelStep((clip.Clip.Start + clip.PlaysFor).Ticks, 0, channel.Slot, channel.Index, moved, moved);
         }
     }
 

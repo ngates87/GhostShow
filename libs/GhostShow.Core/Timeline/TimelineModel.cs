@@ -63,7 +63,7 @@ public sealed class ShowTimeline
         Name = name, Folder = Folder, Length = Length, Loop = Loop, Playback = Playback,
         Tracks = Tracks.Select(t => new TimelineTrack
         {
-            Name = t.Name, Kind = t.Kind, Enabled = t.Enabled, Color = t.Color, DrawLevelsBetweenClips = t.DrawLevelsBetweenClips, Volume = t.Volume, AudioDevice = t.AudioDevice, AudioSide = t.AudioSide,
+            Name = t.Name, Kind = t.Kind, Enabled = t.Enabled, Color = t.Color, DrawLevelsBetweenClips = t.DrawLevelsBetweenClips, MoveInBlack = t.MoveInBlack, Volume = t.Volume, AudioDevice = t.AudioDevice, AudioSide = t.AudioSide,
             Events = t.Events.Select(e => e.Clone()).ToList(),
             Channels = t.Channels.Select(c => c.Clone()).ToList(),
         }).ToList(),
@@ -209,6 +209,12 @@ public sealed class TimelineTrack
 
     /// <summary>Lighting, expanded: draw each channel's held level between clips as a line (VenueMagic's "Draw lamp levels between clips").</summary>
     public bool DrawLevelsBetweenClips { get; set; } = true;
+
+    /// <summary>
+    /// Lighting: move in black. When the track's lights are out between clips and a tilt clip comes next, its moving
+    /// heads go to where it starts as soon as they're dark, so they don't visibly swing there when it begins.
+    /// </summary>
+    public bool MoveInBlack { get; set; } = true;
 }
 
 /// <summary>
@@ -407,13 +413,23 @@ public sealed class LightingClip : TimelineEvent
 
     public const string TiltName = "Tilt";
 
+    /// <summary>A home move's name (and the Effects list's entry for one).</summary>
+    public const string HomeName = "Home";
+
+    /// <summary>
+    /// What makes its envelopes, if they're made from its settings (an effect, a look, a tilt move) rather than its own
+    /// handles; null for a Level Control clip. Each kind is saved under its own property; a new kind joins them here.
+    /// </summary>
+    [JsonIgnore]
+    public IClipGenerator? Generator => (IClipGenerator?)Effect ?? Tilt;
+
     /// <summary>Its envelopes are made from its settings (an effect or a tilt move), so it has no handles of its own to edit.</summary>
     [JsonIgnore]
-    public bool IsGenerated => Effect is not null || Tilt is not null;
+    public bool IsGenerated => Generator is not null;
 
     /// <summary>What the clip is: "Level Control", "Tilt", or the effect's name.</summary>
     [JsonIgnore]
-    public string KindName => Effect is { } effect ? EffectInfo.Of(effect.Kind).Name : Tilt is not null ? TiltName : DefaultName;
+    public string KindName => Generator?.KindName ?? DefaultName;
 
     public ChannelLane? LaneFor(LaneTarget target) => Lanes.FirstOrDefault(l => l.Target == target);
 

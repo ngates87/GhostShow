@@ -44,7 +44,7 @@ To export or back up a show, copy or zip the whole folder.
 | `TimelineTrack` | Name, Kind (Lighting, Audio), Enabled, Events (clips), Channels (lighting), DrawLevelsBetweenClips, Volume (audio) | A disabled (muted) track is ignored when playing. Track order matters for ties (below). An audio track's Volume (0–1, default 1) multiplies every clip's own Volume |
 | `ChannelLane` | Target, Points, Color; on a track also Start (FirstClip or Fixed) and StartLevel | On a track: a channel it controls, and where it is before the first clip. In a clip: that channel's envelope |
 | `LightingClip` | Start, Length, Name, Lanes, ScaleOnResize, Effect (optional) | VenueMagic's Level Control clip: an envelope per channel, handles timed from the clip's start (rules below). With an Effect it's a built-in effect clip instead (below) |
-| `LightingEffect` | Kind, Strength (0–1), Rate, Color, Seed, Ending (BackToBefore, Dark) | A built-in effect's settings; its envelopes are made from them |
+| `LightingEffect` | Kind, Strength (0–1), Rate, Color, Seed, Ending (BackToBefore, Dark, Hold) | A built-in effect's settings (or a Look's: Rate is its fade in seconds, Hold its usual ending); its envelopes are made from them |
 | `LaneTarget` | A fixture and its control (Intensity, Red, …) or channel number; or a universe and DMX address | Fixture targets follow the fixture when it's re-addressed |
 | `CurvePoint` | Time, Value (0–255), Curve (Linear, Step, Spline) | An envelope handle: a level at a time. Curve says how the level gets here from the previous handle |
 | `TimelineCommandEvent` | Start, Command (Run, Stop), TimelineId | On an event track: runs or stops another timeline when the playhead gets there |
@@ -53,6 +53,19 @@ To export or back up a show, copy or zip the whole folder.
 Every event (clip) has an ID, a name (optional; a description is generated when there's none), Enabled, Locked
 (can't be moved, resized, split, deleted or edited) and a link group (linked clips move together).
 Times are stored as `TimeSpan` (100 ns resolution) and shown in seconds.
+
+**Generated clips.** A lighting clip with an Effect (an effect or a look) or a Tilt move has envelopes made from its
+settings rather than its own handles. Each of these settings classes is an `IClipGenerator` (`ClipGenerators.cs`),
+and `LightingClip.Generator` returns whichever one the clip has. A generator:
+
+- names the clip;
+- says whether it moves heads, which move in black needs;
+- makes the clip's envelopes once for the whole track, then gives each channel its envelope from that channel's
+  role, function and tilt;
+- can play a channel as one 16-bit fade instead of an envelope, as a tilt move does.
+
+`TrackLevels`, the compiler and the editor ask only the generator. A new kind of move, such as pan or position, is one
+generator class plus its saved property on the clip.
 
 ## What plays: the rules
 
@@ -147,6 +160,28 @@ double flashes).
   envelopes show on the timeline but have no handles; **Convert to Level Control** (properties or right-click)
   turns the effect into ordinary handles to fine-tune, playing exactly as before. Effects can't be split (convert
   first). Flashes last at least 40 ms, so DMX (about 40 updates a second) always shows them.
+
+### Looks
+
+A **Look** (second in the Effects menu, or right-click an empty part of a lighting row → Add look here) is the
+everyday clip: the track's lights fade to a colour at a brightness over its **Fade** time, and stay there. It's an
+effect clip underneath (Kind `Look`), so it uses the track's channels the same way (dimmers take the brightness,
+colour channels the colour). **At the end:** *Stays on* (the default; the next clip carries on from the look),
+*Fades back to before* or *Fades out*, either over the same fade time as the clip ends. A look has no random part. Its
+clip shows its colour as a swatch in its title.
+
+### The colour strip, and what a track controls
+
+Under the clips, each lighting row has a thin **colour strip**: a stripe per fixture on the track (its first four, in
+the track's channel order), coloured as the light is at each moment: its colour channels mixed (white adds to all
+three, amber is orange, UV violet) and scaled by its dimmer; a fixture with no colour channels is a warm lamp. Black is
+out; an empty stripe is a fixture the timeline leaves alone there (before its first clip). It's drawn from the same
+resolved levels that play.
+
+The track's header names its fixtures under its name ("Entry LED, Beam bar +2"; its channel count when it's named
+after them already), with every fixture in the tooltip. **Add track → Lighting** opens the channel picker straight
+away (in a show with fixtures); a new track still called "Lighting N" takes the name of the one or two fixtures picked
+for it, in the same undo step.
 
 ### Lighting and manual control together
 
@@ -251,7 +286,15 @@ same files. The Audio screen lists every sound the show uses and whether it was 
 
 - **Timelines tree** (left): folders and timelines. Double-click (or Enter) opens a timeline in a tab; F2 renames in
   place; drag onto a folder (or use Move to in the right-click menu) to move; + Timeline and + Folder add to the
-  selected folder; Delete asks first. A `*` marks a timeline with unsaved changes.
+  selected folder; Delete asks first. A `*` marks a timeline with unsaved changes. When the lanes would be narrower
+  than 640 px (for example with the Buttons panel out at 1400 px), the tree folds to its strip to make room, and it
+  comes back once there's room for both. The open timeline's tab still shows which timeline is open. If you open or
+  fold the tree yourself, it stays as you left it. With no timeline open, the tree comes back so one can be opened.
+- **Inspector** (right): a tool window with two tabs along the bottom. One tab shows what's selected: a **Clip**, an
+  **Event**, a **Track**, a **Handle**, or **Channels** while picking a track's channels. The other is the
+  **Timeline**. The title bar names the thing shown: the clip's name (or what it is, for an unnamed clip), the
+  track's name, or the timeline's name. The heading below it says what kind of thing it is: "Look", "Lightning
+  effect", "Lighting track" or "Timeline". Longer explanations sit behind ⓘ lines; hover over one to read it.
 - **Tabs:** the open timelines. The selected tab is the one edited and the one the transport plays (one at a time,
   for now; switching tabs stops playback). Closing a tab doesn't remove the timeline. Loop and Length (0 = until the
   last event ends) are beside the tabs.

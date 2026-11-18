@@ -79,6 +79,73 @@ public class TiltMoveTests
         Assert.Equal(255, LevelsAt(compiled, 4).Values[0]);
     }
 
+    /// <summary>The 7 channel mode: tilt (one byte) and a dimmer, lit at full from the start.</summary>
+    static TimelineTrack Lit(PatchedFixture bar, params LightingClip[] clips)
+    {
+        var dimmer = Lane(LaneTarget.FixtureControl(bar.Id, ChannelFunction.Intensity));
+        dimmer.Start = ChannelStart.Fixed;
+        dimmer.StartLevel = 255;
+        var track = new TimelineTrack
+        {
+            Kind = TrackKind.Lighting,
+            Channels = [Lane(LaneTarget.FixtureControl(bar.Id, ChannelFunction.Tilt)), dimmer],
+            Events = [.. clips],
+        };
+        return track;
+    }
+
+    [Fact]
+    public void A_dark_move_turns_the_light_off_while_it_moves_and_a_home_move_goes_to_the_rest_position_in_the_dark()
+    {
+        var dark = Tilt(0, 4, -115, 115);
+        dark.Tilt!.Dark = true;
+        var home = new LightingClip { Start = S(6), Length = S(2), Tilt = new TiltMove { Home = true, StartDegrees = 90, EndDegrees = 90 } };
+        var bar = Patch("7 channel");
+        var track = Lit(bar, dark, home);
+        var compiled = Compile(Timeline(track), Context([bar]));
+
+        (int Tilt, int Dimmer) At(double seconds) => (LevelsAt(compiled, seconds).Values[0], LevelsAt(compiled, seconds).Values[1]);
+
+        Assert.Equal((128, 0), At(2));     // moving, in the dark
+        Assert.Equal((255, 255), At(5));   // there, and lit again
+        Assert.Equal((128, 0), At(7));     // home: the profile's rest value (its angles aren't used), in the dark
+        Assert.Equal((128, 255), At(9));
+    }
+
+    [Fact]
+    public void Moving_heads_move_in_black_to_where_the_next_tilt_clip_starts_as_soon_as_they_are_dark()
+    {
+        LightingClip FadeOut(LaneTarget dimmer) => new()
+        {
+            Start = S(0), Length = S(2),
+            Lanes = [new ChannelLane { Target = dimmer, Points = [new CurvePoint { Time = S(2), Value = 0, Curve = CurveKind.Linear }] }],
+        };
+        var bar = Patch("7 channel");
+        var dimmerTarget = LaneTarget.FixtureControl(bar.Id, ChannelFunction.Intensity);
+        var track = Lit(bar, FadeOut(dimmerTarget), Tilt(5, 2, 90, 0));
+        var tilt = new TiltChannel(230, false, false);
+
+        byte TiltAt(TimelineTrack t, double seconds) => LevelsAt(Compile(Timeline(t), Context([bar])), seconds).Values[0];
+
+        Assert.Equal(tilt.ValueAt(90), TiltAt(track, 3));   // dark from 2 s: already where the move starts
+
+        track.MoveInBlack = false;
+        Assert.NotEqual(tilt.ValueAt(90), TiltAt(track, 3));   // off: it swings there as the move begins
+        Assert.Equal(tilt.ValueAt(90), TiltAt(track, 5));
+
+        track.MoveInBlack = true;
+        ((LightingClip)track.Events[0]).Lanes[0].Points[0].Value = 100;   // still lit before the move: it waits
+        Assert.NotEqual(tilt.ValueAt(90), TiltAt(track, 3));
+    }
+
+    [Fact]
+    public void A_tilt_s_home_is_its_profile_default_or_the_middle_if_the_profile_does_not_say()
+    {
+        Assert.Equal(128, TiltChannel.Of(Bar.FindMode("5 channel")!, 1)!.Value.RestValue);
+        var unsaid = new FixtureMode { Name = "2", Channels = [new FixtureChannel { Name = "Tilt", Function = ChannelFunction.Tilt }] };
+        Assert.Equal(128, TiltChannel.Of(unsaid, 1)!.Value.RestValue);
+    }
+
     [Fact]
     public void A_tilt_clip_s_move_is_saved_with_it_and_kept_by_a_copy()
     {

@@ -741,7 +741,7 @@ public class TimelineEditorTests : IDisposable
         Editor.SetTrackChannels(lighting.Track, [LaneTarget.FixtureChannel(bar.Id, 1), LaneTarget.FixtureChannel(bar.Id, 2)]);
         Editor.SelectedTrack = lighting;
 
-        Editor.AddChoiceCommand.Execute(TimelineEditorViewModel.EffectChoices.Single(c => c.IsTilt));
+        Editor.AddChoiceCommand.Execute(TimelineEditorViewModel.EffectChoices.Single(c => c.IsTilt && !c.IsHome));
 
         var clip = Clip();
         Assert.Equal(("Tilt", -45.0, 45.0), (clip.Name, clip.Tilt!.StartDegrees, clip.Tilt.EndDegrees));
@@ -764,6 +764,35 @@ public class TimelineEditorTests : IDisposable
         Editor.UndoCommand.Execute(null);   // the swap
         Editor.UndoCommand.Execute(null);   // the end angle (the nudge and the typing were one edit)
         Assert.Equal((-45.0, 45.0), (clip.Tilt!.StartDegrees, clip.Tilt.EndDegrees));
+    }
+
+    [Fact]
+    public void Tilt_needs_moving_heads_and_adds_their_tilt_channels_and_home_goes_there_in_the_dark()
+    {
+        var lighting = _rig.Track(TrackKind.Lighting);
+        string? notice = null;
+        Editor.Notice += n => notice = n;
+        Editor.SelectedTrack = lighting;
+        Assert.False(Editor.CanTiltHere);   // no moving heads on it
+        Assert.Null(Editor.AddTiltAt(lighting, S(0)));
+        Assert.Contains("no moving heads", notice);
+
+        var bar = new FixtureInstance { Name = "Beam bar", ProfileId = TimelineRig.BeamBar.Id, ModeName = "14 channel", StartAddress = 100 };
+        _rig.Session.Project.Fixtures.Add(bar);
+        _rig.Session.Apply();
+        Editor.SetTrackChannels(lighting.Track, [LaneTarget.FixtureChannel(bar.Id, 3)]);   // its dimmer only
+        Assert.True(Editor.CanTiltHere);
+
+        var home = Editor.AddTiltAt(lighting, S(0), home: true)!;
+        Assert.Equal([3, 1, 2], lighting.Track.Channels.Select(c => c.Target.Channel!.Value));   // its tilt and tilt fine, added
+        Assert.Equal(("Home", "Home move", true, false), (home.Name, Editor.Properties!.Kind, Editor.Properties.IsHome, Editor.Properties.IsAngleMove));
+
+        var tilt = Editor.AddTiltAt(lighting, S(5))!;
+        Assert.Equal(3, lighting.Track.Channels.Count);   // already there
+        Editor.Properties!.Dark = true;
+        Assert.True(tilt.Tilt!.Dark);
+        Editor.UndoCommand.Execute(null);
+        Assert.False(tilt.Tilt!.Dark);
     }
 
     [Fact]

@@ -37,7 +37,9 @@ public sealed partial class EventPropertiesViewModel : ObservableObject
 
     public string Kind => Event switch
     {
+        LightingClip { Effect.Kind: EffectKind.Look } => "Look",
         LightingClip { Effect: not null } clip => $"{clip.KindName} effect",
+        LightingClip { Tilt.Home: true } => "Home move",
         LightingClip { Tilt: not null } => "Tilt move",
         LightingClip clip => clip.KindName,
         TimelineCommandEvent => "Event",
@@ -189,6 +191,18 @@ public sealed partial class EventPropertiesViewModel : ObservableObject
 
     public bool IsTilt => TiltClip is not null;
 
+    /// <summary>A home move: to the rest position in the dark, nothing to set. Any other tilt clip has its angles.</summary>
+    public bool IsHome => TiltClip?.Tilt?.Home == true;
+
+    public bool IsAngleMove => IsTilt && !IsHome;
+
+    /// <summary>Moves with the light off, back on at its end.</summary>
+    public bool Dark
+    {
+        get => TiltClip?.Tilt?.Dark == true;
+        set => ChangeTilt(value ? "Move in the dark" : "Move in the light", m => m.Dark = value, "dark");
+    }
+
     /// <summary>The arc shows this far each way from straight ahead: the track's moving heads' travel (±90° if not known).</summary>
     public double TiltLimit => TiltClip is { } clip ? _editor.TiltLimitOf(clip) ?? TiltChannel.UnknownRange / 2 : 90;
 
@@ -237,6 +251,22 @@ public sealed partial class EventPropertiesViewModel : ObservableObject
     [RelayCommand]
     void Nudge(string by) => SelectedDegrees += double.Parse(by, System.Globalization.CultureInfo.InvariantCulture);
 
+    /// <summary>The Start card's arrows: picks the start, and moves it a degree.</summary>
+    [RelayCommand]
+    void NudgeStart(string by)
+    {
+        IsEndSelected = false;
+        Nudge(by);
+    }
+
+    /// <summary>The End card's arrows: picks the end, and moves it a degree.</summary>
+    [RelayCommand]
+    void NudgeEnd(string by)
+    {
+        IsEndSelected = true;
+        Nudge(by);
+    }
+
     [RelayCommand]
     void SwapTilt() => ChangeTilt("Swap start and end", m => (m.StartDegrees, m.EndDegrees) = (m.EndDegrees, m.StartDegrees), "swap");
 
@@ -247,6 +277,7 @@ public sealed partial class EventPropertiesViewModel : ObservableObject
         OnPropertyChanged(nameof(StartDegrees));
         OnPropertyChanged(nameof(EndDegrees));
         OnPropertyChanged(nameof(SelectedDegrees));
+        OnPropertyChanged(nameof(Dark));
     }
 
     // ---- built-in effect ----
@@ -266,9 +297,34 @@ public sealed partial class EventPropertiesViewModel : ObservableObject
         set
         {
             if (value is null || value.Kind == Effect?.Kind) return;
-            ChangeEffect($"Make it {value.Name}", e => { e.Kind = value.Kind; e.Rate = value.DefaultRate; e.Color = null; }, "kind");
+            ChangeEffect($"Make it {value.Name}", e =>
+            {
+                e.Kind = value.Kind;
+                e.Rate = value.DefaultRate;
+                e.Color = null;
+                if (e.Ending == EffectEnding.Hold || value.IsLook) e.Ending = value.DefaultEnding;   // only a look holds
+            }, "kind");
         }
     }
+
+    public bool IsLook => Info?.IsLook == true;
+    public bool IsRandom => Info?.IsRandom == true;
+
+    /// <summary>A look's ending, for its "At the end" list: stays, fades back to before, or fades out.</summary>
+    public static IReadOnlyList<string> LookEndings { get; } = ["Stays on", "Fades back to before", "Fades out"];
+
+    public int LookEndingIndex
+    {
+        get => Effect?.Ending switch { EffectEnding.BackToBefore => 1, EffectEnding.Dark => 2, _ => 0 };
+        set
+        {
+            var ending = value switch { 1 => EffectEnding.BackToBefore, 2 => EffectEnding.Dark, _ => EffectEnding.Hold };
+            if (value < 0 || Effect?.Ending == ending) return;
+            ChangeEffect(value switch { 1 => "Fade back at the end", 2 => "Fade out at the end", _ => "Stay on at the end" }, e => e.Ending = ending, "ending");
+        }
+    }
+
+    public decimal RateIncrement => IsLook ? 0.5m : 1;
 
     public string EffectDescription => Info?.Description ?? "";
     public string StrengthLabel => $"{Info?.StrengthLabel ?? "Strength"} (%)";

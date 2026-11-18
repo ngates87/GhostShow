@@ -99,16 +99,27 @@ public sealed class TrackLevels
     {
         public byte StartLevel => Handles[0].Value;
 
-        /// <summary>Where it leaves the channel: its level when it stops playing.</summary>
-        public byte EndLevel => Envelope.Round(Envelope.ValueAt(Handles, PlaysFor));
+        /// <summary>
+        /// Where a tilt channel is moved in black after the clip (see <see cref="TimelineTrack.MoveInBlack"/>): the
+        /// next tilt clip's start, jumped to as the clip ends; null if it isn't.
+        /// </summary>
+        public byte? MovedInBlackTo { get; init; }
+
+        /// <summary>A generated clip that plays the channel as one 16-bit fade rather than its envelope (see <see cref="IClipEnvelopes.FadeOf"/>).</summary>
+        public SixteenBitFade? Fade { get; init; }
+
+        /// <summary>Where it leaves the channel: its level when it stops playing (or where it's moved in black to).</summary>
+        public byte EndLevel => MovedInBlackTo ?? Envelope.Round(Envelope.ValueAt(Handles, PlaysFor));
     }
 
-    TrackLevels(ChannelLane channel, IReadOnlyList<ClipEnvelope> clips, TiltChannel? tilt)
+    TrackLevels(ChannelLane channel, List<ClipEnvelope> clips, TiltChannel? tilt)
     {
         Channel = channel;
-        Clips = clips;
+        _clips = clips;
         Tilt = tilt;
     }
+
+    readonly List<ClipEnvelope> _clips;
 
     public ChannelLane Channel { get; }
 
@@ -116,7 +127,7 @@ public sealed class TrackLevels
     public TiltChannel? Tilt { get; }
 
     /// <summary>The enabled clips in playing order (by start).</summary>
-    public IReadOnlyList<ClipEnvelope> Clips { get; }
+    public IReadOnlyList<ClipEnvelope> Clips => _clips;
 
     /// <summary>A track's enabled clips in playing order: by start (equal starts keep their order on the track).</summary>
     public static IReadOnlyList<LightingClip> PlayingOrder(TimelineTrack track) =>
@@ -149,49 +160,59 @@ public sealed class TrackLevels
             foreach (var lane in c.Lanes) byTarget.TryAdd(lane.Target, lane);
             return byTarget;
         }).ToList();
-        var keys = clips.Select(c => c.Effect is { } effect ? LightingEffects.Keys(effect, c.Length) : null).ToList();
+        var made = clips.Select(c => c.Generator?.Generate(c.Length)).ToList();
         var roles = LightingEffects.Roles(track.Channels, functionOf);
-        return track.Channels.Select((channel, k) => Resolve(clips, channel, i => lanes[i].GetValueOrDefault(channel.Target), i => keys[i],
-                                                             roles[k], channel.Target.Control ?? functionOf?.Invoke(channel.Target),
-                                                             tiltOf?.Invoke(channel.Target))).ToList();
+        var result = track.Channels.Select((channel, k) => Resolve(clips, channel, i => lanes[i].GetValueOrDefault(channel.Target), i => made[i],
+                                                                   roles[k], channel.Target.Control ?? functionOf?.Invoke(channel.Target),
+                                                                   tiltOf?.Invoke(channel.Target))).ToList();
+        if (track.MoveInBlack) MoveInBlack(result, roles);
+        return result;
+    }
+
+    /// <summary>
+    /// Move in black: where every channel carrying brightness is out between two clips and the second moves heads (a
+    /// tilt clip), the tilt channels go to its start as soon as the first ends (rather than swinging there as it
+    /// begins). A track with nothing carrying brightness can't tell when it's dark, so its heads aren't moved early.
+    /// </summary>
+    static void MoveInBlack(IReadOnlyList<TrackLevels> channels, IReadOnlyList<EffectRole> roles)
+    {
+        var lights = channels.Where((c, k) => c.Tilt is null && new GeneratedChannel(roles[k]).CarriesBrightness).ToList();
+        if (lights.Count == 0) return;
+        foreach (var tilt in channels.Where(c => c.Tilt is not null))
+        {
+            var clips = tilt._clips;
+            for (int i = 1; i < clips.Count; i++)
+            {
+                var (before, next) = (clips[i - 1], clips[i]);
+                if (next.Clip.Generator is not { MovesHeads: true } || before.Clip.Start + before.PlaysFor >= next.Clip.Start) continue;   // no gap
+                if (!lights.All(light => light.Clips[i - 1].EndLevel == 0) || before.EndLevel == next.StartLevel) continue;
+                clips[i - 1] = before with { MovedInBlackTo = next.StartLevel };
+            }
+        }
     }
 
     /// <param name="clips">The track's clips in playing order (see <see cref="PlayingOrder"/>).</param>
     /// <param name="laneOf">The envelope of clips[i] for the channel (default: looked up in the clip).</param>
-    /// <param name="keysOf">An effect clip's keys (default: made from its effect).</param>
-    /// <param name="role">How effect clips treat the channel (see <see cref="LightingEffects.Roles"/>).</param>
+    /// <param name="madeOf">A generated clip's envelopes (default: made by its generator).</param>
+    /// <param name="role">How generated clips treat the channel (see <see cref="LightingEffects.Roles"/>).</param>
     /// <param name="function">What the channel does (for an effect's colour); null for a dimmer or raw channel.</param>
     /// <param name="tilt">The channel as a tilt clip drives it, if it's a tilt channel; a tilt clip holds any other channel.</param>
     public static TrackLevels Resolve(IReadOnlyList<LightingClip> clips, ChannelLane channel, Func<int, ChannelLane?>? laneOf = null,
-                                      Func<int, IReadOnlyList<LightingEffects.Key>?>? keysOf = null, EffectRole role = EffectRole.Brightness,
+                                      Func<int, IClipEnvelopes?>? madeOf = null, EffectRole role = EffectRole.Brightness,
                                       ChannelFunction? function = null, TiltChannel? tilt = null)
     {
         var result = new List<ClipEnvelope>(clips.Count);
+        var generated = new GeneratedChannel(role, function, tilt);
         byte level = channel.StartLevel;
         for (int i = 0; i < clips.Count; i++)
         {
             var clip = clips[i];
             var playsFor = i + 1 < clips.Count && clips[i + 1].Start - clip.Start < clip.Length ? clips[i + 1].Start - clip.Start : clip.Length;
             ClipEnvelope envelope;
-            if (clip.Effect is { } effect)
+            if (clip.Generator is { } generator)
             {
-                var keys = keysOf?.Invoke(i) ?? LightingEffects.Keys(effect, clip.Length);
-                envelope = new ClipEnvelope(clip, null, LightingEffects.EnvelopeFor(keys, role, function, level, clip.Length), playsFor);
-            }
-            else if (clip.Tilt is { } move)
-            {
-                // A tilt channel moves from the start angle to the end one (the move says where it starts, rather than
-                // carrying on from the clip before). Every other channel holds.
-                var handles = tilt is { } t
-                    ? new List<CurvePoint>
-                    {
-                        new() { Time = TimeSpan.Zero, Value = t.ValueAt(move.StartDegrees) },
-                        // A fine byte means nothing on its own (it turns over as the coarse one steps): drawn flat, then
-                        // its end value, which is where the next clip carries on from. Playback moves both bytes as one.
-                        new() { Time = clip.Length, Value = t.ValueAt(move.EndDegrees), Curve = t.IsFine ? CurveKind.Step : CurveKind.Linear },
-                    }
-                    : Envelope.WithStart(null, level, clip.Length);
-                envelope = new ClipEnvelope(clip, null, handles, playsFor);
+                var made = madeOf?.Invoke(i) ?? generator.Generate(clip.Length);
+                envelope = new ClipEnvelope(clip, null, made.For(generated, level), playsFor) { Fade = made.FadeOf(generated) };
             }
             else
             {
