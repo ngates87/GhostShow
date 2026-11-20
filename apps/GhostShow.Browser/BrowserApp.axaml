@@ -29,5 +29,8 @@
     <DataTemplate DataType="vm:ButtonsViewModel">
       <views:ButtonsPanel />
     </DataTemplate>
+    <DataTemplate DataType="vm:InputsViewModel">
+      <views:InputsView />
+    </DataTemplate>
   </Application.DataTemplates>
 </Application>

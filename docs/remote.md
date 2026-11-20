@@ -132,7 +132,9 @@ Audio shows the show computer's devices and the files used by the show; its sett
     `triggers`, each with its `owner` (the button or timeline), `index` (its place in that one's list), `on`, `spent`
     and `state` ("Ready", "Re-arms in 2.5 s", …).
   - `input`: an input that arrived on the show computer (`source`, `device`, `address`, `pressed`, `value`, `outcome`),
-    to a device waiting for a trigger (`learning`), so it can learn it.
+    to a device waiting for a trigger (`learning`), so it can learn it, and to one watching the inputs, for its monitor.
+  - `inputs`: the show computer's serial ports (`state`: the ports found, and each input device's port, status and last
+    command), to a device that asked with `watchInputs`, whenever it changes.
   - `shows`: the names of the shows a device can open, answering `listShows`.
   - `result`: the answer to a command.
   - `history`: what Undo and Redo would do next on this device (for its Undo button's label), after every change: for its
@@ -175,9 +177,12 @@ Audio shows the show computer's devices and the files used by the show; its sett
     on; `resetTrigger` (`owner`, `index`) lets a run-once trigger fire again. `learning` (`on`) says the device is
     waiting for a trigger: while any device is, commands from the show's input devices go to it (`input`) instead of
     setting off triggers, as while the show computer itself learns one. A device's own keyboard never fires a trigger.
+  - **Inputs:** `watchInputs` (`on`) says the device shows the inputs (the browser build does from each hello).
+    `pickPort` (`device`, `port`, or none) puts one of the show's input devices on a port the show computer offered;
+    `enableInput` (`device`, `on`) turns listening to it off or on; `refreshPorts` lists the ports again.
   - **Where they run:** on the show computer's UI thread, through the same view models as the desktop's controls
     (`IShowControl`).
-  - **Roles:** the show computer checks the device's role for each command. `open`, `edit`, `undo`, `redo`, `save`, `learning`, the file menu's commands,
+  - **Roles:** the show computer checks the device's role for each command. `open`, `edit`, `undo`, `redo`, `save`, `learning`, `pickPort`, `enableInput`, `refreshPorts`, the file menu's commands,
     `saveProfile`, `deleteProfile`, `downloadLibrary`, `scanOutputs`, `assignOutput` and the commands that set levels are
     editor-only; an operator may run the show but not change it.
 - **The fixture library:** `GET /api/library?token=…` gives the whole library, one profile per line of JSON, compressed

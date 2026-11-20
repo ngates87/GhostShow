@@ -71,17 +71,21 @@ public sealed partial class MainViewModel : ShellViewModel
         Diagnostics = new DiagnosticsViewModel(services, Playback);
         Performance = new PerformanceMeterViewModel(() => services.PlaybackLoop.Timing, () => services.Probe.Snapshot(last: 20).P95Ms);
         _serial = services.SerialInputs ?? new SerialInputs(logger);
-        Inputs = new InputsViewModel(session, _serial, settings, SaveSettingsAsync,
+        _inputSetup = new LocalInputSetup(session, _serial, settings, SaveSettingsAsync,
             // Only adapters that have their port open: one that's missing keeps the name of the port it was last on, and
             // another device may have that name now (the DMX output checks the adapter's serial number, so it won't take it).
-            () => outputs.Services.Where(s => s.Status == DmxOutputStatus.Connected && s.Device.Port is not null).Select(s => (s.Universe, s.Device.Port!)),
-            Buttons);
+            () => outputs.Services.Where(s => s.Status == DmxOutputStatus.Connected && s.Device.Port is not null).Select(s => (s.Universe, s.Device.Port!)));
+        Inputs = new InputsViewModel(session, _inputSetup, Buttons);
         BottomWorkspace = new BottomWorkspaceViewModel(Playback, Inputs.Monitor, Lighting, Diagnostics, settings.Panels, offersPlaying: false);
         // Both come on a port's reading thread, and are handled on this one. A command is an input like a key.
-        _serial.CommandReceived += (device, command) => Dispatcher.UIThread.Post(() => Inputs.OnCommand(device, command));
-        _serial.StatusChanged += _ => Dispatcher.UIThread.Post(Inputs.Refresh);
+        _serial.CommandReceived += (device, command) => Dispatcher.UIThread.Post(() =>
+        {
+            _inputSetup.OnCommand(device, command, DateTimeOffset.Now);   // shown on its card
+            Buttons.Command(device, command);
+        });
+        _serial.StatusChanged += _ => Dispatcher.UIThread.Post(_inputSetup.Refresh);
         Remote = new RemoteViewModel(new AppRemoteHost(session, ShowPlayback, Playback, new AppShowControl(this), () => WarningsSnapshot, AudioDevices, () => IsDirty, () => _session.FilePath is null || _session.IsSingleFileShow, local.Library, _outputSetup, local.Levels,
-                                                       new AppTriggerControl(Buttons)),
+                                                       new AppTriggerControl(Buttons), _inputSetup),
                                      settings.Remote, SaveSettingsAsync, logger);
         Audio = new AudioViewModel(services.Audio, AudioDevices, session, settings, SaveSettingsAsync);
         _ = AudioDevices.RefreshAsync();
@@ -196,6 +200,7 @@ public sealed partial class MainViewModel : ShellViewModel
     public DiagnosticsViewModel Diagnostics { get; }
     public InputsViewModel Inputs { get; }
     readonly SerialInputs _serial;
+    readonly LocalInputSetup _inputSetup;
     public PerformanceMeterViewModel Performance { get; }
 
     public override bool IsShowComputer => true;
@@ -282,7 +287,7 @@ public sealed partial class MainViewModel : ShellViewModel
         RefreshRecentShows();
         await _outputSetup.ApplyAsync();
         Inputs.RefreshPortsCommand.Execute(null);
-        Inputs.Apply();   // after the DMX outputs, so a port they use isn't taken
+        _inputSetup.Apply();   // after the DMX outputs, so a port they use isn't taken
         _tick.Start();
         if (RecentShows.FirstOrDefault() is { Exists: true } last) await OpenPathAsync(last.Path);
         await Remote.StartIfEnabledAsync();
@@ -571,7 +576,8 @@ public sealed partial class MainViewModel : ShellViewModel
         Playback.Reset();    // the old show's timelines stop at once
         Timeline.Reload();   // focuses the new show's first timeline
         Buttons.Reload();
-        Inputs.Reload();     // the new show's input devices, on this computer's ports
+        _inputSetup.Reload();   // the new show's input devices, on this computer's ports
+        Inputs.Reload();
         Remote.ShowReplaced();
         Guide.Reset();
         await _outputSetup.ApplyAsync();
@@ -629,6 +635,7 @@ public sealed partial class MainViewModel : ShellViewModel
         if (_tickCount % 15 == 0) Performance.Update();   // twice a second, so the meter moves like one
         if (_tickCount % 30 != 0) return;
         _outputSetup.Tick();
+        _inputSetup.Tick();
         Inputs.Tick();
         if (CurrentPage == Page.Diagnostics) Diagnostics.Tick();
         if (CurrentPage == Page.Audio) Audio.Tick();

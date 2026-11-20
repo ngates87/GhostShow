@@ -94,6 +94,30 @@ public sealed class RemoteServerTests : IAsyncLifetime
         public void Receive(InputEvent input, string outcome) => InputReceived?.Invoke(input, outcome);
     }
 
+    /// <summary>The show computer's serial ports, for the server: records what it was asked, and says how they stand.</summary>
+    sealed class Inputs : IInputSetup
+    {
+        public readonly List<string> Calls = [];
+        public InputSetupState State { get; private set; } = new("", [new FoundPort("COM3", "COM3", null)], []);
+        public event Action? Changed;
+
+        public void RefreshPorts() => Calls.Add("refresh");
+
+        public string? PickPort(Guid device, string? port)
+        {
+            Calls.Add($"pick {device} {port}");
+            State = State with { Devices = [new InputDeviceSetup(device, port, null, true, null, false, [new SerialPortChoice("None", null)], "Opening…", false, false, InputHealth.Connecting)] };
+            Changed?.Invoke();
+            return null;
+        }
+
+        public string? SetEnabled(Guid device, bool enabled)
+        {
+            Calls.Add($"enable {device} {enabled}");
+            return null;
+        }
+    }
+
     sealed class Host(ShowSession session, ShowPlayback playback, IFixtureLibrary library, IOutputSetup outputs, ILiveLevels levels) : IRemoteHost
     {
         public IFixtureLibrary Library => library;
@@ -101,6 +125,8 @@ public sealed class RemoteServerTests : IAsyncLifetime
         public ILiveLevels Levels => levels;
         public Triggers TriggerControl { get; } = new();
         public ITriggerControl Triggers => TriggerControl;
+        public Inputs InputSetup { get; } = new();
+        IInputSetup IRemoteHost.Inputs => InputSetup;
         public readonly Lock Gate = new();
 
         public Task<T> InvokeAsync<T>(Func<T> function)
@@ -418,6 +444,45 @@ public sealed class RemoteServerTests : IAsyncLifetime
         learner.Dispose();
         for (int i = 0; i < 100 && _host.TriggerControl.DeviceLearning; i++) await Task.Delay(20, TestContext.Current.CancellationToken);
         Assert.False(_host.TriggerControl.DeviceLearning);   // it went while waiting: the show's inputs work again
+    }
+
+    [Fact]
+    public async Task A_device_s_Inputs_screen_shows_the_show_computer_s_ports_and_puts_its_devices_on_them()
+    {
+        var device = Guid.NewGuid();
+        using var socket = await ConnectAsync(await PairAsync("Laptop"));
+        await NextAsync(socket, "hello");
+
+        await SendAsync(socket, new { action = "watchInputs", on = true });
+        var inputs = await NextAsync(socket, "inputs");   // at once, before the answer
+        Assert.Equal("COM3", inputs["state"]!["found"]![0]!["port"]!.GetValue<string>());
+
+        await SendAsync(socket, new { action = "pickPort", device = device.ToString(), port = "COM3" });
+        var after = await NextAsync(socket, "inputs");   // the new state, as it changed
+        var state = ShowJson.FromNode<InputSetupState>(after["state"]!)!;   // as the browser reads it
+        Assert.True(state.SameAs(_host.InputSetup.State));
+        Assert.Equal((device, "COM3", InputHealth.Connecting), (state.Devices[0].Device, state.Devices[0].Port, state.Devices[0].Health));
+        Assert.True((await CommandAsync(socket, new { action = "enableInput", device = device.ToString(), on = false }))["ok"]!.GetValue<bool>());
+        Assert.True((await CommandAsync(socket, new { action = "refreshPorts" }))["ok"]!.GetValue<bool>());
+        Assert.Equal([$"pick {device} COM3", $"enable {device} False", "refresh"], _host.InputSetup.Calls);
+
+        // Watching, it gets every input for its monitor, with what came of it.
+        lock (_host.Gate) _host.TriggerControl.Receive(new InputEvent("serial", "BTN24", true, DateTimeOffset.Now, device), "Ran Scare");
+        Assert.Equal("Ran Scare", (await NextAsync(socket, "input"))["outcome"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task An_operator_can_t_move_the_show_computer_s_inputs()
+    {
+        using var socket = await ConnectAsync(await PairAsync("Door phone", "operator"));
+        await NextAsync(socket, "hello");
+
+        Assert.True((await CommandAsync(socket, new { action = "watchInputs", on = true }))["ok"]!.GetValue<bool>());   // it may look
+        foreach (var command in new object[] { new { action = "pickPort", device = Guid.NewGuid().ToString(), port = "COM3" },
+                                                new { action = "enableInput", device = Guid.NewGuid().ToString(), on = false },
+                                                new { action = "refreshPorts" } })
+            Assert.Contains("operator", (await CommandAsync(socket, command))["error"]!.GetValue<string>());
+        Assert.Empty(_host.InputSetup.Calls);
     }
 
     [Fact]

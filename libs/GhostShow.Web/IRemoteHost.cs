@@ -58,6 +58,9 @@ public interface IRemoteHost
     /// <summary>The show's triggers, which run only on the show computer: how they stand, arming, learning. On the show's thread.</summary>
     ITriggerControl Triggers { get; }
 
+    /// <summary>The show computer's serial ports, for the Inputs screen: which port each input device is on there. On the show's thread.</summary>
+    IInputSetup Inputs { get; }
+
     /// <summary>The show computer's audio output devices, by name (for audio tracks' outputs). On the show's thread.</summary>
     IReadOnlyList<string> AudioDevices { get; }
 

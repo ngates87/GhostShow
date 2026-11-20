@@ -26,12 +26,17 @@ sealed class RemoteTriggers(RemoteLink link) : IRemoteTriggers
             Guid.Parse(t["owner"]!.GetValue<string>()), t["index"]!.GetValue<int>(), t["on"]?.GetValue<bool>() ?? true,
             t["spent"]?.GetValue<bool>() == true, t["state"]?.GetValue<string>() ?? ""))]);
 
-    /// <summary>An "input" message, handed to the panel to learn from.</summary>
-    public static void Learn(ButtonsViewModel buttons, JsonObject message)
+    /// <summary>
+    /// An "input" message: learned if the panel is waiting for a trigger, and otherwise shown in the input monitor with
+    /// what came of it on the show computer.
+    /// </summary>
+    public static void OnInput(ButtonsViewModel buttons, JsonObject message)
     {
-        if (!buttons.IsLearningKey) return;
         var device = message["device"]?.GetValue<string>() is { } id ? Guid.Parse(id) : (Guid?)null;
-        buttons.Input(message["source"]!.GetValue<string>(), message["address"]!.GetValue<string>(), message["pressed"]?.GetValue<bool>() != false,
-                      device, message["value"]?.GetValue<string>());
+        string source = message["source"]!.GetValue<string>(), address = message["address"]!.GetValue<string>();
+        bool pressed = message["pressed"]?.GetValue<bool>() != false;
+        string? value = message["value"]?.GetValue<string>();
+        if (buttons.IsLearningKey) buttons.Input(source, address, pressed, device, value);
+        else buttons.ShowInput(new InputEvent(source, address, pressed, DateTimeOffset.Now, device, value), message["outcome"]?.GetValue<string>() ?? "");
     }
 }

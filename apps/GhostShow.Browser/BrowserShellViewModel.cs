@@ -3,13 +3,14 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using GhostShow.App.ViewModels;
 using GhostShow.Browser.Remote;
 using GhostShow.Core.Engine;
+using GhostShow.Core.Inputs;
 
 namespace GhostShow.Browser;
 
 /// <summary>
 /// The shared main view's model in a device's browser: the screens work on this page's copy of the show, and what
 /// needs the show computer is asked of it over the connection. Screens that haven't come across yet say they're on
-/// the show computer (docs/plan-shared-view.md, steps 5-7).
+/// the show computer (docs/plan-shared-view.md, steps 6-7).
 /// </summary>
 sealed class BrowserShellViewModel : ShellViewModel
 {
@@ -17,12 +18,14 @@ sealed class BrowserShellViewModel : ShellViewModel
     readonly FileMenu _fileMenu;
     readonly DispatcherTimer _tick;
     long _noticeNumber;
+    long _ticks;
 
-    public BrowserShellViewModel(ShowSession session, ShellServices services, RemoteLink link, FileMenu fileMenu) : base(session, services)
+    public BrowserShellViewModel(ShowSession session, ShellServices services, IInputSetup inputSetup, RemoteLink link, FileMenu fileMenu) : base(session, services)
     {
         _link = link;
         _fileMenu = fileMenu;
-        BottomWorkspace = new BottomWorkspaceViewModel(Playback, null, Lighting, null);
+        Inputs = new InputsViewModel(session, inputSetup, Buttons);
+        BottomWorkspace = new BottomWorkspaceViewModel(Playback, Inputs.Monitor, Lighting, null);
         ShowEditor();   // a device always has the show computer's show open
         // As often as the desktop's screens refresh; the show's state itself arrives with each status.
         _tick = new DispatcherTimer(TimeSpan.FromMilliseconds(33), DispatcherPriority.Background, (_, _) => Tick());
@@ -33,7 +36,8 @@ sealed class BrowserShellViewModel : ShellViewModel
     protected override string ShowName => Session.Project.Name;
 
     public override object AudioPage { get; } = new OnShowComputerViewModel("The Audio screen");
-    public override object InputsPage { get; } = new OnShowComputerViewModel("The Inputs screen");
+    public InputsViewModel Inputs { get; }
+    public override object InputsPage => Inputs;
     public override object DiagnosticsPage { get; } = new OnShowComputerViewModel("Diagnostics");
     public override object ButtonsPart => Buttons;
     public BrowserStatusViewModel Status { get; } = new();
@@ -76,6 +80,12 @@ sealed class BrowserShellViewModel : ShellViewModel
     }
 
     protected override void ReportError(string message) => ShowNotice(message);
+
+    protected override void Tick()
+    {
+        base.Tick();
+        if (++_ticks % 30 == 0) Inputs.Tick();   // once a second: "Last: BTN24 4 s ago"
+    }
 
     /// <summary>A message in the status bar, for a few seconds.</summary>
     public void ShowNotice(string text)

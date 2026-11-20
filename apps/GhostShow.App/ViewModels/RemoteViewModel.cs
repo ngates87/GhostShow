@@ -20,7 +20,7 @@ namespace GhostShow.App.ViewModels;
 sealed class AppRemoteHost(ShowSession session, ShowPlayback playback, PlaybackViewModel focus, IShowControl control,
                             Func<IReadOnlyList<string>> warnings, AudioDeviceList audioDevices, Func<bool> hasUnsavedChanges,
                             Func<bool> needsFirstSave, IFixtureLibrary library, IOutputSetup outputs, ILiveLevels levels,
-                            ITriggerControl triggers) : IRemoteHost
+                            ITriggerControl triggers, IInputSetup inputs) : IRemoteHost
 {
     public Task<T> InvokeAsync<T>(Func<T> function) => Dispatcher.UIThread.InvokeAsync(function).GetTask();
     public ShowSession Session => session;
@@ -34,6 +34,7 @@ sealed class AppRemoteHost(ShowSession session, ShowPlayback playback, PlaybackV
     public IOutputSetup Outputs => outputs;
     public ILiveLevels Levels => levels;
     public ITriggerControl Triggers => triggers;
+    public IInputSetup Inputs => inputs;
     public IReadOnlyList<string> AudioDevices => audioDevices.Names;
 
     public event Action? AudioDevicesChanged

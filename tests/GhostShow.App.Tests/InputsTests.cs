@@ -36,6 +36,7 @@ public class InputsTests : IDisposable
     readonly Dictionary<string, string> _usbSerials = new() { ["COM4"] = "A1B2" };
     readonly SerialInputs _serial;
     readonly ButtonsViewModel _buttons;
+    LocalInputSetup _setup = null!;
     int _saves;
 
     public InputsTests()
@@ -58,12 +59,14 @@ public class InputsTests : IDisposable
 
     Project Show => _rig.Session.Project;
 
+    /// <summary>The screen, on this computer's ports (<see cref="LocalInputSetup"/>, as on the show computer).</summary>
     InputsViewModel Screen(params string[] ports)
     {
-        var screen = new InputsViewModel(_rig.Session, _serial, _settings, () => { _saves++; return Task.CompletedTask; }, () => _dmx, _buttons,
+        _setup = new LocalInputSetup(_rig.Session, _serial, _settings, () => { _saves++; return Task.CompletedTask; }, () => _dmx,
             () => ports,
             port => port == "COM4" ? new UsbPortInfo(0x0403, 0x6001, "Ethereal", "FX QC-24", "A1B2") : null,
             usb => _usbSerials.FirstOrDefault(p => p.Value == usb).Key);
+        var screen = new InputsViewModel(_rig.Session, _setup, _buttons);
         screen.RefreshPortsCommand.Execute(null);
         return screen;
     }
@@ -73,7 +76,7 @@ public class InputsTests : IDisposable
     {
         var deadline = DateTime.UtcNow.AddSeconds(5);
         while (_serial.Status(device).State != expected && DateTime.UtcNow < deadline) Thread.Sleep(5);
-        screen.Refresh();
+        _setup.Refresh();
     }
 
     [Fact]
@@ -158,7 +161,7 @@ public class InputsTests : IDisposable
 
         // The DMX adapter moves to another port: the input takes COM3 on the next tick.
         _dmx[0] = (1, "COM4");
-        screen.Tick();
+        _setup.Tick();
         Settle(screen, device.Id, SerialInputState.Listening);
         Assert.Equal("Listening on COM3 at 9600 baud.", row.StatusLabel);
         lock (_opened) Assert.Equal(["COM3 9600"], _opened);
@@ -198,7 +201,7 @@ public class InputsTests : IDisposable
 
         _usbSerials.Clear();
         _usbSerials["COM6"] = "A1B2";   // plugged into another socket: Windows gives it another name
-        screen.Tick();
+        _setup.Tick();
         Settle(screen, device.Id, SerialInputState.Listening);
         Assert.Equal("Listening on COM6 at 9600 baud.", screen.Devices.Single().StatusLabel);
         Assert.Equal("COM6", _settings.InputPorts.Single().Port);
@@ -229,7 +232,8 @@ public class InputsTests : IDisposable
         row.Name = "Ethereal FX";
         Assert.Equal("Nothing received yet", row.LastReceived);
 
-        screen.OnCommand(row.Model.Id, "BTN24");
+        _setup.OnCommand(row.Model.Id, "BTN24", DateTimeOffset.Now);   // as the show computer does with a command
+        _buttons.Command(row.Model.Id, "BTN24");
         _buttons.PressKey("F5");
         Assert.StartsWith("Last: “BTN24” ", row.LastReceived);
         Assert.Equal([("Keyboard", "F5"), ("Ethereal FX", "BTN24")], screen.Monitor.Rows.Select(r => (r.Source, r.Address)));

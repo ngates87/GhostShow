@@ -260,6 +260,9 @@ public sealed partial class ButtonsViewModel : ObservableObject
         return pressed;
     }
 
+    /// <summary>On a device: an input that arrived on the show computer, and what came of it there, for the input monitor.</summary>
+    public void ShowInput(InputEvent input, string outcome) => InputReceived?.Invoke(input, outcome);
+
     /// <summary>A serial command, as it arrived: BTN24=On is input BTN24 at On (see <see cref="InputEvent.SplitCommand"/>).</summary>
     public ShowButtonViewModel? Command(Guid device, string command)
     {

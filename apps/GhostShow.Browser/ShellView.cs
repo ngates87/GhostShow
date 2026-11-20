@@ -37,6 +37,7 @@ sealed class ShellView : Border
     readonly RemoteOutputSetup _outputSetup;
     readonly RemoteLiveLevels _levels;
     readonly RemoteTriggers _triggers;
+    readonly RemoteInputSetup _inputSetup;
     BrowserShellViewModel? _shell;
     bool _unsaved;
 
@@ -54,6 +55,7 @@ sealed class ShellView : Border
         _outputSetup = new RemoteOutputSetup(_link);
         _levels = new RemoteLiveLevels(_session, _link);
         _triggers = new RemoteTriggers(_link);
+        _inputSetup = new RemoteInputSetup(_link);
         AddHandler(KeyDownEvent, OnKeyDown, Avalonia.Interactivity.RoutingStrategies.Tunnel);
 
         // Messages arrive on the connection's thread; each is handled on the UI thread.
@@ -72,9 +74,10 @@ sealed class ShellView : Border
         _link.Levels += m => Dispatcher.UIThread.Post(() => _levels.OnLevels(m));
         _link.Device += m => Dispatcher.UIThread.Post(() => ShowDevice(m["device"]));
         _link.Triggers += m => Dispatcher.UIThread.Post(() => _shell?.Buttons.ShowStates(RemoteTriggers.Read(m)));
+        _link.Inputs += m => Dispatcher.UIThread.Post(() => _inputSetup.OnInputs(m));
         _link.Input += m => Dispatcher.UIThread.Post(() =>
         {
-            if (_shell is not null) RemoteTriggers.Learn(_shell.Buttons, m);
+            if (_shell is not null) RemoteTriggers.OnInput(_shell.Buttons, m);
         });
         _link.Disconnected += () => Dispatcher.UIThread.Post(() =>
         {
@@ -106,10 +109,11 @@ sealed class ShellView : Border
         _session.Use(ShowDocument.FromSnapshot(message["show"]!));
         _outputSetup.OnHello();
         _levels.OnHello();
+        _inputSetup.OnHello();
         _audioDevices.Update(message["audioDevices"] as JsonArray);
         if (_shell is null)
         {
-            _shell = new BrowserShellViewModel(_session, new ShellServices(_remote, _library, _outputSetup, _levels, _audioDevices, _edits, _triggers), _link, _fileMenu);
+            _shell = new BrowserShellViewModel(_session, new ShellServices(_remote, _library, _outputSetup, _levels, _audioDevices, _edits, _triggers), _inputSetup, _link, _fileMenu);
             _shell.PropertyChanged += (_, e) =>
             {
                 if (e.PropertyName == nameof(ShellViewModel.Title)) ShowTitle();
@@ -124,6 +128,7 @@ sealed class ShellView : Border
             if (_shell.StatusMessage?.StartsWith("Lost the connection", StringComparison.Ordinal) == true) _shell.StatusMessage = "";
             _shell.Timeline.Reload();
             _shell.Buttons.Reload();
+            _shell.Inputs.Reload();
             ReopenTabs(openTabs, showing);
             _shell.Lighting.Fixtures.Sync();   // the same screen and selection, on the fresh copy
             _shell.Lighting.Outputs.Reload();

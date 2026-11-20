@@ -1,15 +1,18 @@
 using System.Text.Json.Nodes;
 using GhostShow.Core.Inputs;
+using GhostShow.Core.Storage;
 using Microsoft.Extensions.Logging;
 
 namespace GhostShow.Web;
 
-// The Buttons panel's triggers on a device. They run only here on the show computer (docs/plan-shared-view.md, decision
-// 1): devices are sent how they stand ("triggers", a few times a second when that changes), arm them, turn one off or
-// reset one; and a device waiting for a trigger is sent the inputs that arrive ("input"), to learn one.
+// The Buttons panel's triggers and the Inputs screen on a device. Triggers run only here on the show computer
+// (docs/plan-shared-view.md, decision 1): devices are sent how they stand ("triggers", a few times a second when that
+// changes), arm them, turn one off or reset one; and a device waiting for a trigger, or watching the inputs, is sent the
+// inputs that arrive ("input"). The serial ports are here too: a device watching gets their state ("inputs") and puts the
+// show's input devices on them.
 public sealed partial class RemoteServer
 {
-    static readonly HashSet<string> TriggerActions = ["armTriggers", "triggerOn", "resetTrigger", "learning"];
+    static readonly HashSet<string> TriggerActions = ["armTriggers", "triggerOn", "resetTrigger", "learning", "watchInputs", "refreshPorts", "pickPort", "enableInput"];
 
     /// <summary>The trigger states last sent (null: send them again, as after a hello).</summary>
     volatile string? _triggersSent;
@@ -19,6 +22,7 @@ public sealed partial class RemoteServer
     {
         var triggers = _host.Triggers;
         Guid Owner() => Guid.Parse(message["owner"]?.GetValue<string>() ?? throw new FormatException("No owner."));
+        Guid Device() => Guid.Parse(message["device"]?.GetValue<string>() ?? throw new FormatException("No device."));
         int Index() => message["index"]?.GetValue<int>() ?? throw new FormatException("No index.");
         bool On() => message["on"]?.GetValue<bool>() ?? throw new FormatException("No on.");
         string? error = action switch
@@ -27,6 +31,10 @@ public sealed partial class RemoteServer
             "triggerOn" => triggers.SetOn(Owner(), Index(), On()),
             "resetTrigger" => triggers.Reset(Owner(), Index()),
             "learning" => SetLearning(connection, On()),
+            "watchInputs" => WatchInputs(connection, On()),
+            "refreshPorts" => RefreshPorts(),
+            "pickPort" => _host.Inputs.PickPort(Device(), message["port"]?.GetValue<string>()),
+            "enableInput" => _host.Inputs.SetEnabled(Device(), On()),
             _ => $"Unknown command {action}.",
         };
         _triggersSent = null;   // the change shows on every device at the next tick
@@ -60,11 +68,11 @@ public sealed partial class RemoteServer
         });
     }
 
-    /// <summary>On the show's thread: an input arrived; devices learning a trigger get it.</summary>
+    /// <summary>On the show's thread: an input arrived; devices learning a trigger or showing the input monitor get it.</summary>
     void OnInputReceived(InputEvent input, string outcome)
     {
         List<RemoteConnection> learning;
-        lock (_lock) learning = _connections.Where(c => c.Learning).ToList();
+        lock (_lock) learning = _connections.Where(c => c.Learning || c.WatchingInputs).ToList();
         if (learning.Count == 0) return;
         string json = new JsonObject
         {
@@ -77,6 +85,34 @@ public sealed partial class RemoteServer
             ["outcome"] = outcome,
         }.ToJsonString();
         foreach (var connection in learning) connection.Send(json);
+    }
+
+    // ---- the Inputs screen: the show computer's serial ports ----
+
+    /// <summary>The Inputs screen or input monitor opened or closed on a device: it gets the ports' state and every input while it's open.</summary>
+    string? WatchInputs(RemoteConnection connection, bool on)
+    {
+        connection.WatchingInputs = on;
+        if (on) connection.Send(InputsJson());
+        return null;
+    }
+
+    string? RefreshPorts()
+    {
+        _host.Inputs.RefreshPorts();
+        return null;
+    }
+
+    string InputsJson() => new JsonObject { ["type"] = "inputs", ["state"] = ShowJson.ToNode(_host.Inputs.State) }.ToJsonString();
+
+    /// <summary>On the show's thread: devices showing the Inputs screen get the ports' new state.</summary>
+    void OnInputsChanged()
+    {
+        List<RemoteConnection> watching;
+        lock (_lock) watching = _connections.Where(c => c.WatchingInputs).ToList();
+        if (watching.Count == 0) return;
+        string json = InputsJson();
+        foreach (var connection in watching) connection.Send(json);
     }
 
     /// <summary>From the status loop: every device gets the trigger states when they've changed.</summary>

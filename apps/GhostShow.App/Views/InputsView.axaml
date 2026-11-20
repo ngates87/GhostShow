@@ -101,7 +101,7 @@
             <ItemsPanelTemplate><StackPanel Spacing="2" /></ItemsPanelTemplate>
           </ItemsControl.ItemsPanel>
           <ItemsControl.ItemTemplate>
-            <DataTemplate x:DataType="vm:FoundPort">
+            <DataTemplate x:DataType="inputs:FoundPort">
               <controls:DeviceCard Classes="compact" Icon="{Binding Icon, Converter={x:Static vm:Converters.Icon}}" Title="{Binding Title}"
                                    Kind="{Binding Summary}" StatusText="{Binding Assignment}"
                                    State="{Binding InUse, Converter={x:Static vm:Converters.FoundState}}">

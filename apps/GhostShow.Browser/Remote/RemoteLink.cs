@@ -72,7 +72,10 @@ sealed partial class RemoteLink
     /// <summary>"triggers": how the show computer's triggers stand (they run only there).</summary>
     public event Action<JsonObject>? Triggers;
 
-    /// <summary>"input": an input that arrived on the show computer, while this device waits for a trigger.</summary>
+    /// <summary>"inputs": the show computer's serial ports, and which one each input device is on.</summary>
+    public event Action<JsonObject>? Inputs;
+
+    /// <summary>"input": an input that arrived on the show computer (for the input monitor, or a trigger being learned).</summary>
     public event Action<JsonObject>? Input;
 
     /// <summary>The connection dropped (it's being tried again).</summary>
@@ -195,6 +198,9 @@ sealed partial class RemoteLink
                     break;
                 case "triggers":
                     Triggers?.Invoke(json);
+                    break;
+                case "inputs":
+                    Inputs?.Invoke(json);
                     break;
                 case "input":
                     Input?.Invoke(json);

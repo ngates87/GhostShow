@@ -1,6 +1,6 @@
 # Plan: one main view for the desktop and the browser
 
-Status: approved 2026-11-07, with the decisions below. Steps 1-4 are done (step 4 still to be tried in Chromium); step 5 is next. Restarted 2026-11-20 as the
+Status: approved 2026-11-07, with the decisions below. Steps 1-5 are done (steps 4 and 5 still to be tried in Chromium); step 6 is next. Restarted 2026-11-20 as the
 priority ahead of new features (see "Decided 2026-11-20" in [plan-remote.md](plan-remote.md)): features wait until
 step 7 is done, and until then nothing new goes into the frame unless it reaches the browser in the same change.
 
@@ -21,12 +21,12 @@ its steps 4 and 5 (a separate server, and the native window over the connection)
 | Frame: sections, status bar, warnings, Blackout | shared (`MainView`, `ShellViewModel`) | shared |
 | Menus (File, Edit, View, Playback) | shared | shared; File has the browser's own New, Open, Save, Rename |
 | Buttons panel: tiles, editor, triggers, arming | shared (`ButtonsPanel`; triggers run here) | shared; the triggers' state comes from the show computer |
-| Inputs: the show's input devices, input monitor | full | "on the show computer" |
+| Inputs: the show's input devices, input monitor | shared (`InputsView`; the ports are here) | shared; the ports are the show computer's |
 | Audio screen | full | "on the show computer" |
 | Diagnostics, Home (recent shows) | full | "on the show computer"; no Home (a device always has a show) |
 | Keys: Space, trigger keys, learning keys, fields | `MainView` | `MainView` (no triggers, as decided), and Ctrl+S |
 
-The table above is as of step 4 (2026-11-20).
+The table above is as of step 5 (2026-11-20).
 
 Three things make the shared parts work today:
 - **The browser builds the desktop's own files.** `GhostShow.Browser.csproj` links the view models and some views, so a
@@ -127,7 +127,16 @@ tried in Chromium against the desktop.
    - Operators: the panel can't be edited (`CanEdit`), and `learning` is editor-only on the show computer.
    - On the show computer, `AppTriggerControl` is what the server works through (`IRemoteHost.Triggers`).
    - A role changed on the show computer (`device`) changes the page at once: the File menu and the panel's editing.
-5. **Inputs in the browser.** The input monitor (from the same feed) and the Inputs screen's devices and ports.
+5. **Inputs in the browser (done 2026-11-20; not yet tried in Chromium).** The browser shows the desktop's `InputsView`
+   and input monitor on the shared `InputsViewModel`.
+   - The serial ports are the show computer's, like the DMX hardware: `IInputSetup` (in Core), with `LocalInputSetup` on
+     the show computer (the ports, listening, following a USB device, the bindings in its settings; moved out of
+     `InputsViewModel` unchanged) and `RemoteInputSetup` in the browser. A device picks from the ports offered, by name.
+   - The page watches the inputs from each hello (`watchInputs`): it gets the ports' state (`inputs`) whenever it
+     changes, and every input with what came of it (`input`), for its monitor. Both change rarely, so it always watches
+     rather than only while the Inputs screen is open.
+   - `pickPort`, `enableInput` and `refreshPorts` are editor-only. Adding a device puts it on its port first, then adds
+     it to the show, so it's listened to as soon as it's there.
 6. **Audio in the browser.** The real Audio screen replaces "on the show computer".
 7. **Diagnostics and Home.** The Diagnostics section from the show computer's figures. Home's recent shows become the
    show computer's show library (decided 2026-11-20: GhostShow manages where shows are saved; files come in by upload;
