@@ -1,6 +1,8 @@
 # Plan: one main view for the desktop and the browser
 
-Status: approved 2026-11-07, with the decisions below. Step 1 is done; step 2 is next.
+Status: approved 2026-11-07, with the decisions below. Steps 1 and 2 are done; step 3 is next. Restarted 2026-11-20 as the
+priority ahead of new features (see "Decided 2026-11-20" in [plan-remote.md](plan-remote.md)): features wait until
+step 7 is done, and until then nothing new goes into the frame unless it reaches the browser in the same change.
 
 Goal: the desktop window and the browser page show the same main view, so each feature is built once. Today the outside
 of the app (menus, sections, the Buttons panel, Inputs, Audio, key handling) is built twice or exists only on the
@@ -89,8 +91,15 @@ tried in Chromium against the desktop.
    control has focus. What stays on the window: closing (save prompt, blackout on exit), bringing it to the front,
    telling the view when the window gains or loses the keyboard, and the shortcut keys (Ctrl+S and so on), which move
    in step 3. No visible change: the UI tests pass, and a rendered window matches.
-2. **`ShellViewModel`.** Split the shared part out of `MainViewModel`, behind the existing interfaces plus the show
+2. **`ShellViewModel` (done 2026-11-20).** Split the shared part out of `MainViewModel`, behind the existing interfaces plus the show
    commands one (`IShowControl` moves to Core). Again no visible change.
+   - `ShellViewModel` is an abstract base class, compiled into both apps. It holds the screens, the sections and pages,
+     status and warnings, Blackout and the shared part of the tick. Its services come in a `ShellServices` record:
+     playback, fixture library, output setup, live levels, audio devices, and the edit history (null on the desktop).
+   - What only a host knows is abstract: the show's name, marking it unsaved, what Blackout does, and picking a sound.
+     The host also makes `BottomWorkspace`, because its panes depend on where it runs.
+   - `MainViewModel` derives from it, and keeps files and saving, Audio, Inputs, Diagnostics, Remote, the guide and the 30 Hz tick.
+   - `IShowControl` is now in `GhostShow.Core.Playback`.
 3. **The browser shows `MainView`.** The browser's host builds `ShellViewModel` on the remote services. The Timeline and
    Lighting sections come across as they are; the browser's hand-built frame and File button go. Screens with no remote
    version yet show "On the show computer" instead of the screen, and say so.
@@ -99,7 +108,8 @@ tried in Chromium against the desktop.
 5. **Inputs in the browser.** The input monitor (from the same feed) and the Inputs screen's devices and ports.
 6. **Audio in the browser.** The real Audio screen replaces the hand-built summary.
 7. **Diagnostics and Home.** The Diagnostics section from the show computer's figures. Home's recent shows become the
-   show computer's saved shows (the browser's File menu scope stays as decided: no folder browser).
+   show computer's show library (decided 2026-11-20: GhostShow manages where shows are saved; files come in by upload;
+   no folder browser).
 
 Steps 1 and 2 are the riskiest, because `MainViewModel` is about 640 lines that do a lot. The browser gains nothing until
 step 3, but each later step is small and visible.

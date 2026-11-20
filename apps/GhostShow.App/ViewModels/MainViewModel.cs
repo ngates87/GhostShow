@@ -17,11 +17,6 @@ using Microsoft.Extensions.Logging;
 
 namespace GhostShow.App.ViewModels;
 
-/// <summary>
-/// The main window: file commands, navigation, the console page, and the UI refresh tick that keeps every screen
-/// up to date. The tick runs at 30 Hz on the UI thread, independent of DMX output timing; screens only read the
-/// engine and output services, which are thread-safe and never block on I/O.
-/// </summary>
 /// <summary>A show in the Home screen's recent list.</summary>
 /// <param name="Path">The show folder, or an older single-file show.</param>
 public sealed record RecentShowRow(string Path, string Name, string Location, bool Exists)
@@ -29,7 +24,13 @@ public sealed record RecentShowRow(string Path, string Name, string Location, bo
     public string Note => Exists ? "" : "Not found (moved, renamed or on a drive that isn't connected)";
 }
 
-public sealed partial class MainViewModel : ObservableObject
+/// <summary>
+/// The show computer's main view: the shared frame (<see cref="ShellViewModel"/>) on this computer's own services, plus
+/// what only the show computer does: files and saving, sound, inputs, diagnostics, the web remote, and the UI refresh
+/// tick that keeps every screen up to date. The tick runs at 30 Hz on the UI thread, independent of DMX output timing;
+/// screens only read the engine and output services, which are thread-safe and never block on I/O.
+/// </summary>
+public sealed partial class MainViewModel : ShellViewModel
 {
     static readonly FilePickerFileType OldShowFiles = new("GhostShow single-file show (older versions)") { Patterns = ["*.json"] };
     static readonly FilePickerFileType AudioFiles = new("Audio (WAV, MP3)") { Patterns = ["*.wav", "*.mp3", "*.WAV", "*.MP3"] };
@@ -44,6 +45,7 @@ public sealed partial class MainViewModel : ObservableObject
     readonly IStorageProvider _storage;
     readonly ILogger _logger;
     readonly LocalOutputSetup _outputSetup;
+    readonly SettingsSaver _settingsSaver;
     readonly DispatcherTimer _tick;
     readonly DispatcherTimer _autoSave;
     readonly SemaphoreSlim _saveGate = new(1, 1);
@@ -51,6 +53,12 @@ public sealed partial class MainViewModel : ObservableObject
     long _dirtyGeneration;
 
     public MainViewModel(AppServices services, IStorageProvider storage, ISaveChangesPrompt savePrompt, ILogger<MainViewModel> logger)
+        : this(services, storage, savePrompt, logger, LocalServices.For(services, logger))
+    {
+    }
+
+    MainViewModel(AppServices services, IStorageProvider storage, ISaveChangesPrompt savePrompt, ILogger logger, LocalServices local)
+        : base(services.Session, local.Shell)
     {
         _services = services;
         var (session, outputs, settings, paths) = (services.Session, services.Outputs, services.Settings, services.Paths);
@@ -60,27 +68,15 @@ public sealed partial class MainViewModel : ObservableObject
         _paths = paths;
         _storage = storage;
         _logger = logger;
+        _outputSetup = local.OutputSetup;
+        _settingsSaver = local.Saver;
+        _settingsSaver.Problem = ReportError;
 
-        _outputSetup = new LocalOutputSetup(session, outputs, settings, SaveSettingsAsync, services.AdapterFinder);
-        var levels = new LocalLiveLevels(session.Engine, outputs.Find);
-        var library = new LocalFixtureLibrary(session, paths, settings, logger);
-        Library = new ProfileLibraryViewModel(library);
-        Lighting = new LightingViewModel(session, levels, new OutputsViewModel(session, _outputSetup, ReportError), new FixtureSetupViewModel(session, Library), ReportError);
-        Lighting.PageChanged += () =>
-        {
-            OnPropertyChanged(nameof(CurrentPage));
-            OnPageShown();
-        };
-        ShowPlayback = new ShowPlayback(session, services.Playback, services.Audio, logger);
+        ShowPlayback = local.Playback;
         // A sound's length was measured (on a worker thread): timelines using it are compiled again, on this thread.
         services.Audio.LengthMeasured += path => Dispatcher.UIThread.Post(() => ShowPlayback.OnAudioMeasured(path));
-        Playback = new PlaybackViewModel(ShowPlayback);
         Diagnostics = new DiagnosticsViewModel(services, Playback);
         Performance = new PerformanceMeterViewModel(() => services.PlaybackLoop.Timing, () => services.Probe.Snapshot(last: 20).P95Ms);
-        AudioDevices = new AudioDeviceList(services.Audio);
-        Timeline = new TimelineEditorViewModel(session, Playback, PickAudioFileAsync, MarkDirty, AudioDevices);
-        Buttons = new ButtonsViewModel(session, Playback, Blackout, MarkDirty);
-        Timeline.TriggersOf = Buttons.TriggersFor;
         _serial = services.SerialInputs ?? new SerialInputs(logger);
         Inputs = new InputsViewModel(session, _serial, settings, SaveSettingsAsync,
             // Only adapters that have their port open: one that's missing keeps the name of the port it was last on, and
@@ -91,7 +87,7 @@ public sealed partial class MainViewModel : ObservableObject
         // Both come on a port's reading thread, and are handled on this one. A command is an input like a key.
         _serial.CommandReceived += (device, command) => Dispatcher.UIThread.Post(() => Inputs.OnCommand(device, command));
         _serial.StatusChanged += _ => Dispatcher.UIThread.Post(Inputs.Refresh);
-        Remote = new RemoteViewModel(new AppRemoteHost(session, ShowPlayback, Playback, new AppShowControl(this), () => WarningsSnapshot, AudioDevices, () => IsDirty, () => _session.FilePath is null || _session.IsSingleFileShow, library, _outputSetup, levels),
+        Remote = new RemoteViewModel(new AppRemoteHost(session, ShowPlayback, Playback, new AppShowControl(this), () => WarningsSnapshot, AudioDevices, () => IsDirty, () => _session.FilePath is null || _session.IsSingleFileShow, local.Library, _outputSetup, local.Levels),
                                      settings.Remote, SaveSettingsAsync, logger);
         Audio = new AudioViewModel(services.Audio, AudioDevices, session, settings, SaveSettingsAsync);
         _ = AudioDevices.RefreshAsync();
@@ -100,8 +96,6 @@ public sealed partial class MainViewModel : ObservableObject
             CurrentPage = Page.Timeline;
             if (Timeline.Tracks.FirstOrDefault(t => t.IsLighting) is { } lighting) Timeline.EditChannels(lighting);
         });
-        Timeline.ShowFixtures = () => CurrentPage = Page.Fixtures;
-        Timeline.Notice += message => StatusMessage = message;
         _session.Document.Changed += OnDocumentChanged;
 
         _unsavedChanges = new UnsavedChangesGuard(() => IsDirty, () => ShowName, Save, savePrompt);
@@ -109,6 +103,40 @@ public sealed partial class MainViewModel : ObservableObject
         _autoSave = new DispatcherTimer(AutoSaveDelay, DispatcherPriority.Background, OnAutoSaveTimer);
         _autoSave.Stop();
         FollowPanelWidths();
+    }
+
+    /// <summary>This computer's own versions of the services the screens use.</summary>
+    sealed record LocalServices(ShellServices Shell, ShowPlayback Playback, LocalOutputSetup OutputSetup, LocalLiveLevels Levels,
+                                LocalFixtureLibrary Library, SettingsSaver Saver)
+    {
+        public static LocalServices For(AppServices services, ILogger logger)
+        {
+            var saver = new SettingsSaver(services.Settings, services.Paths);
+            var outputSetup = new LocalOutputSetup(services.Session, services.Outputs, services.Settings, saver.SaveAsync, services.AdapterFinder);
+            var levels = new LocalLiveLevels(services.Session.Engine, services.Outputs.Find);
+            var library = new LocalFixtureLibrary(services.Session, services.Paths, services.Settings, logger);
+            var playback = new ShowPlayback(services.Session, services.Playback, services.Audio, logger);
+            var shell = new ShellServices(playback, library, outputSetup, levels, new AudioDeviceList(services.Audio));
+            return new(shell, playback, outputSetup, levels, library, saver);
+        }
+    }
+
+    /// <summary>Saves this computer's settings. A problem is reported in the status bar.</summary>
+    sealed class SettingsSaver(MachineSettings settings, AppPaths paths)
+    {
+        public Action<string>? Problem { get; set; }
+
+        public async Task SaveAsync()
+        {
+            try
+            {
+                await MachineSettingsStore.SaveAsync(settings, paths);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                Problem?.Invoke($"Couldn't save machine settings: {ex.Message}");
+            }
+        }
     }
 
     // ---- the side panels' widths: this computer's, as last dragged ----
@@ -158,9 +186,9 @@ public sealed partial class MainViewModel : ObservableObject
 
     readonly UnsavedChangesGuard _unsavedChanges;
 
-    string ShowName => _session.ShowFolder is { } folder && !_session.IsSingleFileShow ? Path.GetFileName(folder)
-                     : _session.FilePath is { } file ? Path.GetFileName(file)
-                     : _session.Project.Name;
+    protected override string ShowName => _session.ShowFolder is { } folder && !_session.IsSingleFileShow ? Path.GetFileName(folder)
+                                        : _session.FilePath is { } file ? Path.GetFileName(file)
+                                        : _session.Project.Name;
 
     /// <summary>Before the window closes: offers to save unsaved changes. False means the user cancelled closing.</summary>
     public Task<bool> ConfirmCloseAsync() => _unsavedChanges.ConfirmAsync("closing");
@@ -168,93 +196,16 @@ public sealed partial class MainViewModel : ObservableObject
     /// <summary>Playback on this computer (the show computer): what the screens and the web remote ask to play.</summary>
     public ShowPlayback ShowPlayback { get; }
 
-    public PlaybackViewModel Playback { get; }
-    public TimelineEditorViewModel Timeline { get; }
-    public ButtonsViewModel Buttons { get; }
     public RemoteViewModel Remote { get; }
     public AudioViewModel Audio { get; }
-    public AudioDeviceList AudioDevices { get; }
     public SetupGuideViewModel Guide { get; }
-    public ProfileLibraryViewModel Library { get; }
-    public LightingViewModel Lighting { get; }
-    public OutputsViewModel Outputs => Lighting.Outputs;
-    public FixtureSetupViewModel Fixtures => Lighting.Fixtures;
     public DiagnosticsViewModel Diagnostics { get; }
     public InputsViewModel Inputs { get; }
-    public BottomWorkspaceViewModel BottomWorkspace { get; }
     readonly SerialInputs _serial;
     public PerformanceMeterViewModel Performance { get; }
 
-    public string Title => IsShowOpen ? $"GhostShow — {ShowName}{(IsDirty ? " *" : "")}" : "GhostShow";
-
     public string ShowFile => _session.IsSingleFileShow ? $"{_session.FilePath} (older single-file show: Save will ask for a folder)"
                             : _session.ShowFolder ?? "Not saved yet";
-
-    [ObservableProperty, NotifyPropertyChangedFor(nameof(Title))]
-    public partial bool IsDirty { get; set; }
-
-    /// <summary>
-    /// A show is open: the editor and setup screens are shown. When not (at first start, or after Close Show), the
-    /// Home page is: new, open, recent shows.
-    /// </summary>
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(CurrentPage), nameof(Title))]
-    public partial bool IsShowOpen { get; private set; }
-
-    partial void OnIsShowOpenChanged(bool value) => OnPageShown();
-
-    /// <summary>Index of the selected top-level tab (see <see cref="Section"/>).</summary>
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(CurrentPage))]
-    public partial int SelectedSection { get; set; }
-
-    /// <summary>The screen on display; drives which screens refresh.</summary>
-    public Page CurrentPage
-    {
-        get => !IsShowOpen ? Page.Home : (Section)SelectedSection switch
-        {
-            Section.Timeline => Page.Timeline,
-            Section.Lighting => Lighting.CurrentPage,
-            Section.Audio => Page.Audio,
-            Section.Inputs => Page.InputMonitor,
-            _ => Page.Diagnostics,
-        };
-        set
-        {
-            switch (value)
-            {
-                case Page.Home:
-                    break;   // Home is where you are when no show is open; File → Close Show gets there
-                case Page.Timeline:
-                    SelectedSection = (int)Section.Timeline;
-                    break;
-                case <= Page.Monitor:
-                    Lighting.CurrentPage = value;
-                    SelectedSection = (int)Section.Lighting;
-                    break;
-                case Page.Audio:
-                    SelectedSection = (int)Section.Audio;
-                    break;
-                case Page.InputMonitor:
-                    SelectedSection = (int)Section.Inputs;
-                    break;
-                default:
-                    SelectedSection = (int)Section.Diagnostics;
-                    break;
-            }
-        }
-    }
-
-    /// <summary>The latest command error or file problem, shown in the status bar.</summary>
-    [ObservableProperty]
-    public partial string? StatusMessage { get; set; }
-
-    public ObservableCollection<string> Warnings { get; } = new();
-
-    volatile string[] _warningsSnapshot = [];
-
-    /// <summary>The warnings, for other threads (the web remote's status).</summary>
-    internal IReadOnlyList<string> WarningsSnapshot => _warningsSnapshot;
 
     // ---- Home screen ----
 
@@ -303,12 +254,9 @@ public sealed partial class MainViewModel : ObservableObject
         await SaveSettingsAsync();
     }
 
-    partial void OnSelectedSectionChanged(int value) => OnPageShown();
-
-    /// <summary>Refresh a page as soon as it's shown rather than waiting for its next tick.</summary>
-    void OnPageShown()
+    protected override void OnPageShown()
     {
-        Lighting.IsOnScreen = CurrentPage is >= Page.DmxSetup and <= Page.Monitor;
+        base.OnPageShown();
         if (CurrentPage == Page.Home) RefreshRecentShows();   // a recent show may have been moved or reconnected since
         Guide.OnTimeline = CurrentPage == Page.Timeline;
         Guide.Refresh();
@@ -356,16 +304,12 @@ public sealed partial class MainViewModel : ObservableObject
         _logger.LogInformation(clean ? "Shut down cleanly." : "Shut down; an output didn't stop in time.");
     }
 
-    [RelayCommand]
-    void Blackout()
+    protected override void BlackoutShow()
     {
         _services.Playback.StopAllNow();   // otherwise the timelines would put their levels straight back
         _session.Engine.Blackout();
         StatusMessage = "Blackout: playback stopped and every manual level set to 0.";
     }
-
-    [RelayCommand]
-    void GoTo(Page page) => CurrentPage = page;
 
     [RelayCommand]
     async Task New()
@@ -438,13 +382,6 @@ public sealed partial class MainViewModel : ObservableObject
 
     [RelayCommand]
     void Exit() => ExitRequested?.Invoke();
-
-    /// <summary>After opening or starting a show: straight to the timeline editor, where most of the work is.</summary>
-    public void ShowEditor()
-    {
-        IsShowOpen = true;
-        CurrentPage = Page.Timeline;
-    }
 
     /// <summary>Opens a show folder (one with a show.json).</summary>
     [RelayCommand]
@@ -637,17 +574,7 @@ public sealed partial class MainViewModel : ObservableObject
         return saved;
     }
 
-    async Task SaveSettingsAsync()
-    {
-        try
-        {
-            await MachineSettingsStore.SaveAsync(_settings, _paths);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            ReportError($"Couldn't save machine settings: {ex.Message}");
-        }
-    }
+    Task SaveSettingsAsync() => _settingsSaver.SaveAsync();
 
     async Task AfterShowReplacedAsync()
     {
@@ -672,7 +599,7 @@ public sealed partial class MainViewModel : ObservableObject
         MarkDirty();
     }
 
-    void MarkDirty()
+    protected override void MarkDirty()
     {
         IsDirty = true;
         _dirtyGeneration++;
@@ -694,24 +621,22 @@ public sealed partial class MainViewModel : ObservableObject
             await WriteShowAsync(folder: null, automatic: true);
     }
 
-    async Task<string?> PickAudioFileAsync()
+    protected override async Task<string?> PickAudioFileAsync()
     {
         var files = await _storage.OpenFilePickerAsync(new FilePickerOpenOptions { Title = "Choose a sound", FileTypeFilter = [AudioFiles] });
         return files is [var file] ? file.TryGetLocalPath() : null;
     }
 
-    void ReportError(string message)
+    protected override void ReportError(string message)
     {
-        StatusMessage = message;
+        base.ReportError(message);
         _logger.LogWarning("{Message}", message);
     }
 
     /// <summary>Screens refresh only while visible; slow-changing status refreshes once a second.</summary>
-    void Tick()
+    protected override void Tick()
     {
-        Playback.Tick();   // the toolbar transport shows on every screen
-        Buttons.Tick();    // buttons light while what they run plays
-        Lighting.Tick();
+        base.Tick();
 
         _tickCount++;
         if (_tickCount % 15 == 0) Performance.Update();   // twice a second, so the meter moves like one
@@ -739,10 +664,6 @@ public sealed partial class MainViewModel : ObservableObject
         foreach (var output in _services.Audio.Status.MissingOutputs)
             warnings.Add($"Audio output '{output}' isn't connected: its tracks play on the default output. See Audio.");
         warnings.AddRange(Inputs.Warnings);
-
-        if (warnings.SequenceEqual(Warnings)) return;
-        _warningsSnapshot = [.. warnings];
-        Warnings.Clear();
-        foreach (var warning in warnings) Warnings.Add(warning);
+        ShowWarnings(warnings);
     }
 }

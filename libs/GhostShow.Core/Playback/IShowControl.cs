@@ -1,12 +1,12 @@
 using GhostShow.Core.Timeline;
 
-namespace GhostShow.Web;
+namespace GhostShow.Core.Playback;
 
 /// <summary>The editor's transport, as a device works it.</summary>
 public enum TransportAction { Play, Pause, Stop, Restart, Seek }
 
 /// <summary>
-/// What a device can ask the show computer to do, run on the show's thread (see <see cref="IRemoteHost.InvokeAsync"/>).
+/// What a screen can ask the show computer to do. A device's requests are run on the show's thread (see IRemoteHost.InvokeAsync).
 /// Each returns null when it's done, or why it couldn't be (shown on the device).
 /// </summary>
 public interface IShowControl

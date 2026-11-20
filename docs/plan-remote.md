@@ -180,6 +180,21 @@ Show computer: GhostShow server (no window)
 
 Reassessed 2026-11-01 and 2026-11-02.
 
+Decided 2026-11-20, after the browser had drifted behind the desktop again:
+- **The web app is the primary interface.** New features wait until the browser shows the desktop's own main view
+  ([plan-shared-view.md](plan-shared-view.md), steps 2-7). Until then, nothing new goes into the frame (menus, panels,
+  pages) unless it reaches the browser in the same change.
+- **The server is a program that starts at login with a tray icon, not a Windows Service.** A service runs in session 0:
+  sound to the user's devices is awkward there, and it can't see the show computer's keyboard, which fires triggers.
+- **The desktop window is the native app over the connection (step 5).** It's the same screens either way. A browser
+  window (WebView2) around `/app/` is the fallback if step 5 goes badly: it can't drift, but it brings the WebAssembly
+  download and drawing speed to the show computer, and the UI tests can't run on it.
+- **GhostShow manages where shows are saved.** The server keeps a show library (for example `Documents\GhostShow\Shows`):
+  open, save as, rename and duplicate by name, and Home lists it. From another device, audio, VenueMagic projects and
+  fixture files come in by upload, and a show goes out as a zip download. The native window on the show computer keeps
+  its file dialogs for importing. No folder browser for now; a limited one only if uploading proves clumsy. This
+  replaces the folder browser in step 6 below.
+
 ### Where it stands
 
 **Done, and checked in Chromium against the real app running without a window:**
