@@ -68,7 +68,8 @@ public sealed partial class MainViewModel : ShellViewModel
         ShowPlayback = local.Playback;
         // A sound's length was measured (on a worker thread): timelines using it are compiled again, on this thread.
         services.Audio.LengthMeasured += path => Dispatcher.UIThread.Post(() => ShowPlayback.OnAudioMeasured(path));
-        Diagnostics = new DiagnosticsViewModel(services, Playback);
+        _diagnostics = new LocalDiagnostics(services, Playback);
+        Diagnostics = new DiagnosticsViewModel(_diagnostics);
         Performance = new PerformanceMeterViewModel(() => services.PlaybackLoop.Timing, () => services.Probe.Snapshot(last: 20).P95Ms);
         _serial = services.SerialInputs ?? new SerialInputs(logger);
         _inputSetup = new LocalInputSetup(session, _serial, settings, SaveSettingsAsync,
@@ -86,7 +87,7 @@ public sealed partial class MainViewModel : ShellViewModel
         _serial.StatusChanged += _ => Dispatcher.UIThread.Post(_inputSetup.Refresh);
         _audioSetup = new LocalAudioSetup(services.Audio, session, settings, SaveSettingsAsync);
         Remote = new RemoteViewModel(new AppRemoteHost(session, ShowPlayback, Playback, new AppShowControl(this), () => WarningsSnapshot, AudioDevices, () => IsDirty, () => _session.FilePath is null || _session.IsSingleFileShow, local.Library, _outputSetup, local.Levels,
-                                                       new AppTriggerControl(Buttons), _inputSetup, _audioSetup),
+                                                       new AppTriggerControl(Buttons), _inputSetup, _audioSetup, _diagnostics),
                                      settings.Remote, SaveSettingsAsync, logger);
         Audio = new AudioViewModel(_audioSetup, AudioDevices);
         _ = AudioDevices.RefreshAsync();
@@ -203,6 +204,7 @@ public sealed partial class MainViewModel : ShellViewModel
     readonly SerialInputs _serial;
     readonly LocalInputSetup _inputSetup;
     readonly LocalAudioSetup _audioSetup;
+    readonly LocalDiagnostics _diagnostics;
     public PerformanceMeterViewModel Performance { get; }
 
     public override bool IsShowComputer => true;
@@ -274,7 +276,7 @@ public sealed partial class MainViewModel : ShellViewModel
             _audioSetup.Refresh();
         }
         _outputSetup.Refresh();
-        if (CurrentPage == Page.Diagnostics) Diagnostics.Tick();
+        if (CurrentPage == Page.Diagnostics) _diagnostics.Refresh();
         if (CurrentPage == Page.InputMonitor) Inputs.RefreshPortsCommand.Execute(null);   // a cable may have been plugged in
         Tick();
     }
@@ -639,7 +641,7 @@ public sealed partial class MainViewModel : ShellViewModel
         _outputSetup.Tick();
         _inputSetup.Tick();
         Inputs.Tick();
-        if (CurrentPage == Page.Diagnostics) Diagnostics.Tick();
+        if (CurrentPage == Page.Diagnostics || _diagnostics.IsWatched) _diagnostics.Refresh();   // here, or on a device
         if (CurrentPage == Page.Audio || _audioSetup.IsWatched) _audioSetup.Refresh();   // here, or on a device
         // Open the devices audio tracks are routed to before they're needed (cheap when nothing changed).
         _services.Audio.UseOutputs(_session.Project.Timelines.SelectMany(t => t.Tracks)

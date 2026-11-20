@@ -16,12 +16,6 @@ public sealed record RecentShowRow(string Path, string Name, string Location, bo
     public string Note => Exists ? "" : "Not found (moved, renamed or on a drive that isn't connected)";
 }
 
-/// <summary>A screen that's only on the show computer for now, in its place on a device (see docs/plan-shared-view.md).</summary>
-public sealed record OnShowComputerViewModel(string Screen)
-{
-    public string Message => $"{Screen} is on the show computer for now.";
-}
-
 /// <summary>
 /// The services the screens work through, each with a version for the show computer and one for a device's browser
 /// (see docs/plan-shared-view.md). <paramref name="History"/>: where edits go when they aren't simply the show's own

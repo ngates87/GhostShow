@@ -1,6 +1,6 @@
 # Plan: one main view for the desktop and the browser
 
-Status: approved 2026-11-07, with the decisions below. Steps 1-6 are done (steps 4-6 still to be tried in Chromium); step 7 is next. Restarted 2026-11-20 as the
+Status: approved 2026-11-07, with the decisions below. Steps 1-7 are done (steps 4-7 still to be tried in Chromium), except Home, which moved to the show library. Restarted 2026-11-20 as the
 priority ahead of new features (see "Decided 2026-11-20" in [plan-remote.md](plan-remote.md)): features wait until
 step 7 is done, and until then nothing new goes into the frame unless it reaches the browser in the same change.
 
@@ -23,10 +23,11 @@ its steps 4 and 5 (a separate server, and the native window over the connection)
 | Buttons panel: tiles, editor, triggers, arming | shared (`ButtonsPanel`; triggers run here) | shared; the triggers' state comes from the show computer |
 | Inputs: the show's input devices, input monitor | shared (`InputsView`; the ports are here) | shared; the ports are the show computer's |
 | Audio screen | shared (`AudioView`; the sound card is here) | shared; the sound is the show computer's |
-| Diagnostics, Home (recent shows) | full | "on the show computer"; no Home (a device always has a show) |
+| Diagnostics | shared (`DiagnosticsView`; measured here) | shared; the show computer's report |
+| Home (recent shows) | full | none (a device always has a show); becomes the show library |
 | Keys: Space, trigger keys, learning keys, fields | `MainView` | `MainView` (no triggers, as decided), and Ctrl+S |
 
-The table above is as of step 6 (2026-11-20).
+The table above is as of step 7 (2026-11-20).
 
 Three things make the shared parts work today:
 - **The browser builds the desktop's own files.** `GhostShow.Browser.csproj` links the view models and some views, so a
@@ -146,9 +147,17 @@ tried in Chromium against the desktop.
    - The page watches the sound only while its Audio screen is open (`watchAudio`): reading the sound files' lengths is
      work for the show computer, done once a second while a screen shows them.
    - `chooseAudioDevice` is editor-only; `setVolume` isn't (turning it down is running the show).
-7. **Diagnostics and Home.** The Diagnostics section from the show computer's figures. Home's recent shows become the
-   show computer's show library (decided 2026-11-20: GhostShow manages where shows are saved; files come in by upload;
-   no folder browser).
+7. **Diagnostics and Home.**
+   - **Diagnostics (done 2026-11-20; not yet tried in Chromium).** The browser shows the desktop's `DiagnosticsView` on
+     the shared `DiagnosticsViewModel`. `IDiagnostics` (in Core) gives the show computer's report in words: output
+     timing, playback, sound, its UI thread, memory and recent log messages. `LocalDiagnostics` measures it once a
+     second while a screen shows it, here or on a device (`watchDiagnostics`, allowed to operators);
+     `RemoteDiagnostics` in the browser. The bottom pane's Diagnostics stays the show computer's own for now.
+   - **Home: moved to the show library.** Home's recent shows become the show computer's show library (decided
+     2026-11-20: GhostShow manages where shows are saved; files come in by upload; no folder browser). That's the show
+     library work after plan-remote steps 4, 5 and 7, so Home is done there, not here. A device never shows Home: the
+     show computer always has a show open.
+   - The placeholder "on the show computer for now" is gone: every section is the real screen in the browser.
 
 Steps 1 and 2 are the riskiest, because `MainViewModel` is about 640 lines that do a lot. The browser gains nothing until
 step 3, but each later step is small and visible.

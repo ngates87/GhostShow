@@ -133,6 +133,8 @@ Audio shows the show computer's devices and the files used by the show; its sett
     and `state` ("Ready", "Re-arms in 2.5 s", …).
   - `input`: an input that arrived on the show computer (`source`, `device`, `address`, `pressed`, `value`, `outcome`),
     to a device waiting for a trigger (`learning`), so it can learn it, and to one watching the inputs, for its monitor.
+  - `diagnostics`: how the show computer is running (`report`: output timing, playback, sound, its UI thread, memory
+    and recent log messages), about once a second to a device that asked with `watchDiagnostics`.
   - `audioSetup`: the show computer's sound (`state`: its default output, master volume, how its outputs stand and the
     show's sound files), to a device that asked with `watchAudio`, whenever it changes.
   - `inputs`: the show computer's serial ports (`state`: the ports found, and each input device's port, status and last
@@ -185,6 +187,8 @@ Audio shows the show computer's devices and the files used by the show; its sett
   - **Audio screen:** `watchAudio` (`on`) says the device's Audio screen opened or closed. `chooseAudioDevice` (`device`,
     or none for the system's default) sets the show computer's default output; `setVolume` (`volume`, 0 to 1) its
     master volume. Neither waits for the sound card: the state says how it went.
+  - **Diagnostics:** `watchDiagnostics` (`on`) says the device's Diagnostics screen opened or closed; the show computer
+    measures itself only while one is.
   - **Where they run:** on the show computer's UI thread, through the same view models as the desktop's controls
     (`IShowControl`).
   - **Roles:** the show computer checks the device's role for each command. `open`, `edit`, `undo`, `redo`, `save`, `learning`, `pickPort`, `enableInput`, `refreshPorts`, `chooseAudioDevice`, the file menu's commands,

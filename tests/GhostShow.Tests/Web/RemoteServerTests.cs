@@ -1,6 +1,7 @@
 using GhostShow.Tests.Dmx;
 using GhostShow.Dmx.Discovery;
 using GhostShow.Dmx;
+using GhostShow.Core.Diagnostics;
 using GhostShow.Core.Dmx;
 using System.IO.Compression;
 using System.Net;
@@ -139,6 +140,20 @@ public sealed class RemoteServerTests : IAsyncLifetime
         public string? TestSound(string? device) => null;
     }
 
+    /// <summary>The show computer measuring itself, for the server: a report the test sets.</summary>
+    sealed class Measurements : IDiagnostics
+    {
+        public readonly List<object> Watching = [];
+        public DiagnosticsReport Report { get; private set; } = DiagnosticsReport.Empty with { Memory = "Working set 120 MB" };
+        public event Action? Changed;
+
+        public void Says(DiagnosticsReport report)
+        {
+            Report = report;
+            Changed?.Invoke();
+        }
+    }
+
     sealed class Host(ShowSession session, ShowPlayback playback, IFixtureLibrary library, IOutputSetup outputs, ILiveLevels levels) : IRemoteHost
     {
         public IFixtureLibrary Library => library;
@@ -150,6 +165,13 @@ public sealed class RemoteServerTests : IAsyncLifetime
         IInputSetup IRemoteHost.Inputs => InputSetup;
         public Sound Audio { get; } = new();
         IAudioSetup IRemoteHost.Audio => Audio;
+        public Measurements Diagnostics { get; } = new();
+        IDiagnostics IRemoteHost.Diagnostics => Diagnostics;
+        public void WatchDiagnostics(object device, bool watching)
+        {
+            if (watching) Diagnostics.Watching.Add(device);
+            else Diagnostics.Watching.Remove(device);
+        }
         public void WatchAudio(object device, bool watching)
         {
             if (watching) Audio.Watching.Add(device);
@@ -517,6 +539,25 @@ public sealed class RemoteServerTests : IAsyncLifetime
 
         Assert.True((await CommandAsync(socket, new { action = "watchAudio", on = false }))["ok"]!.GetValue<bool>());
         Assert.Empty(_host.Audio.Watching);
+    }
+
+    [Fact]
+    public async Task A_device_s_Diagnostics_screen_gets_the_show_computer_s_report_while_it_s_open_operators_too()
+    {
+        using var socket = await ConnectAsync(await PairAsync("Door phone", "operator"));
+        await NextAsync(socket, "hello");
+
+        await SendAsync(socket, new { action = "watchDiagnostics", on = true });
+        Assert.Equal("Working set 120 MB", ShowJson.FromNode<DiagnosticsReport>((await NextAsync(socket, "diagnostics"))["report"]!)!.Memory);
+        Assert.Single(_host.Diagnostics.Watching);   // the show computer measures itself for it
+
+        var entry = new LogEntry(DateTimeOffset.Now, Microsoft.Extensions.Logging.LogLevel.Warning, "Dmx", "Universe 1's adapter went away.", null);
+        lock (_host.Gate) _host.Diagnostics.Says(_host.Diagnostics.Report with { Log = [entry] });
+        var report = ShowJson.FromNode<DiagnosticsReport>((await NextAsync(socket, "diagnostics"))["report"]!)!;
+        Assert.Equal(entry, Assert.Single(report.Log));   // as the browser reads it back
+
+        Assert.True((await CommandAsync(socket, new { action = "watchDiagnostics", on = false }))["ok"]!.GetValue<bool>());
+        Assert.Empty(_host.Diagnostics.Watching);
     }
 
     [Fact]

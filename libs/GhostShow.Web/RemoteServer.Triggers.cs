@@ -5,15 +5,16 @@ using Microsoft.Extensions.Logging;
 
 namespace GhostShow.Web;
 
-// The Buttons panel's triggers, and the Inputs and Audio screens, on a device. Triggers run only here on the show computer
+// The Buttons panel's triggers, and the Inputs, Audio and Diagnostics screens, on a device. Triggers run only here on the show computer
 // (docs/plan-shared-view.md, decision 1): devices are sent how they stand ("triggers", a few times a second when that
 // changes), arm them, turn one off or reset one; and a device waiting for a trigger, or watching the inputs, is sent the
 // inputs that arrive ("input"). The serial ports are here too: a device watching gets their state ("inputs") and puts the
-// show's input devices on them. So is the sound card: a device showing the Audio screen gets its state ("audioSetup").
+// show's input devices on them. So is the sound card: a device showing the Audio screen gets its state ("audioSetup"),
+// and one showing Diagnostics the show computer's report ("diagnostics").
 public sealed partial class RemoteServer
 {
     static readonly HashSet<string> TriggerActions = ["armTriggers", "triggerOn", "resetTrigger", "learning", "watchInputs", "refreshPorts", "pickPort", "enableInput",
-                                                         "watchAudio", "chooseAudioDevice", "setVolume"];
+                                                         "watchAudio", "chooseAudioDevice", "setVolume", "watchDiagnostics"];
 
     /// <summary>The trigger states last sent (null: send them again, as after a hello).</summary>
     volatile string? _triggersSent;
@@ -37,6 +38,7 @@ public sealed partial class RemoteServer
             "pickPort" => _host.Inputs.PickPort(Device(), message["port"]?.GetValue<string>()),
             "enableInput" => _host.Inputs.SetEnabled(Device(), On()),
             "watchAudio" => WatchAudio(connection, On()),
+            "watchDiagnostics" => WatchDiagnostics(connection, On()),
             "chooseAudioDevice" => ChooseAudioDevice(message["device"]?.GetValue<string>()),
             "setVolume" => SetVolume(message["volume"]?.GetValue<double>() ?? throw new FormatException("No volume.")),
             _ => $"Unknown command {action}.",
@@ -157,12 +159,35 @@ public sealed partial class RemoteServer
     /// <summary>A device went: its Audio screen isn't open any more. Not waited for (the server may be stopping, on the show's thread).</summary>
     void ForgetAudioWatch(RemoteConnection connection)
     {
-        if (!connection.WatchingAudio) return;
+        if (!connection.WatchingAudio && !connection.WatchingDiagnostics) return;
         _ = _host.InvokeAsync(() =>
         {
             _host.WatchAudio(connection, false);
+            _host.WatchDiagnostics(connection, false);
             return true;
         });
+    }
+
+    // ---- Diagnostics: how the show computer is running ----
+
+    string? WatchDiagnostics(RemoteConnection connection, bool on)
+    {
+        connection.WatchingDiagnostics = on;
+        _host.WatchDiagnostics(connection, on);
+        if (on) connection.Send(DiagnosticsJson());
+        return null;
+    }
+
+    string DiagnosticsJson() => new JsonObject { ["type"] = "diagnostics", ["report"] = ShowJson.ToNode(_host.Diagnostics.Report) }.ToJsonString();
+
+    /// <summary>On the show's thread: devices showing Diagnostics get the new report (about once a second).</summary>
+    void OnDiagnosticsChanged()
+    {
+        List<RemoteConnection> watching;
+        lock (_lock) watching = _connections.Where(c => c.WatchingDiagnostics).ToList();
+        if (watching.Count == 0) return;
+        string json = DiagnosticsJson();
+        foreach (var connection in watching) connection.Send(json);
     }
 
     /// <summary>From the status loop: every device gets the trigger states when they've changed.</summary>

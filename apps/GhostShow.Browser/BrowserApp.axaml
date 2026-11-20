@@ -35,5 +35,8 @@
     <DataTemplate DataType="vm:AudioViewModel">
       <views:AudioView />
     </DataTemplate>
+    <DataTemplate DataType="vm:DiagnosticsViewModel">
+      <views:DiagnosticsView />
+    </DataTemplate>
   </Application.DataTemplates>
 </Application>

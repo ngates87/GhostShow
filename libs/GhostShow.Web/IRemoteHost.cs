@@ -1,3 +1,4 @@
+using GhostShow.Core.Diagnostics;
 using GhostShow.Core.Dmx;
 using GhostShow.Core.Fixtures;
 using GhostShow.Core.Engine;
@@ -66,6 +67,12 @@ public interface IRemoteHost
 
     /// <summary>A device's Audio screen opened or closed: while one is open, the show computer keeps <see cref="Audio"/> up to date. On the show's thread.</summary>
     void WatchAudio(object device, bool watching);
+
+    /// <summary>How the show computer is running, for the Diagnostics screen. On the show's thread.</summary>
+    IDiagnostics Diagnostics { get; }
+
+    /// <summary>A device's Diagnostics screen opened or closed: while one is open, the show computer measures itself once a second. On the show's thread.</summary>
+    void WatchDiagnostics(object device, bool watching);
 
     /// <summary>The show computer's audio output devices, by name (for audio tracks' outputs). On the show's thread.</summary>
     IReadOnlyList<string> AudioDevices { get; }

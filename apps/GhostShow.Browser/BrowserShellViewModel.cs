@@ -2,6 +2,7 @@ using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using GhostShow.App.ViewModels;
 using GhostShow.Browser.Remote;
+using GhostShow.Core.Diagnostics;
 using GhostShow.Core.Engine;
 using GhostShow.Core.Inputs;
 using GhostShow.Core.Playback;
@@ -21,13 +22,15 @@ sealed class BrowserShellViewModel : ShellViewModel
     long _noticeNumber;
     long _ticks;
 
-    public BrowserShellViewModel(ShowSession session, ShellServices services, IInputSetup inputSetup, IAudioSetup audioSetup, RemoteLink link,
+    public BrowserShellViewModel(ShowSession session, ShellServices services, IInputSetup inputSetup, IAudioSetup audioSetup,
+                                 IDiagnostics diagnostics, RemoteLink link,
                                  FileMenu fileMenu) : base(session, services)
     {
         _link = link;
         _fileMenu = fileMenu;
         Inputs = new InputsViewModel(session, inputSetup, Buttons);
         AudioPage = new AudioViewModel(audioSetup, AudioDevices);
+        DiagnosticsPage = new DiagnosticsViewModel(diagnostics);
         BottomWorkspace = new BottomWorkspaceViewModel(Playback, Inputs.Monitor, Lighting, null);
         ShowEditor();   // a device always has the show computer's show open
         // As often as the desktop's screens refresh; the show's state itself arrives with each status.
@@ -41,7 +44,7 @@ sealed class BrowserShellViewModel : ShellViewModel
     public override object AudioPage { get; }
     public InputsViewModel Inputs { get; }
     public override object InputsPage => Inputs;
-    public override object DiagnosticsPage { get; } = new OnShowComputerViewModel("Diagnostics");
+    public override object DiagnosticsPage { get; }
     public override object ButtonsPart => Buttons;
     public BrowserStatusViewModel Status { get; } = new();
     public override object? StatusPart => Status;

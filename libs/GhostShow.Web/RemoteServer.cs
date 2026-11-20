@@ -67,6 +67,7 @@ public sealed partial class RemoteServer : IAsyncDisposable
         host.Triggers.InputReceived += OnInputReceived;
         host.Inputs.Changed += OnInputsChanged;
         host.Audio.Changed += OnAudioChanged;
+        host.Diagnostics.Changed += OnDiagnosticsChanged;
         SubscribeToShowData();
         // A role changed on the desktop: the device hears of it (and its next command is checked against it).
         Pairing.Changed += () =>
@@ -168,6 +169,7 @@ public sealed partial class RemoteServer : IAsyncDisposable
         _host.Triggers.InputReceived -= OnInputReceived;
         _host.Inputs.Changed -= OnInputsChanged;
         _host.Audio.Changed -= OnAudioChanged;
+        _host.Diagnostics.Changed -= OnDiagnosticsChanged;
         UnsubscribeFromShowData();
     }
 

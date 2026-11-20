@@ -15,7 +15,7 @@
         </Grid>
         <ItemsControl ItemsSource="{Binding Outputs}">
           <ItemsControl.ItemTemplate>
-            <DataTemplate x:DataType="vm:OutputTimingRow">
+            <DataTemplate x:DataType="diag:OutputTimingRow">
               <Grid ColumnDefinitions="70,2*,100,80,190,90,2*" Margin="0,2">
                 <TextBlock Text="{Binding Universe}" /><TextBlock Grid.Column="1" Text="{Binding Device}" TextTrimming="CharacterEllipsis" />
                 <TextBlock Grid.Column="2" Text="{Binding Status}" /><TextBlock Grid.Column="3" Text="{Binding Rate}" />

@@ -8,11 +8,6 @@
        hosts it, and so does a device's browser page (see docs/plan-shared-view.md), so each part is built once. What
        differs is in ShellViewModel's places (HomePage, AudioPage, ButtonsPart…), which each host's App.axaml fills
        with its own data templates. -->
-  <UserControl.DataTemplates>
-    <DataTemplate DataType="vm:OnShowComputerViewModel">
-      <TextBlock Text="{Binding Message}" Opacity="0.7" FontSize="16" Margin="24" HorizontalAlignment="Center" VerticalAlignment="Center" TextWrapping="Wrap" />
-    </DataTemplate>
-  </UserControl.DataTemplates>
   <DockPanel>
     <!-- Menu bar, with what needs attention and Blackout at its right (on every screen; Blackout even with no show
          open). The transport and time are under the timeline. -->

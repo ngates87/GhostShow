@@ -72,6 +72,9 @@ sealed partial class RemoteLink
     /// <summary>"triggers": how the show computer's triggers stand (they run only there).</summary>
     public event Action<JsonObject>? Triggers;
 
+    /// <summary>"diagnostics": how the show computer is running, for the Diagnostics screen.</summary>
+    public event Action<JsonObject>? Diagnostics;
+
     /// <summary>"audioSetup": the show computer's sound, for the Audio screen.</summary>
     public event Action<JsonObject>? AudioSetup;
 
@@ -201,6 +204,9 @@ sealed partial class RemoteLink
                     break;
                 case "triggers":
                     Triggers?.Invoke(json);
+                    break;
+                case "diagnostics":
+                    Diagnostics?.Invoke(json);
                     break;
                 case "audioSetup":
                     AudioSetup?.Invoke(json);
