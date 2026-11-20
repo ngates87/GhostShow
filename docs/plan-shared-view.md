@@ -1,6 +1,6 @@
 # Plan: one main view for the desktop and the browser
 
-Status: approved 2026-11-07, with the decisions below. Steps 1-3 are done; step 4 is next. Restarted 2026-11-20 as the
+Status: approved 2026-11-07, with the decisions below. Steps 1-4 are done (step 4 still to be tried in Chromium); step 5 is next. Restarted 2026-11-20 as the
 priority ahead of new features (see "Decided 2026-11-20" in [plan-remote.md](plan-remote.md)): features wait until
 step 7 is done, and until then nothing new goes into the frame unless it reaches the browser in the same change.
 
@@ -20,13 +20,13 @@ its steps 4 and 5 (a separate server, and the native window over the connection)
 | Lighting section (fixtures, channels, faders, monitor, outputs) | shared | shared |
 | Frame: sections, status bar, warnings, Blackout | shared (`MainView`, `ShellViewModel`) | shared |
 | Menus (File, Edit, View, Playback) | shared | shared; File has the browser's own New, Open, Save, Rename |
-| Buttons panel: tiles, editor, triggers, arming | full | a column of buttons that press |
+| Buttons panel: tiles, editor, triggers, arming | shared (`ButtonsPanel`; triggers run here) | shared; the triggers' state comes from the show computer |
 | Inputs: the show's input devices, input monitor | full | "on the show computer" |
 | Audio screen | full | "on the show computer" |
 | Diagnostics, Home (recent shows) | full | "on the show computer"; no Home (a device always has a show) |
 | Keys: Space, trigger keys, learning keys, fields | `MainView` | `MainView` (no triggers, as decided), and Ctrl+S |
 
-The table above is as of step 3 (2026-11-20).
+The table above is as of step 4 (2026-11-20).
 
 Three things make the shared parts work today:
 - **The browser builds the desktop's own files.** `GhostShow.Browser.csproj` links the view models and some views, so a
@@ -115,8 +115,18 @@ tried in Chromium against the desktop.
      `AboutRequested` events.
    - The browser: `BrowserShellViewModel`, with its status (who, saved) and a column of buttons that press until step 4.
      `ShellView.cs` is now only the connection. The page's title is the show's.
-4. **Buttons and triggers in the browser.** The Buttons panel with its editor: pressing, editing, learning keys and
-   commands, arming, turning a trigger off, each trigger's state. Includes the trigger feed from the show computer.
+4. **Buttons and triggers in the browser (done 2026-11-20; not yet tried in Chromium).** The browser shows the desktop's
+   `ButtonsPanel` on the shared `ButtonsViewModel`, given an `IRemoteTriggers` (`ShellServices.Triggers`).
+   - The triggers run only on the show computer. On a device the panel never fires one: pressing, arming, turning a
+     trigger off and resetting one are sent there (`press`, `armTriggers`, `triggerOn`, `resetTrigger`), and how they
+     stand comes back in the `triggers` feed (at most 5 times a second, when it changes). A trigger is named by its
+     button or timeline and its place in that one's list.
+   - Learning: a device's own keys are learned as on the desktop. For a serial command, the device says it's waiting
+     (`learning`); while any device is, the show computer sends it the commands that arrive (`input`) instead of setting
+     off triggers with them, as it does while learning one itself. The same feed will serve the input monitor (step 5).
+   - Operators: the panel can't be edited (`CanEdit`), and `learning` is editor-only on the show computer.
+   - On the show computer, `AppTriggerControl` is what the server works through (`IRemoteHost.Triggers`).
+   - A role changed on the show computer (`device`) changes the page at once: the File menu and the panel's editing.
 5. **Inputs in the browser.** The input monitor (from the same feed) and the Inputs screen's devices and ports.
 6. **Audio in the browser.** The real Audio screen replaces "on the show computer".
 7. **Diagnostics and Home.** The Diagnostics section from the show computer's figures. Home's recent shows become the

@@ -7,6 +7,7 @@ using GhostShow.Core.Dmx;
 using GhostShow.Core.Editing;
 using GhostShow.Core.Engine;
 using GhostShow.Core.Fixtures;
+using GhostShow.Core.Inputs;
 using GhostShow.Core.Playback;
 using GhostShow.Core.Storage;
 using GhostShow.Core.Timeline;
@@ -18,7 +19,8 @@ namespace GhostShow.App.ViewModels;
 /// <summary>The web remote's host: the desktop app, with the show edited on the UI thread.</summary>
 sealed class AppRemoteHost(ShowSession session, ShowPlayback playback, PlaybackViewModel focus, IShowControl control,
                             Func<IReadOnlyList<string>> warnings, AudioDeviceList audioDevices, Func<bool> hasUnsavedChanges,
-                            Func<bool> needsFirstSave, IFixtureLibrary library, IOutputSetup outputs, ILiveLevels levels) : IRemoteHost
+                            Func<bool> needsFirstSave, IFixtureLibrary library, IOutputSetup outputs, ILiveLevels levels,
+                            ITriggerControl triggers) : IRemoteHost
 {
     public Task<T> InvokeAsync<T>(Func<T> function) => Dispatcher.UIThread.InvokeAsync(function).GetTask();
     public ShowSession Session => session;
@@ -31,12 +33,49 @@ sealed class AppRemoteHost(ShowSession session, ShowPlayback playback, PlaybackV
     public IFixtureLibrary Library => library;
     public IOutputSetup Outputs => outputs;
     public ILiveLevels Levels => levels;
+    public ITriggerControl Triggers => triggers;
     public IReadOnlyList<string> AudioDevices => audioDevices.Names;
 
     public event Action? AudioDevicesChanged
     {
         add => audioDevices.Changed += value;
         remove => audioDevices.Changed -= value;
+    }
+}
+
+/// <summary>The show's triggers, for devices: the Buttons panel's, which run them here. On the UI thread.</summary>
+sealed class AppTriggerControl(ButtonsViewModel buttons) : ITriggerControl
+{
+    const string Gone = "That trigger isn't in the show any more.";
+
+    public TriggerStates States => buttons.States;
+
+    public string? SetArmed(bool armed)
+    {
+        buttons.TriggersArmed = armed;
+        return null;
+    }
+
+    public string? SetOn(Guid owner, int index, bool on)
+    {
+        if (buttons.FindTrigger(owner, index) is not { } trigger) return Gone;
+        trigger.IsOn = on;
+        return null;
+    }
+
+    public string? Reset(Guid owner, int index)
+    {
+        if (buttons.FindTrigger(owner, index) is not { } trigger) return Gone;
+        trigger.ResetCommand.Execute(null);
+        return null;
+    }
+
+    public void SetDeviceLearning(bool learning) => buttons.IsDeviceLearning = learning;
+
+    public event Action<InputEvent, string>? InputReceived
+    {
+        add => buttons.InputReceived += value;
+        remove => buttons.InputReceived -= value;
     }
 }
 

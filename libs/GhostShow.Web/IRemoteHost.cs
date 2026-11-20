@@ -1,6 +1,7 @@
 using GhostShow.Core.Dmx;
 using GhostShow.Core.Fixtures;
 using GhostShow.Core.Engine;
+using GhostShow.Core.Inputs;
 using GhostShow.Core.Playback;
 
 namespace GhostShow.Web;
@@ -53,6 +54,9 @@ public interface IRemoteHost
 
     /// <summary>The levels the lights are at, and setting them by hand: for a device's faders and monitor. On the show's thread.</summary>
     ILiveLevels Levels { get; }
+
+    /// <summary>The show's triggers, which run only on the show computer: how they stand, arming, learning. On the show's thread.</summary>
+    ITriggerControl Triggers { get; }
 
     /// <summary>The show computer's audio output devices, by name (for audio tracks' outputs). On the show's thread.</summary>
     IReadOnlyList<string> AudioDevices { get; }

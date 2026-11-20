@@ -11,6 +11,7 @@ using System.Text.Json.Nodes;
 using GhostShow.Core.Editing;
 using GhostShow.Core.Engine;
 using GhostShow.Core.Fixtures;
+using GhostShow.Core.Inputs;
 using GhostShow.Core.Model;
 using GhostShow.Core.Playback;
 using GhostShow.Core.Storage;
@@ -62,11 +63,44 @@ public sealed class RemoteServerTests : IAsyncLifetime
         public Waveform? GetWaveform(string path) => Measured.ContainsKey(path) ? new Waveform([10, 200, 30]) : null;
     }
 
+    /// <summary>The Buttons panel's triggers, for the server: records what it was asked, and says how they stand.</summary>
+    sealed class Triggers : ITriggerControl
+    {
+        public readonly List<string> Calls = [];
+        public TriggerStates States { get; set; } = new(true, "", false, []);
+        public bool DeviceLearning { get; private set; }
+
+        public string? SetArmed(bool armed)
+        {
+            Calls.Add($"armed {armed}");
+            States = States with { Armed = armed };
+            return null;
+        }
+
+        public string? SetOn(Guid owner, int index, bool on)
+        {
+            Calls.Add($"on {owner} {index} {on}");
+            return null;
+        }
+
+        public string? Reset(Guid owner, int index)
+        {
+            Calls.Add($"reset {owner} {index}");
+            return index == 9 ? "That trigger isn't in the show any more." : null;
+        }
+
+        public void SetDeviceLearning(bool learning) => DeviceLearning = learning;
+        public event Action<InputEvent, string>? InputReceived;
+        public void Receive(InputEvent input, string outcome) => InputReceived?.Invoke(input, outcome);
+    }
+
     sealed class Host(ShowSession session, ShowPlayback playback, IFixtureLibrary library, IOutputSetup outputs, ILiveLevels levels) : IRemoteHost
     {
         public IFixtureLibrary Library => library;
         public IOutputSetup Outputs => outputs;
         public ILiveLevels Levels => levels;
+        public Triggers TriggerControl { get; } = new();
+        public ITriggerControl Triggers => TriggerControl;
         public readonly Lock Gate = new();
 
         public Task<T> InvokeAsync<T>(Func<T> function)
@@ -333,6 +367,57 @@ public sealed class RemoteServerTests : IAsyncLifetime
         Assert.Equal((false, "That button isn't in the show any more."), (refused["ok"]!.GetValue<bool>(), refused["error"]!.GetValue<string>()));
         Assert.Contains("doesn't know", (await CommandAsync(socket, new { action = "fly" }))["error"]!.GetValue<string>());
         Assert.Contains("didn't understand", (await CommandAsync(socket, new { action = "run", timeline = "nonsense" }))["error"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task A_device_hears_how_the_triggers_stand_and_arms_turns_off_and_resets_them_on_the_show_computer()
+    {
+        var button = Guid.NewGuid();
+        _host.TriggerControl.States = new TriggerStates(true, "Ran Main", true, [new TriggerState(button, 0, true, false, "Ready")]);
+        using var socket = await ConnectAsync(await PairAsync("Door phone", "operator"));   // running the show, not changing it
+        await NextAsync(socket, "hello");
+        var triggers = await NextAsync(socket, "triggers");
+        Assert.True(triggers["armed"]!.GetValue<bool>());
+        Assert.Equal("Ran Main", triggers["status"]!.GetValue<string>());
+        Assert.True(triggers["serialListening"]!.GetValue<bool>());
+        Assert.Equal((button.ToString(), 0, "Ready"), (triggers["triggers"]![0]!["owner"]!.GetValue<string>(), triggers["triggers"]![0]!["index"]!.GetValue<int>(), triggers["triggers"]![0]!["state"]!.GetValue<string>()));
+
+        Assert.True((await CommandAsync(socket, new { action = "armTriggers", on = false }))["ok"]!.GetValue<bool>());
+        Assert.False((await NextAsync(socket, "triggers"))["armed"]!.GetValue<bool>());   // sent again: they changed
+        Assert.True((await CommandAsync(socket, new { action = "triggerOn", owner = button.ToString(), index = 0, on = false }))["ok"]!.GetValue<bool>());
+        Assert.True((await CommandAsync(socket, new { action = "resetTrigger", owner = button.ToString(), index = 0 }))["ok"]!.GetValue<bool>());
+        var gone = await CommandAsync(socket, new { action = "resetTrigger", owner = button.ToString(), index = 9 });
+        Assert.Equal("That trigger isn't in the show any more.", gone["error"]!.GetValue<string>());
+        Assert.Equal(["armed False", $"on {button} 0 False", $"reset {button} 0", $"reset {button} 9"], _host.TriggerControl.Calls);
+
+        // Learning a trigger is changing the show: an editor's.
+        Assert.Contains("operator", (await CommandAsync(socket, new { action = "learning", on = true }))["error"]!.GetValue<string>());
+        Assert.False(_host.TriggerControl.DeviceLearning);
+    }
+
+    [Fact]
+    public async Task A_device_learning_a_trigger_gets_the_show_s_inputs_until_it_stops_or_goes()
+    {
+        var device = Guid.NewGuid();
+        var learner = await ConnectAsync(await PairAsync("Laptop"));
+        using var other = await ConnectAsync(await PairAsync("iPad"));
+        await NextAsync(learner, "hello");
+        await NextAsync(other, "hello");
+
+        Assert.True((await CommandAsync(learner, new { action = "learning", on = true }))["ok"]!.GetValue<bool>());
+        Assert.True(_host.TriggerControl.DeviceLearning);   // the show computer holds its commands for the device
+        lock (_host.Gate) _host.TriggerControl.Receive(new InputEvent("serial", "BTN24", true, DateTimeOffset.Now, device, "On"), "Sent to the device waiting for a trigger");
+        var input = await NextAsync(learner, "input");
+        Assert.Equal(("serial", device.ToString(), "BTN24", "On"), (input["source"]!.GetValue<string>(), input["device"]!.GetValue<string>(), input["address"]!.GetValue<string>(), input["value"]!.GetValue<string>()));
+
+        Assert.True((await CommandAsync(learner, new { action = "learning", on = false }))["ok"]!.GetValue<bool>());
+        Assert.False(_host.TriggerControl.DeviceLearning);
+
+        Assert.True((await CommandAsync(learner, new { action = "learning", on = true }))["ok"]!.GetValue<bool>());
+        await learner.CloseAsync(WebSocketCloseStatus.NormalClosure, "", TestContext.Current.CancellationToken);
+        learner.Dispose();
+        for (int i = 0; i < 100 && _host.TriggerControl.DeviceLearning; i++) await Task.Delay(20, TestContext.Current.CancellationToken);
+        Assert.False(_host.TriggerControl.DeviceLearning);   // it went while waiting: the show's inputs work again
     }
 
     [Fact]

@@ -80,7 +80,8 @@ public sealed partial class MainViewModel : ShellViewModel
         // Both come on a port's reading thread, and are handled on this one. A command is an input like a key.
         _serial.CommandReceived += (device, command) => Dispatcher.UIThread.Post(() => Inputs.OnCommand(device, command));
         _serial.StatusChanged += _ => Dispatcher.UIThread.Post(Inputs.Refresh);
-        Remote = new RemoteViewModel(new AppRemoteHost(session, ShowPlayback, Playback, new AppShowControl(this), () => WarningsSnapshot, AudioDevices, () => IsDirty, () => _session.FilePath is null || _session.IsSingleFileShow, local.Library, _outputSetup, local.Levels),
+        Remote = new RemoteViewModel(new AppRemoteHost(session, ShowPlayback, Playback, new AppShowControl(this), () => WarningsSnapshot, AudioDevices, () => IsDirty, () => _session.FilePath is null || _session.IsSingleFileShow, local.Library, _outputSetup, local.Levels,
+                                                       new AppTriggerControl(Buttons)),
                                      settings.Remote, SaveSettingsAsync, logger);
         Audio = new AudioViewModel(services.Audio, AudioDevices, session, settings, SaveSettingsAsync);
         _ = AudioDevices.RefreshAsync();

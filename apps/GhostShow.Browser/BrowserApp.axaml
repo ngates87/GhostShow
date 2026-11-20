@@ -1,6 +1,8 @@
 <Application xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:browser="using:GhostShow.Browser"
+             xmlns:vm="using:GhostShow.App.ViewModels"
+             xmlns:views="using:GhostShow.App.Views"
              x:Class="GhostShow.Browser.BrowserApp"
              RequestedThemeVariant="Dark">
   <Application.Styles>
@@ -24,17 +26,8 @@
         <TextBlock Text="{Binding Who}" Opacity="0.7" />
       </StackPanel>
     </DataTemplate>
-    <DataTemplate DataType="browser:BrowserButtonsViewModel">
-      <ScrollViewer Width="150" Margin="6,6,0,6" IsVisible="{Binding !!Buttons.Count}">
-        <ItemsControl ItemsSource="{Binding Buttons}">
-          <ItemsControl.ItemTemplate>
-            <DataTemplate DataType="browser:BrowserButtonRow">
-              <Button Content="{Binding Name}" Command="{Binding PressCommand}" Background="{Binding Background}"
-                      HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Padding="10,10" Margin="0,0,0,6" />
-            </DataTemplate>
-          </ItemsControl.ItemTemplate>
-        </ItemsControl>
-      </ScrollViewer>
+    <DataTemplate DataType="vm:ButtonsViewModel">
+      <views:ButtonsPanel />
     </DataTemplate>
   </Application.DataTemplates>
 </Application>

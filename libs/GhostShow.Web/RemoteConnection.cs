@@ -43,6 +43,9 @@ sealed class RemoteConnection(PairedDevice device, WebSocket socket, string addr
     /// <summary>The universe whose levels a screen on the device shows; 0 for none (see <see cref="RemoteServer"/>'s levels loop).</summary>
     public int WatchingLevels { get; set; }
 
+    /// <summary>The device is waiting for a trigger: it gets the show's inputs, to learn one (show's thread only).</summary>
+    public bool Learning { get; set; }
+
     /// <summary>The levels last sent: only changes are sent again.</summary>
     public string? LevelsSent { get; set; }
 

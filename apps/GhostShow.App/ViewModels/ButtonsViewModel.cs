@@ -24,15 +24,19 @@ public sealed partial class ButtonsViewModel : ObservableObject
     readonly Action _blackout;
     readonly Action _markDirty;
     readonly TimeProvider _time;
+    readonly IRemoteTriggers? _remote;
 
     /// <param name="time">The clock for re-arm times and "last fired"; tests pass their own.</param>
-    public ButtonsViewModel(ShowSession session, PlaybackViewModel playback, Action blackout, Action markDirty, TimeProvider? time = null)
+    /// <param name="remote">On a device: the show computer, where the triggers run (null on the show computer itself).</param>
+    public ButtonsViewModel(ShowSession session, PlaybackViewModel playback, Action blackout, Action markDirty, TimeProvider? time = null,
+                            IRemoteTriggers? remote = null)
     {
         _session = session;
         _playback = playback;
         _blackout = blackout;
         _markDirty = markDirty;
         _time = time ?? TimeProvider.System;
+        _remote = remote;
         Reload();
         // Button edits made here, undone, or made on another device: the panel follows.
         session.Document.Changed += change =>
@@ -103,6 +107,18 @@ public sealed partial class ButtonsViewModel : ObservableObject
     [ObservableProperty]
     public partial double PanelWidth { get; set; } = UsualWidth;
 
+    /// <summary>
+    /// Whether the buttons and triggers can be changed here: not by a device paired as an operator, which presses buttons
+    /// and arms triggers but doesn't change the show (docs/plan-shared-view.md, decision 2).
+    /// </summary>
+    [ObservableProperty]
+    public partial bool CanEdit { get; set; } = true;
+
+    partial void OnCanEditChanged(bool value)
+    {
+        if (!value) IsEditing = false;
+    }
+
     /// <summary>Edit mode: a click selects a button to edit instead of pressing it.</summary>
     [ObservableProperty]
     public partial bool IsEditing { get; set; }
@@ -161,7 +177,9 @@ public sealed partial class ButtonsViewModel : ObservableObject
     public void Reload()
     {
         LearningFor = null;
+        _applyingStates = true;   // on a device, the show computer says how its triggers stand (below)
         TriggersArmed = true;   // a show opens armed, so its Start Show key simply works
+        _applyingStates = false;
         Buttons.Clear();
         foreach (var button in _session.Project.Buttons) Buttons.Add(new ShowButtonViewModel(button, this));
         // Another show has other timelines, so they get new lists (every trigger ready); one still in the show keeps its
@@ -171,6 +189,7 @@ public sealed partial class ButtonsViewModel : ObservableObject
         IsOpen = Buttons.Count > 0;   // a show without buttons keeps the room for the timeline (the strip brings them up)
         OnPropertyChanged(nameof(HasButtons));
         OnPropertyChanged(nameof(Timelines));
+        if (_states is { } states) ShowStates(states);
     }
 
     // ---- pressing ----
@@ -178,6 +197,11 @@ public sealed partial class ButtonsViewModel : ObservableObject
     /// <summary>Runs a button's actions, in order. One that can't run (its timeline was deleted) is skipped and reported.</summary>
     public void Press(ShowButtonViewModel button)
     {
+        if (_remote is not null)
+        {
+            _remote.Press(button.Button.Id);   // pressed on the show computer, as its own click would
+            return;
+        }
         var problems = new List<string>();
         foreach (var action in button.Button.Actions)
         {
@@ -228,7 +252,10 @@ public sealed partial class ButtonsViewModel : ObservableObject
     public ShowButtonViewModel? Input(string source, string address, bool isPressed, Guid? device = null, string? value = null)
     {
         var input = new InputEvent(source, address, isPressed, Now, device, value);
-        var (pressed, outcome) = LearningFor is not null && source != InputTrigger.Keyboard ? (null, Learn(input)) : Dispatch(input);
+        var (pressed, outcome) = source == InputTrigger.Keyboard ? Dispatch(input)
+            : LearningFor is not null ? (null, Learn(input))
+            : IsDeviceLearning ? (null, "Sent to the device waiting for a trigger")
+            : Dispatch(input);
         InputReceived?.Invoke(input, outcome);
         return pressed;
     }
@@ -245,6 +272,7 @@ public sealed partial class ButtonsViewModel : ObservableObject
 
     (ShowButtonViewModel? Pressed, string Outcome) Dispatch(InputEvent input)
     {
+        if (_remote is not null) return (null, "");   // triggers run on the show computer
         // A run-once trigger's reset input resets it, whatever else the input does.
         var resets = AllTriggers.Where(t => t.Trigger.RunOnce && t.Trigger.ResetBy?.IsSetOffBy(input) == true).ToList();
         foreach (var trigger in resets) trigger.ResetCommand.Execute(null);
@@ -344,6 +372,7 @@ public sealed partial class ButtonsViewModel : ObservableObject
     sealed class TimelineTriggerOwner(ShowTimeline timeline, ButtonsViewModel hub) : ITriggerOwner
     {
         public ShowTimeline Timeline => timeline;
+        public Guid Id => timeline.Id;
         public string Name => timeline.Name;
         public List<InputTrigger> TriggerModels => timeline.Triggers;
         public bool IsTimeline => true;
@@ -372,6 +401,7 @@ public sealed partial class ButtonsViewModel : ObservableObject
 
     partial void OnLearningForChanged(object? oldValue, object? newValue)
     {
+        if (oldValue is null != newValue is null) _remote?.SetLearning(newValue is not null);   // its commands come here to learn
         if (oldValue is TriggerListViewModel oldList) oldList.IsLearning = false;
         if (oldValue is TriggerViewModel oldTrigger) oldTrigger.IsLearningReset = false;
         if (newValue is TriggerListViewModel newList) newList.IsLearning = true;
@@ -450,6 +480,7 @@ public sealed partial class ButtonsViewModel : ObservableObject
     {
         var now = Now;
         foreach (var button in Buttons) button.IsLit = button.IsPlaying;
+        if (_remote is not null) return;   // the show computer's triggers: see ShowStates
         foreach (var trigger in AllTriggers.ToList())
             if (trigger.Tick(now, TriggersArmed) is { } did) Status = did;
     }
@@ -469,6 +500,11 @@ public sealed partial class ButtonsViewModel : ObservableObject
     /// <summary>Arming the triggers again resets the run-once ones, ready for the next group.</summary>
     partial void OnTriggersArmedChanged(bool value)
     {
+        if (_remote is not null)
+        {
+            if (!_applyingStates) _remote.SetArmed(value);
+            return;
+        }
         if (!value) return;
         foreach (var trigger in AllTriggers.Where(t => t.IsSpent)) trigger.ResetCommand.Execute(null);
     }
@@ -483,6 +519,40 @@ public sealed partial class ButtonsViewModel : ObservableObject
 
     /// <summary>Armed key triggers that can't work because another window has the keyboard: worth a loud warning.</summary>
     public bool ShowFocusWarning => TriggersArmed && !IsAppFocused && AllTriggers.Any();
+
+    // ---- the show computer's triggers, and a device's view of them ----
+
+    /// <summary>On a device: the show computer's triggers (null on the show computer).</summary>
+    internal IRemoteTriggers? Remote => _remote;
+
+    bool _applyingStates;
+    TriggerStates? _states;
+    string _lastRemoteStatus = "";
+
+    /// <summary>On the show computer: a device is waiting for a trigger, so serial commands go to it (see <see cref="Input"/>).</summary>
+    public bool IsDeviceLearning { get; set; }
+
+    /// <summary>How the triggers stand, for devices.</summary>
+    public TriggerStates States => new(TriggersArmed, Status, IsSerialListening,
+        [.. TriggerLists.SelectMany(list => list.Select((t, i) => new TriggerState(list.Owner.Id, i, t.IsOn, t.IsSpent, t.State)))]);
+
+    /// <summary>The trigger at this place: on a button or timeline (by its id), at its index in that one's list.</summary>
+    public TriggerViewModel? FindTrigger(Guid owner, int index) =>
+        TriggerLists.FirstOrDefault(l => l.Owner.Id == owner) is { } list && index >= 0 && index < list.Count ? list[index] : null;
+
+    IEnumerable<TriggerListViewModel> TriggerLists => Buttons.Select(b => b.Triggers).Concat(_timelineTriggers.Values);
+
+    /// <summary>On a device: how the show computer's triggers stand, shown here.</summary>
+    public void ShowStates(TriggerStates states)
+    {
+        _states = states;
+        _applyingStates = true;
+        TriggersArmed = states.Armed;
+        _applyingStates = false;
+        IsSerialListening = states.SerialListening;
+        if (states.Status != _lastRemoteStatus) Status = _lastRemoteStatus = states.Status;
+        foreach (var state in states.Triggers) FindTrigger(state.Owner, state.Index)?.ShowRemote(state);
+    }
 
     internal ShowTimeline? Find(Guid id) => _session.Project.Timelines.FirstOrDefault(t => t.Id == id);
 
@@ -643,6 +713,7 @@ public sealed partial class ShowButtonViewModel : ObservableObject, ITriggerOwne
     /// <summary>A timeline it runs is playing (any copy).</summary>
     internal bool IsPlaying => Button.Actions.OfType<RunTimelineAction>().Any(r => _owner.Playback.IsRunning(r.TimelineId));
 
+    Guid ITriggerOwner.Id => Button.Id;
     List<InputTrigger> ITriggerOwner.TriggerModels => Button.Triggers;
     bool ITriggerOwner.IsTimeline => false;
     bool ITriggerTarget.CanPlay => Button.Actions.OfType<RunTimelineAction>().Any();

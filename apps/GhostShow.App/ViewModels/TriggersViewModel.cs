@@ -6,9 +6,27 @@ using GhostShow.Core.Inputs;
 
 namespace GhostShow.App.ViewModels;
 
+/// <summary>
+/// A device's way to the show computer's triggers, which run only there (docs/plan-shared-view.md, decision 1). The
+/// show computer sends how they stand (<see cref="ButtonsViewModel.ShowStates"/>).
+/// </summary>
+public interface IRemoteTriggers
+{
+    void Press(Guid button);
+    void SetArmed(bool armed);
+    void SetOn(Guid owner, int index, bool on);
+    void Reset(Guid owner, int index);
+
+    /// <summary>This device is waiting for a trigger (or stopped): the show computer sends it the commands that arrive.</summary>
+    void SetLearning(bool learning);
+}
+
 /// <summary>What has a list of triggers: a show button (they press it), or a timeline (they run it).</summary>
 public interface ITriggerOwner : ITriggerTarget
 {
+    /// <summary>The button's or timeline's id.</summary>
+    Guid Id { get; }
+
     /// <summary>The show's list of its triggers.</summary>
     List<InputTrigger> TriggerModels { get; }
 
@@ -351,7 +369,8 @@ public sealed partial class TriggerViewModel : ObservableObject
             if (value == Runner.IsOn) return;
             Runner.IsOn = value;
             OnPropertyChanged();
-            Tick(_hub.Now, _hub.TriggersArmed);
+            if (_hub.Remote is { } remote) remote.SetOn(Owner.Id, _list.IndexOf(this), value);
+            else Tick(_hub.Now, _hub.TriggersArmed);
         }
     }
 
@@ -362,6 +381,7 @@ public sealed partial class TriggerViewModel : ObservableObject
     [RelayCommand]
     void Reset()
     {
+        _hub.Remote?.Reset(Owner.Id, _list.IndexOf(this));
         Runner.Reset();
         IsSpent = false;
         State = Runner.Describe(_hub.Now);
@@ -385,6 +405,18 @@ public sealed partial class TriggerViewModel : ObservableObject
         var did = Runner.Tick(now, armed);
         Show(now);
         return did;
+    }
+
+    /// <summary>On a device: how it stands on the show computer, where it runs.</summary>
+    internal void ShowRemote(TriggerState state)
+    {
+        if (Runner.IsOn != state.IsOn)
+        {
+            Runner.IsOn = state.IsOn;
+            OnPropertyChanged(nameof(IsOn));
+        }
+        IsSpent = state.IsSpent;
+        State = state.State;
     }
 
     void Show(DateTimeOffset now)

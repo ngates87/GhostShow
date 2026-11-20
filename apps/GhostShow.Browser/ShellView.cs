@@ -36,6 +36,7 @@ sealed class ShellView : Border
     readonly RemoteFixtureLibrary _library;
     readonly RemoteOutputSetup _outputSetup;
     readonly RemoteLiveLevels _levels;
+    readonly RemoteTriggers _triggers;
     BrowserShellViewModel? _shell;
     bool _unsaved;
 
@@ -52,6 +53,7 @@ sealed class ShellView : Border
         _library = new RemoteFixtureLibrary(_session, _link, BuiltInProfiles);
         _outputSetup = new RemoteOutputSetup(_link);
         _levels = new RemoteLiveLevels(_session, _link);
+        _triggers = new RemoteTriggers(_link);
         AddHandler(KeyDownEvent, OnKeyDown, Avalonia.Interactivity.RoutingStrategies.Tunnel);
 
         // Messages arrive on the connection's thread; each is handled on the UI thread.
@@ -68,6 +70,12 @@ sealed class ShellView : Border
         _link.Library += m => Dispatcher.UIThread.Post(() => _library.OnStatus(m));
         _link.Outputs += m => Dispatcher.UIThread.Post(() => _outputSetup.OnOutputs(m));
         _link.Levels += m => Dispatcher.UIThread.Post(() => _levels.OnLevels(m));
+        _link.Device += m => Dispatcher.UIThread.Post(() => ShowDevice(m["device"]));
+        _link.Triggers += m => Dispatcher.UIThread.Post(() => _shell?.Buttons.ShowStates(RemoteTriggers.Read(m)));
+        _link.Input += m => Dispatcher.UIThread.Post(() =>
+        {
+            if (_shell is not null) RemoteTriggers.Learn(_shell.Buttons, m);
+        });
         _link.Disconnected += () => Dispatcher.UIThread.Post(() =>
         {
             if (_shell is not null) ShowNotice("Lost the connection to the show computer. Trying again… Edits made now won't be kept.");
@@ -101,7 +109,7 @@ sealed class ShellView : Border
         _audioDevices.Update(message["audioDevices"] as JsonArray);
         if (_shell is null)
         {
-            _shell = new BrowserShellViewModel(_session, new ShellServices(_remote, _library, _outputSetup, _levels, _audioDevices, _edits), _link, _fileMenu);
+            _shell = new BrowserShellViewModel(_session, new ShellServices(_remote, _library, _outputSetup, _levels, _audioDevices, _edits, _triggers), _link, _fileMenu);
             _shell.PropertyChanged += (_, e) =>
             {
                 if (e.PropertyName == nameof(ShellViewModel.Title)) ShowTitle();
@@ -120,10 +128,15 @@ sealed class ShellView : Border
             _shell.Lighting.Fixtures.Sync();   // the same screen and selection, on the fresh copy
             _shell.Lighting.Outputs.Reload();
         }
-        bool isOperator = message["device"]?["role"]?.GetValue<string>() == "operator";
-        _shell.OnHello($"{message["device"]?["name"]} ({message["device"]?["role"]})", isOperator);
-        ((BrowserButtonsViewModel)_shell.ButtonsPart).Refresh();
+        ShowDevice(message["device"]);
         ShowTitle();
+    }
+
+    /// <summary>Who this device is paired as (in the hello, and again when its role is changed on the show computer).</summary>
+    void ShowDevice(JsonNode? device)
+    {
+        bool isOperator = device?["role"]?.GetValue<string>() == "operator";
+        _shell?.OnHello($"{device?["name"]} ({device?["role"]})", isOperator);
     }
 
     /// <summary>The page's title: the show's, as the desktop's window has.</summary>

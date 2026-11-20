@@ -66,6 +66,15 @@ sealed partial class RemoteLink
     /// <summary>"levels": the levels of the universe this device asked for.</summary>
     public event Action<JsonObject>? Levels;
 
+    /// <summary>"device": this device again, when its role was changed on the show computer.</summary>
+    public event Action<JsonObject>? Device;
+
+    /// <summary>"triggers": how the show computer's triggers stand (they run only there).</summary>
+    public event Action<JsonObject>? Triggers;
+
+    /// <summary>"input": an input that arrived on the show computer, while this device waits for a trigger.</summary>
+    public event Action<JsonObject>? Input;
+
     /// <summary>The connection dropped (it's being tried again).</summary>
     public event Action? Disconnected;
 
@@ -180,6 +189,15 @@ sealed partial class RemoteLink
                     break;
                 case "levels":
                     Levels?.Invoke(json);
+                    break;
+                case "device":
+                    Device?.Invoke(json);
+                    break;
+                case "triggers":
+                    Triggers?.Invoke(json);
+                    break;
+                case "input":
+                    Input?.Invoke(json);
                     break;
             }
         }

@@ -9,11 +9,6 @@ using GhostShow.Core.Playback;
 
 namespace GhostShow.App.ViewModels;
 
-/// <summary>
-/// The services the screens work through, each with a version for the show computer and one for a device's browser
-/// (see docs/plan-shared-view.md). <paramref name="History"/>: where edits go when they aren't simply the show's own
-/// undo history (a browser's go to the show computer); null on the show computer.
-/// </summary>
 /// <summary>A show in the Home screen's recent list.</summary>
 /// <param name="Path">The show folder, or an older single-file show.</param>
 public sealed record RecentShowRow(string Path, string Name, string Location, bool Exists)
@@ -27,8 +22,14 @@ public sealed record OnShowComputerViewModel(string Screen)
     public string Message => $"{Screen} is on the show computer for now.";
 }
 
+/// <summary>
+/// The services the screens work through, each with a version for the show computer and one for a device's browser
+/// (see docs/plan-shared-view.md). <paramref name="History"/>: where edits go when they aren't simply the show's own
+/// undo history (a browser's go to the show computer); null on the show computer. <paramref name="Triggers"/>: the show
+/// computer's triggers, from a device (null on the show computer, where they run).
+/// </summary>
 public sealed record ShellServices(IPlayback Playback, IFixtureLibrary Library, IOutputSetup OutputSetup, ILiveLevels Levels,
-                                   AudioDeviceList AudioDevices, IEditHistory? History = null);
+                                   AudioDeviceList AudioDevices, IEditHistory? History = null, IRemoteTriggers? Triggers = null);
 
 /// <summary>
 /// What the main view shows and does, the same on the show computer and in a browser: the screens, the sections and
@@ -54,7 +55,7 @@ public abstract partial class ShellViewModel : ObservableObject
         Playback = new PlaybackViewModel(services.Playback);
         AudioDevices = services.AudioDevices;
         Timeline = new TimelineEditorViewModel(session, Playback, PickAudioFileAsync, MarkDirty, AudioDevices, services.History);
-        Buttons = new ButtonsViewModel(session, Playback, Blackout, MarkDirty);
+        Buttons = new ButtonsViewModel(session, Playback, Blackout, MarkDirty, remote: services.Triggers);
         Timeline.TriggersOf = Buttons.TriggersFor;
         Timeline.ShowFixtures = () => CurrentPage = Page.Fixtures;
         Timeline.Notice += message => StatusMessage = message;

@@ -64,6 +64,7 @@ public sealed partial class RemoteServer : IAsyncDisposable
         Pairing = new DevicePairing(settings, clock);
         host.Session.Document.Changed += OnChanged;
         host.Playback.Compiled += OnCompiled;
+        host.Triggers.InputReceived += OnInputReceived;
         SubscribeToShowData();
         // A role changed on the desktop: the device hears of it (and its next command is checked against it).
         Pairing.Changed += () =>
@@ -162,6 +163,7 @@ public sealed partial class RemoteServer : IAsyncDisposable
         await StopAsync();
         _host.Session.Document.Changed -= OnChanged;
         _host.Playback.Compiled -= OnCompiled;
+        _host.Triggers.InputReceived -= OnInputReceived;
         UnsubscribeFromShowData();
     }
 
@@ -242,6 +244,7 @@ public sealed partial class RemoteServer : IAsyncDisposable
         {
             lock (_lock) _connections.Remove(connection);
             ForgetLightingWatch(connection);
+            ForgetLearning(connection);
             ConnectionsChanged?.Invoke();
         }
     }
@@ -311,7 +314,7 @@ public sealed partial class RemoteServer : IAsyncDisposable
     // ---- commands ----
 
     /// <summary>What only an editor may do; an operator may run the show (play, stop, buttons, Blackout) but not change it.</summary>
-    static readonly HashSet<string> EditorOnly = ["open", "edit", "undo", "redo", "save", "listShows", "newShow", "openShow", "saveShowAs", "renameShow", "saveProfile", "deleteProfile", "downloadLibrary",
+    static readonly HashSet<string> EditorOnly = ["open", "edit", "undo", "redo", "save", "listShows", "newShow", "openShow", "saveShowAs", "renameShow", "learning", "saveProfile", "deleteProfile", "downloadLibrary",
                                                   "scanOutputs", "assignOutput", "setChannel", "clearUniverse", "setFixtureChannel", "setFixtureControl"];
 
     /// <summary>A message from a device: a command, run on the show's thread, answered with a result.</summary>
@@ -345,6 +348,7 @@ public sealed partial class RemoteServer : IAsyncDisposable
                     "saveShowAs" => await await _host.InvokeAsync(() => _host.Control.SaveShowAsAsync(ShowName(message))),
                     "renameShow" => await await _host.InvokeAsync(() => _host.Control.RenameShowAsync(ShowName(message))),
                     "saveProfile" or "deleteProfile" or "downloadLibrary" => await await _host.InvokeAsync(() => LibraryCommandAsync(message, action)),
+                    _ when TriggerActions.Contains(action) => await _host.InvokeAsync(() => TriggerCommand(connection, action, message)),
                     _ when LightingActions.Contains(action) => await _host.InvokeAsync(() => LightingCommand(connection, action, message)),
                     _ => await _host.InvokeAsync(() => Execute(connection, action, message)),
                 };
@@ -504,6 +508,7 @@ public sealed partial class RemoteServer : IAsyncDisposable
     /// <summary>On the show's thread: who the device is, and the whole show.</summary>
     string Hello(PairedDevice device)
     {
+        _triggersSent = null;   // after the show, how its triggers stand (at the next tick)
         var snapshot = _host.Session.Document.Snapshot();
         return new JsonObject
         {
@@ -540,7 +545,11 @@ public sealed partial class RemoteServer : IAsyncDisposable
                 _logger.LogWarning(e, "Couldn't read the playback status for the web remote.");
                 continue;
             }
-            if (++_ticks % 4 == 0) SendManualLevelsIfChanged();   // 5 times a second
+            if (++_ticks % 4 == 0)   // 5 times a second
+            {
+                SendManualLevelsIfChanged();
+                await SendTriggersIfChangedAsync();
+            }
             if (status == _status) continue;
             _status = status;
             List<RemoteConnection> connections;

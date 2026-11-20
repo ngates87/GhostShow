@@ -97,14 +97,20 @@ public partial class MainView : UserControl
         }
         if (typing && TriggerKeys.TypesText(key)) return;   // it goes to the field
 
-        if (!viewModel.KeysFireTriggers) return;   // a device's keyboard: only learning a key and Space (above)
-        if (!isRepeat)
+        if (viewModel.KeysFireTriggers)   // the show computer's keys (a device's only learn keys, play with Space and finish with Esc)
         {
-            _inputKeys.Add(e.Key);
-            buttons.Input(InputTrigger.Keyboard, key, isPressed: true);
+            if (!isRepeat)
+            {
+                _inputKeys.Add(e.Key);
+                buttons.Input(InputTrigger.Keyboard, key, isPressed: true);
+            }
+            if (buttons.HasKey(key))
+            {
+                e.Handled = true;   // the button's, even while it re-arms
+                return;
+            }
         }
-        if (buttons.HasKey(key)) e.Handled = true;   // the button's, even while it re-arms
-        else if (e.Key == Key.Escape && buttons.IsEditing && !typing)
+        if (e.Key == Key.Escape && buttons.IsEditing && !typing)
         {
             buttons.IsEditing = false;   // (while typing, Esc first leaves the field: see OnKeyDownAfterControls)
             e.Handled = true;

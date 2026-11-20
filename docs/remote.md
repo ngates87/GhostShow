@@ -52,7 +52,8 @@ how many devices are connected.
 
 Open `http://<address>:7700/app/`, or "Open the full app" on the simple remote. `/app/?open=Folder/Timeline` opens a
 timeline at start, so it can be bookmarked. The top row switches between Timeline, Lighting and Audio; Blackout and
-warnings stay visible across pages. The show's buttons are available along the bottom. The Windows installer includes the
+warnings stay visible across pages. The show's buttons are in the desktop's own Buttons panel beside the timeline: pressing them, editing them and their
+triggers, and arming. The triggers themselves run only on the show computer; the panel shows how each stands there. The Windows installer includes the
 full app. From source, it's only there if it has been built on that computer, and Remote Access doesn't offer it otherwise:
 `dotnet run dev.cs` at the top of the repo builds it (it needs the WebAssembly tools).
 
@@ -126,6 +127,12 @@ Audio shows the show computer's devices and the files used by the show; its sett
   - `levels`: the levels of the universe a device asked for with `watchLevels`, up to 20 times a second while they
     change: `levels`, `controlled` (by the timeline, 1 or 0) and `sent` (as last sent to the output), 512 bytes each as
     base64, and `source` (where `sent` came from, for the monitor). A slow device gets only the newest.
+  - `triggers`: how the show's triggers stand (they run only on the show computer), at most 5 times a second when that
+    changes, and after each `hello`: `armed`, `status` (what the last press or trigger did), `serialListening`, and
+    `triggers`, each with its `owner` (the button or timeline), `index` (its place in that one's list), `on`, `spent`
+    and `state` ("Ready", "Re-arms in 2.5 s", …).
+  - `input`: an input that arrived on the show computer (`source`, `device`, `address`, `pressed`, `value`, `outcome`),
+    to a device waiting for a trigger (`learning`), so it can learn it.
   - `shows`: the names of the shows a device can open, answering `listShows`.
   - `result`: the answer to a command.
   - `history`: what Undo and Redo would do next on this device (for its Undo button's label), after every change: for its
@@ -164,9 +171,13 @@ Audio shows the show computer's devices and the files used by the show; its sett
     `setChannel` (`universe`, `address`, `value`), `clearUniverse` (`universe`), `setFixtureChannel` (`fixture`, `channel`,
     `value`) and `setFixtureControl` (`fixture`, `function`, `value`) set them. The page sends a moving fader at most
     about 30 times a second.
+  - **Triggers:** `armTriggers` (`on`) arms or disarms them; `triggerOn` (`owner`, `index`, `on`) turns one off or back
+    on; `resetTrigger` (`owner`, `index`) lets a run-once trigger fire again. `learning` (`on`) says the device is
+    waiting for a trigger: while any device is, commands from the show's input devices go to it (`input`) instead of
+    setting off triggers, as while the show computer itself learns one. A device's own keyboard never fires a trigger.
   - **Where they run:** on the show computer's UI thread, through the same view models as the desktop's controls
     (`IShowControl`).
-  - **Roles:** the show computer checks the device's role for each command. `open`, `edit`, `undo`, `redo`, `save`, the file menu's commands,
+  - **Roles:** the show computer checks the device's role for each command. `open`, `edit`, `undo`, `redo`, `save`, `learning`, the file menu's commands,
     `saveProfile`, `deleteProfile`, `downloadLibrary`, `scanOutputs`, `assignOutput` and the commands that set levels are
     editor-only; an operator may run the show but not change it.
 - **The fixture library:** `GET /api/library?token=…` gives the whole library, one profile per line of JSON, compressed
