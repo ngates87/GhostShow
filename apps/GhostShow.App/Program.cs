@@ -10,6 +10,9 @@ if (instance is null)
     return 0;
 }
 
+// Something that ends the process (an exception on a background thread) is noted in crash.log, as nothing else keeps it.
+CrashLog.Install(GhostShow.Core.Storage.AppPaths.Default);
+
 return AppBuilder.Configure(() => new App { SingleInstance = instance })
     .UsePlatformDetect()
     .WithInterFont()

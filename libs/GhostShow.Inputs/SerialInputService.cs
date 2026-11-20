@@ -127,7 +127,18 @@ public sealed class SerialInputService : IDisposable
             string? lastProblem = null;
             while (!_stop.IsCancellationRequested)
             {
-                string problem = ReadUntilLost();
+                string problem;
+                try
+                {
+                    problem = ReadUntilLost();
+                }
+                catch (Exception ex)
+                {
+                    // A failure nothing above expected. On this thread it would end the whole show, so it's logged and
+                    // the port tried again like any other problem.
+                    owner._logger.LogError(ex, "Serial input {Port}: reading failed unexpectedly.", Port);
+                    problem = $"{Port} failed: {ex.Message}";
+                }
                 if (_stop.IsCancellationRequested) return;
                 owner.SetStatus(this, new SerialInputStatus(SerialInputState.Retrying, Port, BaudRate, problem));
                 // Logged once per problem, not every few seconds while a device stays unplugged.
@@ -180,9 +191,11 @@ public sealed class SerialInputService : IDisposable
                 }
                 return "Stopped.";
             }
-            catch (Exception ex) when (ex is IOException or InvalidOperationException or UnauthorizedAccessException or ObjectDisposedException)
+            // OperationCanceledException: on Windows, closing the port (Stop, e.g. for a new speed) cancels the read waiting on it.
+            catch (Exception ex) when (ex is IOException or InvalidOperationException or UnauthorizedAccessException or ObjectDisposedException
+                                           or OperationCanceledException)
             {
-                return $"{Port} stopped answering (unplugged?).";
+                return _stop.IsCancellationRequested ? "Stopped." : $"{Port} stopped answering (unplugged?).";
             }
             finally
             {
