@@ -13,6 +13,7 @@ using GhostShow.Core.Timeline;
 using GhostShow.Core.Model;
 using GhostShow.Dmx;
 using GhostShow.Inputs;
+using GhostShow.Server;
 using Microsoft.Extensions.Logging;
 
 namespace GhostShow.App.ViewModels;
@@ -30,7 +31,7 @@ public sealed partial class MainViewModel : ShellViewModel
     static readonly TimeSpan TickInterval = TimeSpan.FromMilliseconds(33);
     static readonly TimeSpan AutoSaveDelay = TimeSpan.FromMilliseconds(500);
 
-    readonly AppServices _services;
+    readonly ShowServices _services;
     readonly ShowSession _session;
     readonly OutputManager _outputs;
     readonly MachineSettings _settings;
@@ -45,12 +46,12 @@ public sealed partial class MainViewModel : ShellViewModel
     int _tickCount;
     long _dirtyGeneration;
 
-    public MainViewModel(AppServices services, IStorageProvider storage, ISaveChangesPrompt savePrompt, ILogger<MainViewModel> logger)
+    public MainViewModel(ShowServices services, IStorageProvider storage, ISaveChangesPrompt savePrompt, ILogger<MainViewModel> logger)
         : this(services, storage, savePrompt, logger, LocalServices.For(services, logger))
     {
     }
 
-    MainViewModel(AppServices services, IStorageProvider storage, ISaveChangesPrompt savePrompt, ILogger logger, LocalServices local)
+    MainViewModel(ShowServices services, IStorageProvider storage, ISaveChangesPrompt savePrompt, ILogger logger, LocalServices local)
         : base(services.Session, local.Shell)
     {
         _services = services;
@@ -68,7 +69,7 @@ public sealed partial class MainViewModel : ShellViewModel
         ShowPlayback = local.Playback;
         // A sound's length was measured (on a worker thread): timelines using it are compiled again, on this thread.
         services.Audio.LengthMeasured += path => Dispatcher.UIThread.Post(() => ShowPlayback.OnAudioMeasured(path));
-        _diagnostics = new LocalDiagnostics(services, Playback);
+        _diagnostics = new LocalDiagnostics(services, () => Playback.Timeline);
         Diagnostics = new DiagnosticsViewModel(_diagnostics);
         Performance = new PerformanceMeterViewModel(() => services.PlaybackLoop.Timing, () => services.Probe.Snapshot(last: 20).P95Ms);
         _serial = services.SerialInputs ?? new SerialInputs(logger);
@@ -85,7 +86,7 @@ public sealed partial class MainViewModel : ShellViewModel
             Buttons.Command(device, command);
         });
         _serial.StatusChanged += _ => Dispatcher.UIThread.Post(_inputSetup.Refresh);
-        _audioSetup = new LocalAudioSetup(services.Audio, session, settings, SaveSettingsAsync);
+        _audioSetup = new LocalAudioSetup(services.Audio, session, settings, SaveSettingsAsync, services.Thread);
         Remote = new RemoteViewModel(new AppRemoteHost(session, ShowPlayback, Playback, new AppShowControl(this), () => WarningsSnapshot, AudioDevices, () => IsDirty, () => _session.FilePath is null || _session.IsSingleFileShow, local.Library, _outputSetup, local.Levels,
                                                        new AppTriggerControl(Buttons), _inputSetup, _audioSetup, _diagnostics),
                                      settings.Remote, SaveSettingsAsync, logger);
@@ -109,7 +110,7 @@ public sealed partial class MainViewModel : ShellViewModel
     sealed record LocalServices(ShellServices Shell, ShowPlayback Playback, LocalOutputSetup OutputSetup, LocalLiveLevels Levels,
                                 LocalFixtureLibrary Library, SettingsSaver Saver)
     {
-        public static LocalServices For(AppServices services, ILogger logger)
+        public static LocalServices For(ShowServices services, ILogger logger)
         {
             var saver = new SettingsSaver(services.Settings, services.Paths);
             var outputSetup = new LocalOutputSetup(services.Session, services.Outputs, services.Settings, saver.SaveAsync, services.AdapterFinder);
@@ -650,20 +651,7 @@ public sealed partial class MainViewModel : ShellViewModel
         Guide.Refresh();
     }
 
-    void RefreshWarnings()
-    {
-        var warnings = new List<string>();
-        int errors = _session.Patch.Issues.Count(i => i.Severity == PatchIssueSeverity.Error);
-        int overlaps = _session.Patch.Issues.Count - errors;
-        if (errors > 0) warnings.Add($"{errors} fixture/universe errors: those fixtures aren't output. See Fixtures.");
-        if (overlaps > 0) warnings.Add($"{overlaps} patch warnings (e.g. overlapping addresses). See Fixtures.");
-        foreach (var service in _outputs.Services.Where(s => s.Status == DmxOutputStatus.Faulted))
-            warnings.Add($"Universe {service.Universe}: {service.LastError} Retrying.");
-        foreach (var output in _services.Audio.Status.MissingOutputs)
-            warnings.Add($"Audio output '{output}' isn't connected: its tracks play on the default output. See Audio.");
-        warnings.AddRange(Inputs.Warnings);
-        ShowWarnings(warnings);
-    }
+    void RefreshWarnings() => ShowWarnings(GhostShow.Server.ShowWarnings.Collect(_services, _inputSetup));
 }
 
 /// <summary>The Home page's place in the main view (HomeView shows it, on the show computer only).</summary>

@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    The show computer's side of GhostShow, with no window: the engine, DMX, audio, inputs and the services the screens
+    work through on the show computer (see docs/plan-remote.md, step 4). The desktop app hosts it in-process for now.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\GhostShow.Audio\GhostShow.Audio.csproj" />
+    <ProjectReference Include="..\GhostShow.Core\GhostShow.Core.csproj" />
+    <ProjectReference Include="..\GhostShow.Dmx\GhostShow.Dmx.csproj" />
+    <ProjectReference Include="..\GhostShow.Inputs\GhostShow.Inputs.csproj" />
+    <ProjectReference Include="..\GhostShow.Web\GhostShow.Web.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="GhostShow.Tests" />
+    <InternalsVisibleTo Include="GhostShow.App.Tests" />
+  </ItemGroup>
+</Project>

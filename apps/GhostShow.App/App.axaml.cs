@@ -3,25 +3,22 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using GhostShow.App.ViewModels;
 using GhostShow.Core.Diagnostics;
-using GhostShow.Audio;
-using GhostShow.Core.Engine;
-using GhostShow.Core.Playback;
-using GhostShow.Core.Fixtures;
 using GhostShow.Core.Storage;
-using GhostShow.Dmx;
+using GhostShow.Server;
 using Microsoft.Extensions.Logging;
 
 namespace GhostShow.App;
 
 /// <summary>
-/// Composition root: builds the engine, session and outputs, and wires them to the window. The window appears at
-/// once; machine settings and the profile library load asynchronously, so nothing slow runs on the UI thread.
+/// Composition root: starts the show computer's side (<see cref="ShowServices"/>, from GhostShow.Server) and wires it
+/// to the window. The window appears at once; machine settings and the profile library load asynchronously, so nothing
+/// slow runs on the UI thread.
 /// </summary>
 public partial class App : Application
 {
     readonly RecentEventsLog _recentEvents = new();
     ILoggerFactory? _loggerFactory;
-    UiResponsivenessProbe? _probe;
+    ShowServices? _services;
 
     /// <summary>This copy's hold on being the only GhostShow running (null in tests and previews).</summary>
     public SingleInstance? SingleInstance { get; init; }
@@ -37,7 +34,7 @@ public partial class App : Application
             // Another copy was started: it quits, and this window comes forward instead.
             if (SingleInstance is { } instance)
                 instance.ShowRequested += () => Avalonia.Threading.Dispatcher.UIThread.Post(window.BringToFront);
-            desktop.Exit += (_, _) => { _probe?.Dispose(); _loggerFactory?.Dispose(); };
+            desktop.Exit += (_, _) => { _services?.Probe.Dispose(); _loggerFactory?.Dispose(); };
             StartAsync(window);
         }
         base.OnFrameworkInitializationCompleted();
@@ -50,34 +47,15 @@ public partial class App : Application
             .SetMinimumLevel(LogLevel.Information)
             .AddProvider(_recentEvents)
             .AddSimpleConsole(options => { options.SingleLine = true; options.TimestampFormat = "HH:mm:ss "; }));
-        _probe = new UiResponsivenessProbe();
         Controls.TimelineCanvas.Log = _loggerFactory.CreateLogger<Controls.TimelineCanvas>();
 
-        var paths = AppPaths.Default;
-        var settings = await MachineSettingsStore.LoadAsync(paths);
-
-        // Built-in profiles only for now (instant); the full library, with QLC+'s ~1,400, loads in the background.
-        var builtInProfiles = new FixtureProfileLibrary(FixtureProfileLoader.LoadBuiltIn());
-        var engine = new ShowEngine();
-        var session = new ShowSession(engine, builtInProfiles, _loggerFactory.CreateLogger<ShowSession>());
-        var outputs = new OutputManager(engine, _loggerFactory);
-
-        // Audio opens its device in the background; playback runs on its own thread from the start (idle until Play).
-        var audio = new AudioService(_loggerFactory.CreateLogger<AudioService>()) {
-             MasterVolume = settings.Settings.Audio.MasterVolume 
-        };
-        _ = audio.OpenAsync(settings.Settings.Audio.DeviceName);
-        var player = new PlaybackManager(engine, audio, new StopwatchClock());
-        var playbackLoop = new PlaybackLoop(player, _loggerFactory.CreateLogger<PlaybackLoop>());
-        playbackLoop.Start();
-
-        var serialInputs = new GhostShow.Inputs.SerialInputs(_loggerFactory.CreateLogger<GhostShow.Inputs.SerialInputs>());
-        var services = new AppServices(session, outputs, player, playbackLoop, audio, settings.Settings, paths, _recentEvents, _probe,
-                                       SerialInputs: serialInputs);
+        // The show computer's side, hosted here on the UI thread for now (docs/plan-remote.md, step 4).
+        var (services, settingsError) = await ShowServices.StartAsync(_loggerFactory, AppPaths.Default, _recentEvents, UiShowThread.Instance);
+        _services = services;
         var viewModel = new MainViewModel(services, window.StorageProvider, new Dialogs.SaveChangesDialogPrompt(window),
                                           _loggerFactory.CreateLogger<MainViewModel>());
         window.DataContext = viewModel;
-        await viewModel.StartAsync(settings.Error);
+        await viewModel.StartAsync(settingsError);
 
         if (UiLoadTest.IsRequested)
         {

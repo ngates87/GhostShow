@@ -12,6 +12,7 @@ using GhostShow.Core.Inputs;
 using GhostShow.Core.Playback;
 using GhostShow.Core.Storage;
 using GhostShow.Core.Timeline;
+using GhostShow.Server;
 using GhostShow.Web;
 using Microsoft.Extensions.Logging;
 

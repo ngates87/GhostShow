@@ -1,42 +1,41 @@
 using System.Diagnostics;
-using Avalonia.Threading;
-using GhostShow.App.ViewModels;
 using GhostShow.Audio;
 using GhostShow.Core.Diagnostics;
 using GhostShow.Core.Playback;
 using GhostShow.Core.Timeline;
 using GhostShow.Dmx;
 
-namespace GhostShow.App;
+namespace GhostShow.Server;
 
 /// <summary>
 /// The show computer measuring itself, for the Diagnostics screen (here and on devices, see <see cref="IDiagnostics"/>):
 /// output timing, playback and audio, UI responsiveness, memory, and recent log messages. Refreshed once a second while
-/// a Diagnostics screen shows it. On the UI thread.
+/// a Diagnostics screen shows it. On the show's thread.
 /// </summary>
 public sealed class LocalDiagnostics : IDiagnostics
 {
     const int MaxLogEntries = 200;
 
     readonly OutputManager _outputs;
-    readonly UiResponsivenessProbe _probe;
+    readonly ShowThreadProbe _probe;
     readonly PlaybackLoop _loop;
     readonly PlaybackManager _player;
     readonly AudioService _audio;
-    readonly PlaybackViewModel _playback;
+    readonly Func<ShowTimeline?> _focused;
     readonly HashSet<object> _watching = [];
     List<LogEntry> _log;
 
-    public LocalDiagnostics(AppServices services, PlaybackViewModel playback)
+    /// <param name="focused">The timeline the transport works (the one open in the editor), if any.</param>
+    public LocalDiagnostics(ShowServices services, Func<ShowTimeline?> focused)
     {
         _outputs = services.Outputs;
         _probe = services.Probe;
         _loop = services.PlaybackLoop;
         _player = services.Playback;
         _audio = services.Audio;
-        _playback = playback;
+        _focused = focused;
         _log = [.. services.Log.Snapshot().Reverse().Take(MaxLogEntries)];
-        services.Log.EntryAdded += entry => Dispatcher.UIThread.Post(() => AddLogEntry(entry));
+        services.Log.EntryAdded += entry => services.Thread.Post(() => AddLogEntry(entry));
         Report = DiagnosticsReport.Empty with { Log = _log };
     }
 
@@ -66,10 +65,10 @@ public sealed class LocalDiagnostics : IDiagnostics
                                        service.LastError ?? "");
         }).ToList();
 
-        var focused = _playback.Timeline;
+        var focused = _focused();
         var status = focused is null ? default : _player.StatusOf(focused.Id);
         var compiled = (focused is null ? null : _player.TimelineOf(focused.Id)) ?? CompiledTimeline.Empty;
-        string playbackState = $"{_playback.StateLabel} · {PlaybackViewModel.Format(status.Position)} / {PlaybackViewModel.Format(status.Length)} · " +
+        string playbackState = $"{(focused is null ? "Stopped" : PlaybackText.StateLabel(status))} · {PlaybackText.Format(status.Position)} / {PlaybackText.Format(status.Length)} · " +
                                $"{focused?.Name ?? "no timeline"} ({compiled.LevelStepCount} level steps, {compiled.AudioCues.Count} sounds)" +
                                $" · {_player.Running.Count} playing";
         var t = _loop.Timing;

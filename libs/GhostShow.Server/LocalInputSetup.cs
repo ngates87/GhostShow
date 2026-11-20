@@ -5,7 +5,7 @@ using GhostShow.Core.Storage;
 using GhostShow.Dmx.Discovery;
 using GhostShow.Inputs;
 
-namespace GhostShow.App;
+namespace GhostShow.Server;
 
 /// <summary>
 /// The show computer's serial ports, for the Inputs screen (here and on devices, see <see cref="IInputSetup"/>): which
@@ -57,6 +57,10 @@ public sealed class LocalInputSetup : IInputSetup
     }
 
     public InputSetupState State { get; private set; } = InputSetupState.Empty;
+
+    /// <summary>For the warnings: each input that should be listening and isn't.</summary>
+    public IEnumerable<string> Warnings =>
+        State.Devices.Where(d => d.IsFaulted).Select(d => $"{_session.Project.Inputs.FirstOrDefault(i => i.Id == d.Device)?.Name}: {d.Status} See Inputs.");
 
     public event Action? Changed;
 

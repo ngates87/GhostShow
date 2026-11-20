@@ -276,9 +276,12 @@ Small steps; each one leaves the app working.
    desktop app hosts it in-process at first. `GhostShow.Cli` already runs the engine, DMX and audio with no window.
    Surveyed 2026-11-20, after the shared view: what the server needs still lives in the desktop's view models in five
    places. Each part below moves one, keeps the desktop working and its UI tests passing, and can be committed alone.
-   1. **A `GhostShow.Server` project** (no Avalonia): `AppServices` and the startup in `App.axaml.cs` that builds them,
-      `LocalInputSetup`, `LocalAudioSetup` and `LocalDiagnostics` (their Avalonia dispatcher and timers become the
-      server's own show thread and timer), and the warnings list. The desktop references it.
+   1. **A `GhostShow.Server` project** (no Avalonia; done 2026-11-20): `ShowServices` (was `AppServices`) and
+      `ShowServices.StartAsync`, which builds them (was in `App.axaml.cs`), `LocalInputSetup`, `LocalAudioSetup`,
+      `LocalDiagnostics`, `ShowThreadProbe` (was `UiResponsivenessProbe`) and `ShowWarnings`. Avalonia's dispatcher
+      became `IShowThread` (the desktop's `UiShowThread` posts to its UI thread) and its timer a `Debouncer`. Playback
+      in words (`PlaybackText`) moved to Core. The probe now measures the show thread's queue at normal priority
+      rather than at input priority.
    2. **Triggers in the server.** Today they run in `ButtonsViewModel` and `TriggerViewModel` (dispatching inputs,
       arming, run-once and re-arm, firing again while held). They move into a Core/server `ShowTriggers` behind
       `ITriggerControl`, and the desktop's panel shows them the way a device's already does (`IRemoteTriggers`, the

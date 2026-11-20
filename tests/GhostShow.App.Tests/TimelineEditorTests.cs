@@ -10,6 +10,8 @@ using GhostShow.Core.Timeline;
 using GhostShow.Dmx;
 using Microsoft.Extensions.Logging.Abstractions;
 
+using GhostShow.Server;
+
 namespace GhostShow.App.Tests;
 
 /// <summary>
@@ -60,7 +62,7 @@ sealed class TimelineRig : IDisposable
     };
 
     readonly string _configDirectory = Path.Combine(Path.GetTempPath(), "ghostshow-app-tests", Guid.NewGuid().ToString("N"));
-    readonly UiResponsivenessProbe _probe = new();
+    readonly ShowThreadProbe _probe = new(UiShowThread.Instance);
 
     public TimelineRig()
     {
@@ -71,9 +73,9 @@ sealed class TimelineRig : IDisposable
         Session.Apply();
         Audio = new AudioService(NullLogger.Instance, useNullDevice: true);
         Manager = new PlaybackManager(Session.Engine, Audio, new StopwatchClock());
-        var services = new AppServices(Session, new OutputManager(Session.Engine, NullLoggerFactory.Instance), Manager,
+        var services = new ShowServices(Session, new OutputManager(Session.Engine, NullLoggerFactory.Instance), Manager,
                                        new PlaybackLoop(Manager, NullLogger.Instance), Audio, new MachineSettings(),
-                                       new AppPaths(_configDirectory), new RecentEventsLog(), _probe, new NoAdapters());
+                                       new AppPaths(_configDirectory), new RecentEventsLog(), _probe, UiShowThread.Instance, new NoAdapters());
         Playback = new PlaybackViewModel(new ShowPlayback(Session, Manager, services.Audio));
         Editor = new TimelineEditorViewModel(Session, Playback, () => Task.FromResult(PickedFile), () => Dirty = true);
     }

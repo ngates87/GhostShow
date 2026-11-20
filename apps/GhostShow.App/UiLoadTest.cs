@@ -1,3 +1,4 @@
+using GhostShow.Server;
 using Avalonia.Threading;
 using GhostShow.App.ViewModels;
 using GhostShow.Core.Fixtures;
@@ -16,7 +17,7 @@ namespace GhostShow.App;
 ///   editing while playing.
 /// Either way, the UI-thread wait is logged every 30 s.
 /// </summary>
-sealed class UiLoadTest(MainViewModel viewModel, AppServices services, ILogger logger) : IDisposable
+sealed class UiLoadTest(MainViewModel viewModel, ShowServices services, ILogger logger) : IDisposable
 {
     public const string EnvironmentVariable = "GHOSTSHOW_UI_LOAD_TEST";
 

@@ -244,12 +244,7 @@ public sealed partial class PlaybackViewModel : ObservableObject
         State = status.State;
         Position = status.Position;
         Length = status.Length;
-        StateLabel = status switch
-        {
-            { AtEnd: true } => "Ended",
-            { State: TransportState.Playing, Loop: true } => "Playing (looping)",
-            { State: var state } => state.ToString(),
-        };
+        StateLabel = PlaybackText.StateLabel(status);
         TimeLabel = $"{Format(status.Position)} / {Format(status.Length)}";
         RefreshRunning();
     }
@@ -290,6 +285,5 @@ public sealed partial class PlaybackViewModel : ObservableObject
     /// <summary>Whether a sound file is still being read or opened (a slow or cloud drive), for "loading…" on its clip.</summary>
     public bool IsAudioLoading(string file) => Show.IsAudioLoading(file);
 
-    public static string Format(TimeSpan time) =>
-        time.TotalHours >= 1 ? time.ToString(@"h\:mm\:ss\.f") : time.ToString(@"mm\:ss\.f");
+    public static string Format(TimeSpan time) => PlaybackText.Format(time);
 }

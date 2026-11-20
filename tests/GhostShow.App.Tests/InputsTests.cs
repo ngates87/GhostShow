@@ -8,6 +8,8 @@ using GhostShow.Dmx.Discovery;
 using GhostShow.Inputs;
 using Microsoft.Extensions.Logging.Abstractions;
 
+using GhostShow.Server;
+
 namespace GhostShow.App.Tests;
 
 /// <summary>

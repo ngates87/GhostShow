@@ -1,16 +1,14 @@
-using Avalonia.Threading;
-using GhostShow.App.ViewModels;
 using GhostShow.Audio;
 using GhostShow.Core.Engine;
 using GhostShow.Core.Playback;
 using GhostShow.Core.Storage;
 using GhostShow.Core.Timeline;
 
-namespace GhostShow.App;
+namespace GhostShow.Server;
 
 /// <summary>
 /// The show computer's sound, for the Audio screen (here and on devices, see <see cref="IAudioSetup"/>): the default
-/// output and master volume (its settings), how its outputs stand, and the show's sound files. Called on the UI thread.
+/// output and master volume (its settings), how its outputs stand, and the show's sound files. Called on the show's thread.
 /// </summary>
 public sealed class LocalAudioSetup : IAudioSetup
 {
@@ -20,23 +18,18 @@ public sealed class LocalAudioSetup : IAudioSetup
     readonly ShowSession _session;
     readonly MachineSettings _settings;
     readonly Func<Task> _saveSettings;
-    readonly DispatcherTimer _saveTimer;
+    readonly Debouncer _save;
     readonly HashSet<object> _watching = [];
 
-    public LocalAudioSetup(AudioService audio, ShowSession session, MachineSettings settings, Func<Task> saveSettings)
+    public LocalAudioSetup(AudioService audio, ShowSession session, MachineSettings settings, Func<Task> saveSettings, IShowThread thread)
     {
         _audio = audio;
         _session = session;
         _settings = settings;
         _saveSettings = saveSettings;
         // Volume drags change it many times a second: save once it settles.
-        _saveTimer = new DispatcherTimer { Interval = SaveDelay };
-        _saveTimer.Tick += (_, _) =>
-        {
-            _saveTimer.Stop();
-            _ = _saveSettings();
-        };
-        audio.StatusChanged += () => Dispatcher.UIThread.Post(Refresh);
+        _save = new Debouncer(thread, SaveDelay, () => _ = _saveSettings());
+        audio.StatusChanged += () => thread.Post(Refresh);
         State = AudioSetupState.Empty with { Device = settings.Audio.DeviceName, MasterVolume = settings.Audio.MasterVolume };
     }
 
@@ -74,8 +67,7 @@ public sealed class LocalAudioSetup : IAudioSetup
         _audio.MasterVolume = volume;
         if (volume == _settings.Audio.MasterVolume) return;
         _settings.Audio = _settings.Audio with { MasterVolume = volume };
-        _saveTimer.Stop();
-        _saveTimer.Start();
+        _save.Poke();
         Refresh();
     }
 
@@ -128,7 +120,7 @@ public sealed class LocalAudioSetup : IAudioSetup
                 bool exists = File.Exists(path);
                 var length = exists ? _audio.GetLength(path) : null;
                 string used = string.Join(", ", g.Select(x => x.Timeline).Distinct()) + (g.Count() > 1 ? $" ({g.Count()} events)" : "");
-                return new ShowSoundRow(g.Key, used, length is { } l ? PlaybackViewModel.Format(l) : exists ? "…" : "",
+                return new ShowSoundRow(g.Key, used, length is { } l ? PlaybackText.Format(l) : exists ? "…" : "",
                                         exists ? "Found" : $"Missing: {path}", !exists);
             }),
     ];

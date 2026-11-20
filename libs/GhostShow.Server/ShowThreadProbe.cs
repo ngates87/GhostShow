@@ -1,24 +1,25 @@
 using System.Diagnostics;
-using Avalonia.Threading;
 
-namespace GhostShow.App;
+namespace GhostShow.Server;
 
 /// <summary>
-/// Measures how quickly the UI thread responds: every 100 ms a worker thread posts a no-op at input priority and
-/// records how long it waited to run. That wait is the delay a click or keypress would see on top of its own
-/// handling. Keeps the last minute of samples.
+/// Measures how quickly the show's thread responds: every 100 ms a worker thread posts a no-op and records how long it
+/// waited to run. In the desktop app that's the UI thread, and the wait is the delay a click or keypress would see on
+/// top of its own handling. Keeps the last minute of samples.
 /// </summary>
-public sealed class UiResponsivenessProbe : IDisposable
+public sealed class ShowThreadProbe : IDisposable
 {
     const int SampleCount = 600;
 
+    readonly IShowThread _thread;
     readonly Lock _lock = new();
     readonly double[] _samplesMs = new double[SampleCount];
     readonly Timer _timer;
     int _count, _next;
 
-    public UiResponsivenessProbe()
+    public ShowThreadProbe(IShowThread thread)
     {
+        _thread = thread;
         _timer = new Timer(_ => Probe(), null, TimeSpan.FromSeconds(1), TimeSpan.FromMilliseconds(100));
     }
 
@@ -41,7 +42,7 @@ public sealed class UiResponsivenessProbe : IDisposable
     void Probe()
     {
         long posted = Stopwatch.GetTimestamp();
-        Dispatcher.UIThread.Post(() =>
+        _thread.Post(() =>
         {
             double waitedMs = Stopwatch.GetElapsedTime(posted).TotalMilliseconds;
             lock (_lock)
@@ -50,7 +51,7 @@ public sealed class UiResponsivenessProbe : IDisposable
                 _next = (_next + 1) % SampleCount;
                 _count = Math.Min(_count + 1, SampleCount);
             }
-        }, DispatcherPriority.Input);
+        });
     }
 
     public void Dispose() => _timer.Dispose();
