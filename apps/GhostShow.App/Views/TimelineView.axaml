@@ -654,10 +654,13 @@
                 <StackPanel Spacing="8">
                   <!-- What it is, as the selection's heading says; which timeline is the title bar's (the open tab's). -->
                   <TextBlock Text="Timeline" Classes="heading" />
-                  <Grid ColumnDefinitions="*,140">
+                  <Grid ColumnDefinitions="*,140" RowDefinitions="Auto,4,Auto">
                     <TextBlock Text="Length (s)" VerticalAlignment="Center" />
-                    <NumericUpDown Grid.Column="1" Value="{Binding LengthSeconds}" Minimum="0" Increment="1" FormatString="0.##"
-                                   ToolTip.Tip="0 = until the last event ends" />
+                    <NumericUpDown x:Name="TimelineLength" Grid.Column="1" Value="{Binding LengthSeconds}" Minimum="0.1" Increment="1" FormatString="0.##"
+                                   IsEnabled="{Binding !EndsWithLastClip}"
+                                   ToolTip.Tip="How long it plays. While it ends with its last clip, this is where that clip ends" />
+                    <CheckBox x:Name="EndsWithLastClip" Grid.Row="2" Grid.ColumnSpan="2" Content="Ends with its last clip" IsChecked="{Binding EndsWithLastClip}"
+                              ToolTip.Tip="Its length follows its clips. Untick to give it a length of its own, e.g. to hold the lights after the last clip, or to loop at a set time" />
                   </Grid>
                   <CheckBox Content="Loop when played here" IsChecked="{Binding Loop}"
                             ToolTip.Tip="When you play it with the transport here (or a remote's): start again from the beginning at the end, until stopped. The same as the loop button under the timeline. A button or an event that runs it says for itself whether it loops, and whether it plays only if it isn't already playing (Play looped, Play one only), as in VenueMagic." />
@@ -748,14 +751,20 @@
       <Popup x:Name="EffectsPopup" PlacementTarget="{Binding #EffectsButton}" Placement="BottomEdgeAlignedLeft" ShouldUseOverlayLayer="True"
              IsLightDismissEnabled="True" IsOpen="{Binding #EffectsButton.IsChecked, Mode=TwoWay}">
         <Border Classes="card" Padding="4" BoxShadow="0 4 16 0 #80000000" MinWidth="230">
-          <StackPanel Spacing="2">
-            <ItemsControl x:Name="EffectMenu" ItemsSource="{x:Static vm:TimelineEditorViewModel.EffectChoices}">
-              <ItemsControl.Styles>
-                <Style Selector="Border.effectChoice:pointerover">
-                  <Setter Property="Background" Value="#33FFFFFF" />
-                </Style>
-              </ItemsControl.Styles>
-              <ItemsControl.ItemTemplate>
+          <!-- Two sections: Controls (set the lights where you say) and Effects (patterns that play). -->
+          <StackPanel x:Name="EffectMenu" Spacing="2">
+            <StackPanel.Styles>
+              <Style Selector="Border.effectChoice:pointerover">
+                <Setter Property="Background" Value="#33FFFFFF" />
+              </Style>
+              <Style Selector="TextBlock.menuSection">
+                <Setter Property="FontSize" Value="11" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter Property="Opacity" Value="0.6" />
+                <Setter Property="Margin" Value="6,4,6,2" />
+              </Style>
+            </StackPanel.Styles>
+            <StackPanel.DataTemplates>
                 <DataTemplate x:DataType="vm:EffectChoice">
                   <Border Classes="effectChoice" Background="Transparent" Padding="6,4" CornerRadius="3" Cursor="Hand" ToolTip.Tip="{Binding Description}"
                           ToolTip.Placement="Right" ToolTip.ShowOnDisabled="True">
@@ -772,8 +781,12 @@
                     </StackPanel>
                   </Border>
                 </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
+            </StackPanel.DataTemplates>
+            <TextBlock Text="CONTROLS" Classes="menuSection" ToolTip.Tip="Set the lights where you say: levels you draw, a look, a tilt or home move" />
+            <ItemsControl ItemsSource="{x:Static vm:TimelineEditorViewModel.ControlChoices}" />
+            <Separator Margin="4,2" />
+            <TextBlock Text="EFFECTS" Classes="menuSection" ToolTip.Tip="Patterns that play: lightning, fire, strobe..." />
+            <ItemsControl ItemsSource="{x:Static vm:TimelineEditorViewModel.PatternChoices}" />
             <TextBlock Text="Click: at the playhead (or the next gap) on the selected lighting track. Drag: onto any lighting track."
                        TextWrapping="Wrap" MaxWidth="230" FontSize="11" Opacity="0.6" Margin="6,4,6,2" />
           </StackPanel>

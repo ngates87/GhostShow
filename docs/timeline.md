@@ -296,11 +296,15 @@ same files. The Audio screen lists every sound the show uses and whether it was 
   track's name, or the timeline's name. The heading below it says what kind of thing it is: "Look", "Lightning
   effect", "Lighting track" or "Timeline". Longer explanations sit behind ⓘ lines; hover over one to read it.
 - **Tabs:** the open timelines. The selected tab is the one edited and the one the transport plays (one at a time,
-  for now; switching tabs stops playback). Closing a tab doesn't remove the timeline. Loop and Length (0 = until the
-  last event ends) are beside the tabs.
+  for now; switching tabs stops playback). Closing a tab doesn't remove the timeline. Loop and Length are in the
+  inspector's Timeline tab. "Ends with its last clip" is on by default: the length follows the clips, and the Length
+  box (greyed out) shows where the last clip ends. Untick it to give the timeline a length of its own, starting from
+  that value. Use this to hold the lights after the last clip, or to loop at a set time.
 - **Tracks** on the left: rename, mute (checkbox), add (Lighting, Audio), remove, reorder.
-- **Toolbar:** Add track, **Effects ▾** (Level Control, then the built-in effects: added at the playhead on the
-  selected lighting track), **+ Sound…** (when an audio track is selected),
+- **Toolbar:** Add track, **Effects ▾** in two sections. **Controls** set the lights where you say: Level
+  Control, Look, Tilt and Home. **Effects** are patterns that play: Lightning, Fire, Strobe and the rest. A click adds
+  the clip at the playhead on the selected lighting track; a drag drops it on any lighting track. Right-clicking an
+  empty part of a lighting row offers the same, controls first, then an "Add effect here" submenu. **+ Sound…** (when an audio track is selected),
   Split (at the playhead), Lock, Link and Unlink, undo/redo, zoom and snap. Everything else is on right-click menus
   and the Edit menu.
 - **Track headers:** double-click a name (or F2) to rename it. Right-click for Channels… (lighting), expand,
@@ -332,6 +336,9 @@ same files. The Audio screen lists every sound the show uses and whether it was 
     the first clip when the channel starts there, which you can drag up and down to set its starting level (an
     effect clip has no handles of its own, but shows and takes these dots too when it's first).
   - The **Envelope Editor** is its own window (like VenueMagic's), for editing one clip's envelopes at a good size.
+    Its start dot sits on the clip's start line, often at 0% on the edge of the plot. It's drawn larger than the
+    other handles and can be grabbed from 14 px away, where other handles need 8. It lights up while the pointer is
+    over it.
     On the left, the track's channels by fixture: untick one to hide its envelope (ticking a fixture covers all its
     channels); click a channel's name to make it the **active channel** (highlighted, drawn on top and thicker;
     selecting a handle makes its channel active too). The plot shows the clip from 0% to 100% with the timeline's

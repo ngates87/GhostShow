@@ -301,6 +301,12 @@ public class UiTests
         var row = rig.TrackRow("Lighting");
 
         rig.Click(rig.At(row, 6), MouseButton.Right);
+        // As the Effects menu: the controls (no moving heads here: no tilt or home), then the effects.
+        var top = rig.Canvas.LastMenu!.Items.OfType<MenuItem>().ToList();
+        Assert.Equal(["Add Level Control clip here", "Add look here", "Add tilt here", "Add home here", "Add effect here", "Paste here"],
+                     top.Select(i => i.Header as string));
+        Assert.Equal([true, true, false, false, true], top.Take(5).Select(i => i.IsEnabled));
+        Assert.Equal(TimelineEditorViewModel.PatternChoices.Select(c => c.Name), rig.MenuItem("Add effect here").Items.OfType<MenuItem>().Select(i => i.Header as string));
         rig.ClickMenuItem(rig.MenuItem("Add effect here"));
         rig.ClickMenuItem(rig.MenuItem("Fire"));
 
@@ -1099,6 +1105,20 @@ public class UiTests
     });
 
     [Fact]
+    public Task The_envelope_editor_s_start_handle_is_grabbed_from_a_little_way_off_even_at_0_on_the_clip_s_edge() => Ui.Run(() =>
+    {
+        using var rig = new WindowRig();
+        AddClip(rig, 1, 4);   // no handles: a flat line at the start level (0), from the clip's start line
+        var (window, plot) = OpenEnvelopeEditor(rig, 2);
+
+        // Pressed 10 px up and to the right of it (further than an ordinary handle is grabbed from), and dragged up.
+        var start = On(window, plot, 0, 0);
+        Drag(window, start + new Point(7, -7), start + new Point(7, -7) + (On(window, plot, 0, 128) - start));
+
+        Assert.InRange(rig.Lighting.Channels[0].StartLevel, 120, 136);
+    });
+
+    [Fact]
     public Task Double_clicking_a_clip_opens_the_envelope_editor_where_handles_are_dragged() => Ui.Run(() =>
     {
         using var rig = new WindowRig();
@@ -1525,6 +1545,12 @@ public class UiTests
         var entries = Entries();
         Assert.Equal(["Level Control", "Look", "Tilt", "Home", .. EffectInfo.All.Where(i => !i.IsLook).Select(i => i.Name)], entries.Select(b => ((EffectChoice)b.DataContext!).Name));
         Assert.Equal([true, true, false, false, true], entries.Take(5).Select(b => b.IsEnabled));   // no moving heads here: no Tilt or Home
+        // In two sections: the controls (Level Control to Home), then the effects.
+        var sections = rig.Find<StackPanel>(p => p.Name == "EffectMenu").GetVisualDescendants().OfType<TextBlock>()
+                          .Where(t => t.Classes.Contains("menuSection")).ToList();
+        Assert.Equal(["CONTROLS", "EFFECTS"], sections.Select(t => t.Text));
+        Assert.True(sections[1].TranslatePoint(default, rig.Window)!.Value.Y > entries[3].TranslatePoint(default, rig.Window)!.Value.Y);
+        Assert.True(sections[1].TranslatePoint(default, rig.Window)!.Value.Y < entries[4].TranslatePoint(default, rig.Window)!.Value.Y);
         rig.Click(rig.CenterOf(entries[0]));   // a click adds it
         rig.Editor.Playback.Seek(S(10));
         rig.Click(rig.CenterOf(Entries()[4]));   // Lightning
@@ -1671,5 +1697,43 @@ public class UiTests
         rig.Editor.EditTrackProperties(rig.Editor.Tracks[0]);
         WindowRig.Pump();
         Assert.Equal(("Track", "Lighting", "Lighting track"), (tab.Content as string, title.Text, Heading()));
+    });
+
+    [Fact]
+    public Task A_timeline_ends_with_its_last_clip_until_it_s_given_a_length_of_its_own() => Ui.Run(() =>
+    {
+        using var rig = new WindowRig();
+        var editor = rig.Editor;
+        editor.ShowTimelineTabCommand.Execute(null);
+        WindowRig.Pump();
+        var box = rig.Find<NumericUpDown>(n => n.Name == "TimelineLength");
+        var ends = rig.Find<CheckBox>(c => c.Name == "EndsWithLastClip");
+        var timeline = editor.SelectedTimeline!;
+
+        // Ending with its last clip: the box shows where that is (not 0), and follows the clips.
+        var clip = editor.AddEffectAt(rig.TrackRow("Lighting").Track, S(2), EffectKind.Lightning)!;   // 4 s: ends at 6
+        WindowRig.Pump();
+        Assert.Equal((true, false, 6m), (ends.IsChecked, box.IsEnabled, box.Value));
+        editor.AddEffectAt(rig.TrackRow("Lighting").Track, S(10), EffectKind.Lightning);
+        WindowRig.Pump();
+        Assert.Equal(14m, box.Value);
+        Assert.Null(timeline.Length);
+
+        // Unticked: a length of its own, from where it ended, to change from there.
+        editor.ShowTimelineTabCommand.Execute(null);   // adding a clip selected it
+        WindowRig.Pump();
+        rig.Click(rig.CenterOf(ends));
+        WindowRig.Pump();
+        Assert.Equal((false, true, S(14)), (ends.IsChecked, box.IsEnabled, timeline.Length));
+        editor.LengthSeconds = 20;
+        Assert.Equal(S(20), timeline.Length);
+
+        // Ticked again: back to its clips; and Undo takes each step back.
+        rig.Click(rig.CenterOf(ends));
+        WindowRig.Pump();
+        Assert.Null(timeline.Length);
+        Assert.Equal(14m, box.Value);
+        editor.UndoCommand.Execute(null);
+        Assert.Equal(S(20), timeline.Length);
     });
 }

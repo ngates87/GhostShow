@@ -1257,22 +1257,35 @@ public sealed class TimelineCanvas : Control
         add.Click += (_, _) => _ = editor.AddEventAtAsync(row.TrackIndex, at);
         var paste = new MenuItem { Header = "Paste here", IsEnabled = editor.CanPaste };
         paste.Click += (_, _) => editor.PasteAt(at);
-        var items = new List<object> { add };
+        var items = new List<object>();
         if (row.Track.IsLighting)
         {
-            var look = new MenuItem { Header = "Add look here (colour and brightness)" };
-            look.Click += (_, _) => editor.AddEffectAt(row.Track, editor.SnapTime(at), EffectKind.Look);
-            items.Add(look);
-            var effects = new MenuItem { Header = "Add effect here" };
-            effects.ItemsSource = EffectInfo.All.Where(info => !info.IsLook).Select(info =>
+            // As the Effects menu: the controls (Level Control, Look, Tilt, Home), then the effects.
+            bool tilts = editor.HasTiltChannel(row.Track.Track);
+            foreach (var choice in TimelineEditorViewModel.ControlChoices)
             {
-                var item = new MenuItem { Header = info.Name };
-                ToolTip.SetTip(item, info.Description);
-                item.Click += (_, _) => editor.AddEffectAt(row.Track, editor.SnapTime(at), info.Kind);
+                var item = new MenuItem
+                {
+                    Header = choice.Kind is null && !choice.IsTilt ? $"Add {what} here" : $"Add {choice.Name.ToLowerInvariant()} here",
+                    IsEnabled = !choice.IsTilt || tilts,
+                };
+                ToolTip.SetTip(item, choice.Description);
+                ToolTip.SetShowOnDisabled(item, true);
+                item.Click += (_, _) => editor.DropEffect(choice, row.Track, editor.SnapTime(at));
+                items.Add(item);
+            }
+            var effects = new MenuItem { Header = "Add effect here" };
+            effects.ItemsSource = TimelineEditorViewModel.PatternChoices.Select(choice =>
+            {
+                var item = new MenuItem { Header = choice.Name };
+                ToolTip.SetTip(item, choice.Description);
+                item.Click += (_, _) => editor.DropEffect(choice, row.Track, editor.SnapTime(at));
                 return item;
             }).ToList();
             items.Add(effects);
         }
+        else items.Add(add);
+        items.Add(new Separator());
         items.Add(paste);
         Open(new ContextMenu { ItemsSource = items });
     }

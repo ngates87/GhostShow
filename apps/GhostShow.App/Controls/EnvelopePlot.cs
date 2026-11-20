@@ -29,6 +29,14 @@ public sealed class EnvelopePlot : Control
     const double AxisWidth = 46, RulerHeight = 22, TopPad = 10, BottomPad = 12, RightPad = 14;
     const double HandleSize = 4.5, HandleGrab = 8, CurveGrab = 10, DragThreshold = 3;
 
+    /// <summary>
+    /// The start handle sits on the clip's start line (often at 0%, on the plot's edge), so it's drawn bigger and
+    /// grabbed from further away than the others, and lights up under the pointer.
+    /// </summary>
+    const double StartSize = 6, StartGrab = 14;
+
+    ChannelLane? _hoverStart;
+
     static readonly IBrush Background = new SolidColorBrush(Color.Parse("#1A1A1A"));
     static readonly IBrush ClipArea = new SolidColorBrush(Color.Parse("#24211B"));
     static readonly IBrush OutsideArea = new SolidColorBrush(Color.Parse("#161616"));
@@ -260,7 +268,11 @@ public sealed class EnvelopePlot : Control
 
         // The start handle: a ring (where the previous clip left the channel), or a dot that sets the start level.
         bool ownStart = editor.FirstClipOf(levels) == clip;
-        context.DrawEllipse(ownStart ? fill : null, new Pen(fill, 1.5), new Point(X(TimeSpan.Zero), Y(envelope[0].Value)), 4, 4);
+        var startAt = new Point(X(TimeSpan.Zero), Y(envelope[0].Value));
+        if (ownStart && _hoverStart == levels.Channel)
+            context.DrawEllipse(new SolidColorBrush(color, 0.3), null, startAt, StartGrab - 3, StartGrab - 3);   // grab me
+        double size = ownStart ? StartSize : 4;
+        context.DrawEllipse(ownStart ? fill : null, ownStart ? HandleOutline : new Pen(fill, 1.5), startAt, size, size);
 
         if (lane is null) return;
         foreach (var point in lane.Points)
@@ -325,11 +337,11 @@ public sealed class EnvelopePlot : Control
     {
         if (Envelopes is not { Clip: { } clip } view || _editor is not { } editor) return (null, null);
         (CurvePoint?, ChannelLane?) best = (null, null);
-        double bestDistance = HandleGrab;
+        double bestDistance = double.MaxValue;
         void Consider(Point p, CurvePoint? point, ChannelLane? startOf)
         {
             double d = Math.Sqrt((p.X - at.X) * (p.X - at.X) + (p.Y - at.Y) * (p.Y - at.Y));
-            if (d <= bestDistance) (best, bestDistance) = ((point, startOf), d);
+            if (d <= (startOf is null ? HandleGrab : StartGrab) && d < bestDistance) (best, bestDistance) = ((point, startOf), d);
         }
         foreach (var levels in view.ShownLevels)
         {
@@ -486,6 +498,14 @@ public sealed class EnvelopePlot : Control
         menu.Open(this);
     }
 
+    protected override void OnPointerExited(PointerEventArgs e)
+    {
+        base.OnPointerExited(e);
+        if (_hoverStart is null) return;
+        _hoverStart = null;
+        InvalidateVisual();
+    }
+
     protected override void OnPointerMoved(PointerEventArgs e)
     {
         base.OnPointerMoved(e);
@@ -498,6 +518,11 @@ public sealed class EnvelopePlot : Control
                 Cursor = handle.StartOf is not null ? new Cursor(StandardCursorType.SizeNorthSouth)
                        : handle.Point is not null ? new Cursor(StandardCursorType.Hand)
                        : Cursor.Default;
+                if (handle.StartOf != _hoverStart)
+                {
+                    _hoverStart = handle.StartOf;
+                    InvalidateVisual();
+                }
                 return;
             case DragKind.StartLevel when _startChannel is not null:
                 editor.SetStartLevel(_startChannel, LevelAt(point.Y), field: $"envelope drag {_startDrags}");

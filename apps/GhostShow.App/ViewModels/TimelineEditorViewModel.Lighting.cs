@@ -313,14 +313,23 @@ public sealed partial class TimelineEditorViewModel
     /// What the effects list offers: Level Control, a look, the moving-head moves, then the built-in effects
     /// (VenueMagic's library of fixture effects).
     /// </summary>
-    public static IReadOnlyList<EffectChoice> EffectChoices { get; } =
+    /// <summary>
+    /// The Effects menu's first section: clips that set the lights where you say (levels you draw, a look, a tilt
+    /// or home move), rather than play a pattern.
+    /// </summary>
+    public static IReadOnlyList<EffectChoice> ControlChoices { get; } =
     [
         new(LightingClip.DefaultName, "Handles you set yourself", null, new LightingClip().Length),
         Choice(EffectInfo.Of(EffectKind.Look)),
         new(LightingClip.TiltName, "Moving heads tilt from one angle to another over the clip (for a track with moving heads)", null, LightingClip.DefaultLength, IsTilt: true),
         new(LightingClip.HomeName, "Moving heads go home (their rest position) with their light off, then it comes back (for a track with moving heads)", null, TimeSpan.FromSeconds(2), IsTilt: true, IsHome: true),
-        .. EffectInfo.All.Where(info => !info.IsLook).Select(Choice),
     ];
+
+    /// <summary>The Effects menu's second section: the built-in effects, patterns that play (lightning, fire, strobe...).</summary>
+    public static IReadOnlyList<EffectChoice> PatternChoices { get; } = [.. EffectInfo.All.Where(info => !info.IsLook).Select(Choice)];
+
+    /// <summary>Everything the Effects menu offers, in its order: the controls, then the effects.</summary>
+    public static IReadOnlyList<EffectChoice> EffectChoices { get; } = [.. ControlChoices, .. PatternChoices];
 
     static EffectChoice Choice(EffectInfo info) => new(info.Name, info.Description, info.Kind, info.DefaultLength);
 

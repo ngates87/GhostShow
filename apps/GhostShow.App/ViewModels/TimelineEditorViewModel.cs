@@ -301,6 +301,8 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
             OnPropertyChanged(nameof(UndoLabel));
             OnPropertyChanged(nameof(RedoLabel));
             OnPropertyChanged(nameof(InspectorTitle));   // a rename, or a clip turned into another kind
+            OnPropertyChanged(nameof(LengthSeconds));    // ending with its last clip: moved, resized, added...
+            OnPropertyChanged(nameof(EndsWithLastClip));
         };
         AudioDevices = audioDevices;
         if (audioDevices is not null) audioDevices.Changed += () =>
@@ -627,18 +629,39 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
         }
     }
 
-    /// <summary>Explicit length in seconds; 0 means "until the last event ends".</summary>
+    /// <summary>
+    /// How long it plays, in seconds: its own length, or (<see cref="EndsWithLastClip"/>) where its last clip ends.
+    /// Setting it gives it its own length (0 or less: back to ending with its last clip).
+    /// </summary>
     public decimal LengthSeconds
     {
-        get => (decimal)(SelectedTimeline?.Length?.TotalSeconds ?? 0);
+        get => SelectedTimeline?.Length is { } length ? (decimal)length.TotalSeconds : Math.Round((decimal)LastClipEnd().TotalSeconds, 2);
         set
         {
             if (SelectedTimeline is not { } timeline) return;
             TimeSpan? length = value <= 0 ? null : TimeSpan.FromSeconds((double)value);
-            if (length == timeline.Length) return;
+            if (length == timeline.Length || (length is { } l && timeline.Length is null && l == LastClipEnd())) return;
             Edit("Change timeline length", () => timeline.Length = length, (timeline.Id, "length"), Only(timeline));
         }
     }
+
+    /// <summary>
+    /// It ends where its last clip does (no length of its own). Unticked, it gets its own length, starting from
+    /// where its last clip ends now (at least a second), to change from there.
+    /// </summary>
+    public bool EndsWithLastClip
+    {
+        get => SelectedTimeline?.Length is null;
+        set
+        {
+            if (SelectedTimeline is not { } timeline || value == (timeline.Length is null)) return;
+            TimeSpan? length = value ? null : TimeSpan.FromSeconds(Math.Max(1, Math.Ceiling(LastClipEnd().TotalSeconds * 10) / 10));
+            Edit(value ? "End with the last clip" : "Give the timeline a length", () => timeline.Length = length, null, Only(timeline));
+        }
+    }
+
+    /// <summary>Where the open timeline's last clip ends (0 with none).</summary>
+    TimeSpan LastClipEnd() => AllEvents().Select(EndOf).DefaultIfEmpty(TimeSpan.Zero).Max();
 
     partial void OnSelectedTabChanged(TimelineTabViewModel? value)
     {
@@ -662,6 +685,7 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
         OnPropertyChanged(nameof(Triggers));
         OnPropertyChanged(nameof(Loop));
         OnPropertyChanged(nameof(LengthSeconds));
+        OnPropertyChanged(nameof(EndsWithLastClip));
         foreach (var name in PlaybackProperties) OnPropertyChanged(name);
         OnPropertyChanged(nameof(UndoLabel));
         OnPropertyChanged(nameof(RedoLabel));
@@ -1155,6 +1179,7 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
         Relayout();
         OnPropertyChanged(nameof(Loop));
         OnPropertyChanged(nameof(LengthSeconds));
+        OnPropertyChanged(nameof(EndsWithLastClip));
         foreach (var name in PlaybackProperties) OnPropertyChanged(name);
         Revision++;
         TrackProperties?.Refresh();
