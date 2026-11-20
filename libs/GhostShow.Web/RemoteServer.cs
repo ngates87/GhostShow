@@ -66,6 +66,7 @@ public sealed partial class RemoteServer : IAsyncDisposable
         host.Playback.Compiled += OnCompiled;
         host.Triggers.InputReceived += OnInputReceived;
         host.Inputs.Changed += OnInputsChanged;
+        host.Audio.Changed += OnAudioChanged;
         SubscribeToShowData();
         // A role changed on the desktop: the device hears of it (and its next command is checked against it).
         Pairing.Changed += () =>
@@ -166,6 +167,7 @@ public sealed partial class RemoteServer : IAsyncDisposable
         _host.Playback.Compiled -= OnCompiled;
         _host.Triggers.InputReceived -= OnInputReceived;
         _host.Inputs.Changed -= OnInputsChanged;
+        _host.Audio.Changed -= OnAudioChanged;
         UnsubscribeFromShowData();
     }
 
@@ -247,6 +249,7 @@ public sealed partial class RemoteServer : IAsyncDisposable
             lock (_lock) _connections.Remove(connection);
             ForgetLightingWatch(connection);
             ForgetLearning(connection);
+            ForgetAudioWatch(connection);
             ConnectionsChanged?.Invoke();
         }
     }
@@ -316,7 +319,7 @@ public sealed partial class RemoteServer : IAsyncDisposable
     // ---- commands ----
 
     /// <summary>What only an editor may do; an operator may run the show (play, stop, buttons, Blackout) but not change it.</summary>
-    static readonly HashSet<string> EditorOnly = ["open", "edit", "undo", "redo", "save", "listShows", "newShow", "openShow", "saveShowAs", "renameShow", "learning", "refreshPorts", "pickPort", "enableInput", "saveProfile", "deleteProfile", "downloadLibrary",
+    static readonly HashSet<string> EditorOnly = ["open", "edit", "undo", "redo", "save", "listShows", "newShow", "openShow", "saveShowAs", "renameShow", "learning", "refreshPorts", "pickPort", "enableInput", "chooseAudioDevice", "saveProfile", "deleteProfile", "downloadLibrary",
                                                   "scanOutputs", "assignOutput", "setChannel", "clearUniverse", "setFixtureChannel", "setFixtureControl"];
 
     /// <summary>A message from a device: a command, run on the show's thread, answered with a result.</summary>

@@ -38,6 +38,7 @@ sealed class ShellView : Border
     readonly RemoteLiveLevels _levels;
     readonly RemoteTriggers _triggers;
     readonly RemoteInputSetup _inputSetup;
+    readonly RemoteAudioSetup _audioSetup;
     BrowserShellViewModel? _shell;
     bool _unsaved;
 
@@ -56,6 +57,7 @@ sealed class ShellView : Border
         _levels = new RemoteLiveLevels(_session, _link);
         _triggers = new RemoteTriggers(_link);
         _inputSetup = new RemoteInputSetup(_link);
+        _audioSetup = new RemoteAudioSetup(_link);
         AddHandler(KeyDownEvent, OnKeyDown, Avalonia.Interactivity.RoutingStrategies.Tunnel);
 
         // Messages arrive on the connection's thread; each is handled on the UI thread.
@@ -74,6 +76,7 @@ sealed class ShellView : Border
         _link.Levels += m => Dispatcher.UIThread.Post(() => _levels.OnLevels(m));
         _link.Device += m => Dispatcher.UIThread.Post(() => ShowDevice(m["device"]));
         _link.Triggers += m => Dispatcher.UIThread.Post(() => _shell?.Buttons.ShowStates(RemoteTriggers.Read(m)));
+        _link.AudioSetup += m => Dispatcher.UIThread.Post(() => _audioSetup.OnAudio(m));
         _link.Inputs += m => Dispatcher.UIThread.Post(() => _inputSetup.OnInputs(m));
         _link.Input += m => Dispatcher.UIThread.Post(() =>
         {
@@ -110,15 +113,20 @@ sealed class ShellView : Border
         _outputSetup.OnHello();
         _levels.OnHello();
         _inputSetup.OnHello();
+        _audioSetup.OnHello();
         _audioDevices.Update(message["audioDevices"] as JsonArray);
         if (_shell is null)
         {
-            _shell = new BrowserShellViewModel(_session, new ShellServices(_remote, _library, _outputSetup, _levels, _audioDevices, _edits, _triggers), _inputSetup, _link, _fileMenu);
+            _shell = new BrowserShellViewModel(_session, new ShellServices(_remote, _library, _outputSetup, _levels, _audioDevices, _edits, _triggers), _inputSetup, _audioSetup, _link, _fileMenu);
             _shell.PropertyChanged += (_, e) =>
             {
                 if (e.PropertyName == nameof(ShellViewModel.Title)) ShowTitle();
                 // The type picker needs the whole library: only fetched once Lighting is wanted.
-                else if (e.PropertyName == nameof(ShellViewModel.CurrentPage) && _shell.CurrentPage is >= Page.DmxSetup and <= Page.Monitor) _ = _library.LoadAsync();
+                else if (e.PropertyName == nameof(ShellViewModel.CurrentPage))
+                {
+                    if (_shell.CurrentPage is >= Page.DmxSetup and <= Page.Monitor) _ = _library.LoadAsync();
+                    _audioSetup.SetWatching(_shell.CurrentPage == Page.Audio);   // the show computer reads its sound files only while it's shown
+                }
             };
             Child = new Panel { Children = { new MainView { DataContext = _shell }, _fileMenu.Questions } };
             OpenFromAddress();

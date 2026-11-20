@@ -1,6 +1,6 @@
 # Plan: one main view for the desktop and the browser
 
-Status: approved 2026-11-07, with the decisions below. Steps 1-5 are done (steps 4 and 5 still to be tried in Chromium); step 6 is next. Restarted 2026-11-20 as the
+Status: approved 2026-11-07, with the decisions below. Steps 1-6 are done (steps 4-6 still to be tried in Chromium); step 7 is next. Restarted 2026-11-20 as the
 priority ahead of new features (see "Decided 2026-11-20" in [plan-remote.md](plan-remote.md)): features wait until
 step 7 is done, and until then nothing new goes into the frame unless it reaches the browser in the same change.
 
@@ -22,11 +22,11 @@ its steps 4 and 5 (a separate server, and the native window over the connection)
 | Menus (File, Edit, View, Playback) | shared | shared; File has the browser's own New, Open, Save, Rename |
 | Buttons panel: tiles, editor, triggers, arming | shared (`ButtonsPanel`; triggers run here) | shared; the triggers' state comes from the show computer |
 | Inputs: the show's input devices, input monitor | shared (`InputsView`; the ports are here) | shared; the ports are the show computer's |
-| Audio screen | full | "on the show computer" |
+| Audio screen | shared (`AudioView`; the sound card is here) | shared; the sound is the show computer's |
 | Diagnostics, Home (recent shows) | full | "on the show computer"; no Home (a device always has a show) |
 | Keys: Space, trigger keys, learning keys, fields | `MainView` | `MainView` (no triggers, as decided), and Ctrl+S |
 
-The table above is as of step 5 (2026-11-20).
+The table above is as of step 6 (2026-11-20).
 
 Three things make the shared parts work today:
 - **The browser builds the desktop's own files.** `GhostShow.Browser.csproj` links the view models and some views, so a
@@ -137,7 +137,15 @@ tried in Chromium against the desktop.
      rather than only while the Inputs screen is open.
    - `pickPort`, `enableInput` and `refreshPorts` are editor-only. Adding a device puts it on its port first, then adds
      it to the show, so it's listened to as soon as it's there.
-6. **Audio in the browser.** The real Audio screen replaces "on the show computer".
+6. **Audio in the browser (done 2026-11-20; not yet tried in Chromium).** The browser shows the desktop's `AudioView` on
+   the shared `AudioViewModel`.
+   - The sound card is the show computer's: `IAudioSetup` (in Core), with `LocalAudioSetup` on the show computer (its
+     default output and master volume, which are its settings; how its outputs stand; the show's sound files there) and
+     `RemoteAudioSetup` in the browser. The desktop's `AudioDeviceList` moved to its own file, which the browser leaves
+     out (it has its own).
+   - The page watches the sound only while its Audio screen is open (`watchAudio`): reading the sound files' lengths is
+     work for the show computer, done once a second while a screen shows them.
+   - `chooseAudioDevice` is editor-only; `setVolume` isn't (turning it down is running the show).
 7. **Diagnostics and Home.** The Diagnostics section from the show computer's figures. Home's recent shows become the
    show computer's show library (decided 2026-11-20: GhostShow manages where shows are saved; files come in by upload;
    no folder browser).

@@ -46,6 +46,9 @@ sealed class RemoteConnection(PairedDevice device, WebSocket socket, string addr
     /// <summary>The device shows the Inputs screen or the input monitor: it gets the ports' state and every input (show's thread only).</summary>
     public bool WatchingInputs { get; set; }
 
+    /// <summary>The device shows the Audio screen: it gets the sound's state (show's thread only).</summary>
+    public bool WatchingAudio { get; set; }
+
     /// <summary>The device is waiting for a trigger: it gets the show's inputs, to learn one (show's thread only).</summary>
     public bool Learning { get; set; }
 

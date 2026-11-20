@@ -32,5 +32,8 @@
     <DataTemplate DataType="vm:InputsViewModel">
       <views:InputsView />
     </DataTemplate>
+    <DataTemplate DataType="vm:AudioViewModel">
+      <views:AudioView />
+    </DataTemplate>
   </Application.DataTemplates>
 </Application>

@@ -61,6 +61,12 @@ public interface IRemoteHost
     /// <summary>The show computer's serial ports, for the Inputs screen: which port each input device is on there. On the show's thread.</summary>
     IInputSetup Inputs { get; }
 
+    /// <summary>The show computer's sound, for the Audio screen: its default output, master volume and the show's sound files. On the show's thread.</summary>
+    IAudioSetup Audio { get; }
+
+    /// <summary>A device's Audio screen opened or closed: while one is open, the show computer keeps <see cref="Audio"/> up to date. On the show's thread.</summary>
+    void WatchAudio(object device, bool watching);
+
     /// <summary>The show computer's audio output devices, by name (for audio tracks' outputs). On the show's thread.</summary>
     IReadOnlyList<string> AudioDevices { get; }
 

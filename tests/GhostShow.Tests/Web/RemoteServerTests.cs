@@ -118,6 +118,27 @@ public sealed class RemoteServerTests : IAsyncLifetime
         }
     }
 
+    /// <summary>The show computer's sound, for the server: records what it was asked, and says how it stands.</summary>
+    sealed class Sound : IAudioSetup
+    {
+        public readonly List<string> Calls = [];
+        public readonly List<object> Watching = [];
+        public AudioSetupState State { get; private set; } = AudioSetupState.Empty with { Status = "Open: Speakers · 0 playing" };
+        public event Action? Changed;
+
+        public Task<string?> ChooseDeviceAsync(string? device)
+        {
+            Calls.Add($"device {device}");
+            State = State with { Device = device };
+            Changed?.Invoke();
+            return Task.FromResult<string?>(null);
+        }
+
+        public void SetVolume(double volume) => Calls.Add($"volume {volume}");
+
+        public string? TestSound(string? device) => null;
+    }
+
     sealed class Host(ShowSession session, ShowPlayback playback, IFixtureLibrary library, IOutputSetup outputs, ILiveLevels levels) : IRemoteHost
     {
         public IFixtureLibrary Library => library;
@@ -127,6 +148,13 @@ public sealed class RemoteServerTests : IAsyncLifetime
         public ITriggerControl Triggers => TriggerControl;
         public Inputs InputSetup { get; } = new();
         IInputSetup IRemoteHost.Inputs => InputSetup;
+        public Sound Audio { get; } = new();
+        IAudioSetup IRemoteHost.Audio => Audio;
+        public void WatchAudio(object device, bool watching)
+        {
+            if (watching) Audio.Watching.Add(device);
+            else Audio.Watching.Remove(device);
+        }
         public readonly Lock Gate = new();
 
         public Task<T> InvokeAsync<T>(Func<T> function)
@@ -469,6 +497,37 @@ public sealed class RemoteServerTests : IAsyncLifetime
         // Watching, it gets every input for its monitor, with what came of it.
         lock (_host.Gate) _host.TriggerControl.Receive(new InputEvent("serial", "BTN24", true, DateTimeOffset.Now, device), "Ran Scare");
         Assert.Equal("Ran Scare", (await NextAsync(socket, "input"))["outcome"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task A_device_s_Audio_screen_shows_the_show_computer_s_sound_while_it_s_open()
+    {
+        using var socket = await ConnectAsync(await PairAsync("Laptop"));
+        await NextAsync(socket, "hello");
+
+        await SendAsync(socket, new { action = "watchAudio", on = true });
+        var audio = await NextAsync(socket, "audioSetup");
+        Assert.Equal("Open: Speakers · 0 playing", ShowJson.FromNode<AudioSetupState>(audio["state"]!)!.Status);
+        Assert.Single(_host.Audio.Watching);   // the show computer keeps it up to date
+
+        await SendAsync(socket, new { action = "chooseAudioDevice", device = "USB Interface" });
+        Assert.Equal("USB Interface", ShowJson.FromNode<AudioSetupState>((await NextAsync(socket, "audioSetup"))["state"]!)!.Device);
+        Assert.True((await CommandAsync(socket, new { action = "setVolume", volume = 0.5 }))["ok"]!.GetValue<bool>());
+        Assert.Equal(["device USB Interface", "volume 0.5"], _host.Audio.Calls);
+
+        Assert.True((await CommandAsync(socket, new { action = "watchAudio", on = false }))["ok"]!.GetValue<bool>());
+        Assert.Empty(_host.Audio.Watching);
+    }
+
+    [Fact]
+    public async Task An_operator_can_set_the_volume_but_not_change_the_output()
+    {
+        using var socket = await ConnectAsync(await PairAsync("Door phone", "operator"));
+        await NextAsync(socket, "hello");
+
+        Assert.True((await CommandAsync(socket, new { action = "setVolume", volume = 0.2 }))["ok"]!.GetValue<bool>());   // running the show
+        Assert.Contains("operator", (await CommandAsync(socket, new { action = "chooseAudioDevice", device = "USB Interface" }))["error"]!.GetValue<string>());
+        Assert.Equal(["volume 0.2"], _host.Audio.Calls);
     }
 
     [Fact]

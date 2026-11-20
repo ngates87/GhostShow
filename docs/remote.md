@@ -51,7 +51,7 @@ how many devices are connected.
 ## Editing from the full app
 
 Open `http://<address>:7700/app/`, or "Open the full app" on the simple remote. `/app/?open=Folder/Timeline` opens a
-timeline at start, so it can be bookmarked. The top row switches between Timeline, Lighting and Audio; Blackout and
+timeline at start, so it can be bookmarked. The top row is the desktop's: Timeline, Lighting, Audio, Inputs and Diagnostics; Blackout and
 warnings stay visible across pages. The show's buttons are in the desktop's own Buttons panel beside the timeline: pressing them, editing them and their
 triggers, and arming. The triggers themselves run only on the show computer; the panel shows how each stands there. The Windows installer includes the
 full app. From source, it's only there if it has been built on that computer, and Remote Access doesn't offer it otherwise:
@@ -133,6 +133,8 @@ Audio shows the show computer's devices and the files used by the show; its sett
     and `state` ("Ready", "Re-arms in 2.5 s", …).
   - `input`: an input that arrived on the show computer (`source`, `device`, `address`, `pressed`, `value`, `outcome`),
     to a device waiting for a trigger (`learning`), so it can learn it, and to one watching the inputs, for its monitor.
+  - `audioSetup`: the show computer's sound (`state`: its default output, master volume, how its outputs stand and the
+    show's sound files), to a device that asked with `watchAudio`, whenever it changes.
   - `inputs`: the show computer's serial ports (`state`: the ports found, and each input device's port, status and last
     command), to a device that asked with `watchInputs`, whenever it changes.
   - `shows`: the names of the shows a device can open, answering `listShows`.
@@ -180,9 +182,12 @@ Audio shows the show computer's devices and the files used by the show; its sett
   - **Inputs:** `watchInputs` (`on`) says the device shows the inputs (the browser build does from each hello).
     `pickPort` (`device`, `port`, or none) puts one of the show's input devices on a port the show computer offered;
     `enableInput` (`device`, `on`) turns listening to it off or on; `refreshPorts` lists the ports again.
+  - **Audio screen:** `watchAudio` (`on`) says the device's Audio screen opened or closed. `chooseAudioDevice` (`device`,
+    or none for the system's default) sets the show computer's default output; `setVolume` (`volume`, 0 to 1) its
+    master volume. Neither waits for the sound card: the state says how it went.
   - **Where they run:** on the show computer's UI thread, through the same view models as the desktop's controls
     (`IShowControl`).
-  - **Roles:** the show computer checks the device's role for each command. `open`, `edit`, `undo`, `redo`, `save`, `learning`, `pickPort`, `enableInput`, `refreshPorts`, the file menu's commands,
+  - **Roles:** the show computer checks the device's role for each command. `open`, `edit`, `undo`, `redo`, `save`, `learning`, `pickPort`, `enableInput`, `refreshPorts`, `chooseAudioDevice`, the file menu's commands,
     `saveProfile`, `deleteProfile`, `downloadLibrary`, `scanOutputs`, `assignOutput` and the commands that set levels are
     editor-only; an operator may run the show but not change it.
 - **The fixture library:** `GET /api/library?token=…` gives the whole library, one profile per line of JSON, compressed

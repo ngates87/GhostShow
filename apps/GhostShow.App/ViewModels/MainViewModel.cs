@@ -84,10 +84,11 @@ public sealed partial class MainViewModel : ShellViewModel
             Buttons.Command(device, command);
         });
         _serial.StatusChanged += _ => Dispatcher.UIThread.Post(_inputSetup.Refresh);
+        _audioSetup = new LocalAudioSetup(services.Audio, session, settings, SaveSettingsAsync);
         Remote = new RemoteViewModel(new AppRemoteHost(session, ShowPlayback, Playback, new AppShowControl(this), () => WarningsSnapshot, AudioDevices, () => IsDirty, () => _session.FilePath is null || _session.IsSingleFileShow, local.Library, _outputSetup, local.Levels,
-                                                       new AppTriggerControl(Buttons), _inputSetup),
+                                                       new AppTriggerControl(Buttons), _inputSetup, _audioSetup),
                                      settings.Remote, SaveSettingsAsync, logger);
-        Audio = new AudioViewModel(services.Audio, AudioDevices, session, settings, SaveSettingsAsync);
+        Audio = new AudioViewModel(_audioSetup, AudioDevices);
         _ = AudioDevices.RefreshAsync();
         Guide = new SetupGuideViewModel(session, settings, page => CurrentPage = page, () =>
         {
@@ -201,6 +202,7 @@ public sealed partial class MainViewModel : ShellViewModel
     public InputsViewModel Inputs { get; }
     readonly SerialInputs _serial;
     readonly LocalInputSetup _inputSetup;
+    readonly LocalAudioSetup _audioSetup;
     public PerformanceMeterViewModel Performance { get; }
 
     public override bool IsShowComputer => true;
@@ -269,7 +271,7 @@ public sealed partial class MainViewModel : ShellViewModel
         if (CurrentPage == Page.Audio)
         {
             _ = Audio.RefreshDevicesCommand.ExecuteAsync(null);
-            Audio.Tick();
+            _audioSetup.Refresh();
         }
         _outputSetup.Refresh();
         if (CurrentPage == Page.Diagnostics) Diagnostics.Tick();
@@ -638,7 +640,7 @@ public sealed partial class MainViewModel : ShellViewModel
         _inputSetup.Tick();
         Inputs.Tick();
         if (CurrentPage == Page.Diagnostics) Diagnostics.Tick();
-        if (CurrentPage == Page.Audio) Audio.Tick();
+        if (CurrentPage == Page.Audio || _audioSetup.IsWatched) _audioSetup.Refresh();   // here, or on a device
         // Open the devices audio tracks are routed to before they're needed (cheap when nothing changed).
         _services.Audio.UseOutputs(_session.Project.Timelines.SelectMany(t => t.Tracks)
             .Where(t => t.Kind == TrackKind.Audio && !string.IsNullOrWhiteSpace(t.AudioDevice)).Select(t => t.AudioDevice!));

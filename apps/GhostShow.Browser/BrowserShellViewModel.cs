@@ -4,13 +4,14 @@ using GhostShow.App.ViewModels;
 using GhostShow.Browser.Remote;
 using GhostShow.Core.Engine;
 using GhostShow.Core.Inputs;
+using GhostShow.Core.Playback;
 
 namespace GhostShow.Browser;
 
 /// <summary>
 /// The shared main view's model in a device's browser: the screens work on this page's copy of the show, and what
 /// needs the show computer is asked of it over the connection. Screens that haven't come across yet say they're on
-/// the show computer (docs/plan-shared-view.md, steps 6-7).
+/// the show computer (docs/plan-shared-view.md, step 7).
 /// </summary>
 sealed class BrowserShellViewModel : ShellViewModel
 {
@@ -20,11 +21,13 @@ sealed class BrowserShellViewModel : ShellViewModel
     long _noticeNumber;
     long _ticks;
 
-    public BrowserShellViewModel(ShowSession session, ShellServices services, IInputSetup inputSetup, RemoteLink link, FileMenu fileMenu) : base(session, services)
+    public BrowserShellViewModel(ShowSession session, ShellServices services, IInputSetup inputSetup, IAudioSetup audioSetup, RemoteLink link,
+                                 FileMenu fileMenu) : base(session, services)
     {
         _link = link;
         _fileMenu = fileMenu;
         Inputs = new InputsViewModel(session, inputSetup, Buttons);
+        AudioPage = new AudioViewModel(audioSetup, AudioDevices);
         BottomWorkspace = new BottomWorkspaceViewModel(Playback, Inputs.Monitor, Lighting, null);
         ShowEditor();   // a device always has the show computer's show open
         // As often as the desktop's screens refresh; the show's state itself arrives with each status.
@@ -35,7 +38,7 @@ sealed class BrowserShellViewModel : ShellViewModel
     public override bool IsShowComputer => false;
     protected override string ShowName => Session.Project.Name;
 
-    public override object AudioPage { get; } = new OnShowComputerViewModel("The Audio screen");
+    public override object AudioPage { get; }
     public InputsViewModel Inputs { get; }
     public override object InputsPage => Inputs;
     public override object DiagnosticsPage { get; } = new OnShowComputerViewModel("Diagnostics");

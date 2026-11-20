@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:GhostShow.App.ViewModels"
+             xmlns:playback="using:GhostShow.Core.Playback"
              x:Class="GhostShow.App.Views.AudioView"
              x:DataType="vm:AudioViewModel">
   <ScrollViewer>
@@ -74,7 +75,7 @@
           </Grid>
           <ItemsControl ItemsSource="{Binding Sounds}">
             <ItemsControl.ItemTemplate>
-              <DataTemplate x:DataType="vm:ShowSoundRow">
+              <DataTemplate x:DataType="playback:ShowSoundRow">
                 <Grid ColumnDefinitions="2*,2*,80,2*" Margin="0,2">
                   <TextBlock Text="{Binding File}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding File}" />
                   <TextBlock Grid.Column="1" Text="{Binding Used}" TextTrimming="CharacterEllipsis" />

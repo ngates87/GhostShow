@@ -5,14 +5,15 @@ using Microsoft.Extensions.Logging;
 
 namespace GhostShow.Web;
 
-// The Buttons panel's triggers and the Inputs screen on a device. Triggers run only here on the show computer
+// The Buttons panel's triggers, and the Inputs and Audio screens, on a device. Triggers run only here on the show computer
 // (docs/plan-shared-view.md, decision 1): devices are sent how they stand ("triggers", a few times a second when that
 // changes), arm them, turn one off or reset one; and a device waiting for a trigger, or watching the inputs, is sent the
 // inputs that arrive ("input"). The serial ports are here too: a device watching gets their state ("inputs") and puts the
-// show's input devices on them.
+// show's input devices on them. So is the sound card: a device showing the Audio screen gets its state ("audioSetup").
 public sealed partial class RemoteServer
 {
-    static readonly HashSet<string> TriggerActions = ["armTriggers", "triggerOn", "resetTrigger", "learning", "watchInputs", "refreshPorts", "pickPort", "enableInput"];
+    static readonly HashSet<string> TriggerActions = ["armTriggers", "triggerOn", "resetTrigger", "learning", "watchInputs", "refreshPorts", "pickPort", "enableInput",
+                                                         "watchAudio", "chooseAudioDevice", "setVolume"];
 
     /// <summary>The trigger states last sent (null: send them again, as after a hello).</summary>
     volatile string? _triggersSent;
@@ -35,6 +36,9 @@ public sealed partial class RemoteServer
             "refreshPorts" => RefreshPorts(),
             "pickPort" => _host.Inputs.PickPort(Device(), message["port"]?.GetValue<string>()),
             "enableInput" => _host.Inputs.SetEnabled(Device(), On()),
+            "watchAudio" => WatchAudio(connection, On()),
+            "chooseAudioDevice" => ChooseAudioDevice(message["device"]?.GetValue<string>()),
+            "setVolume" => SetVolume(message["volume"]?.GetValue<double>() ?? throw new FormatException("No volume.")),
             _ => $"Unknown command {action}.",
         };
         _triggersSent = null;   // the change shows on every device at the next tick
@@ -113,6 +117,52 @@ public sealed partial class RemoteServer
         if (watching.Count == 0) return;
         string json = InputsJson();
         foreach (var connection in watching) connection.Send(json);
+    }
+
+    // ---- the Audio screen: the show computer's sound ----
+
+    string? WatchAudio(RemoteConnection connection, bool on)
+    {
+        connection.WatchingAudio = on;
+        _host.WatchAudio(connection, on);
+        if (on) connection.Send(AudioJson());
+        return null;
+    }
+
+    /// <summary>Not waited for: opening a device takes a moment, and Blackout mustn't wait behind it (the state says how it went).</summary>
+    string? ChooseAudioDevice(string? device)
+    {
+        var choosing = _host.Audio.ChooseDeviceAsync(device);
+        return choosing.IsCompleted ? choosing.Result : null;
+    }
+
+    string? SetVolume(double volume)
+    {
+        _host.Audio.SetVolume(volume);
+        return null;
+    }
+
+    string AudioJson() => new JsonObject { ["type"] = "audioSetup", ["state"] = ShowJson.ToNode(_host.Audio.State) }.ToJsonString();
+
+    /// <summary>On the show's thread: devices showing the Audio screen get the sound's new state.</summary>
+    void OnAudioChanged()
+    {
+        List<RemoteConnection> watching;
+        lock (_lock) watching = _connections.Where(c => c.WatchingAudio).ToList();
+        if (watching.Count == 0) return;
+        string json = AudioJson();
+        foreach (var connection in watching) connection.Send(json);
+    }
+
+    /// <summary>A device went: its Audio screen isn't open any more. Not waited for (the server may be stopping, on the show's thread).</summary>
+    void ForgetAudioWatch(RemoteConnection connection)
+    {
+        if (!connection.WatchingAudio) return;
+        _ = _host.InvokeAsync(() =>
+        {
+            _host.WatchAudio(connection, false);
+            return true;
+        });
     }
 
     /// <summary>From the status loop: every device gets the trigger states when they've changed.</summary>
