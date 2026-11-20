@@ -219,7 +219,6 @@ fixture of that type and controlling it.
 with devices connected.
 
 **Problems found:**
-- **The Audio, Inputs and Diagnostics screens say "on the show computer" in the browser,** until steps 5-7 of [plan-shared-view.md](plan-shared-view.md).
 - **An exception during layout blanks every page until a reload,** with nothing on screen to say why. That's how the
   blank pages looked: an empty dropdown's template threw a null reference.
 - **Nothing in the repo tests the browser build.** It isn't in `GhostShow.slnx`, and the browser test scripts lived
@@ -275,6 +274,24 @@ Small steps; each one leaves the app working.
    have a safety net. With them, a check that the page and the server are the same version, so a stale `/app/` says so.
 4. **Split out the server:** a project with the engine, DMX, audio, saving and the remote server, and no Avalonia. The
    desktop app hosts it in-process at first. `GhostShow.Cli` already runs the engine, DMX and audio with no window.
+   Surveyed 2026-11-20, after the shared view: what the server needs still lives in the desktop's view models in five
+   places. Each part below moves one, keeps the desktop working and its UI tests passing, and can be committed alone.
+   1. **A `GhostShow.Server` project** (no Avalonia): `AppServices` and the startup in `App.axaml.cs` that builds them,
+      `LocalInputSetup`, `LocalAudioSetup` and `LocalDiagnostics` (their Avalonia dispatcher and timers become the
+      server's own show thread and timer), and the warnings list. The desktop references it.
+   2. **Triggers in the server.** Today they run in `ButtonsViewModel` and `TriggerViewModel` (dispatching inputs,
+      arming, run-once and re-arm, firing again while held). They move into a Core/server `ShowTriggers` behind
+      `ITriggerControl`, and the desktop's panel shows them the way a device's already does (`IRemoteTriggers`, the
+      `triggers` feed), in-process. The show computer's keyboard reaches them as an input, as serial commands do.
+   3. **The show's files in the server:** new, open, save, auto-save, save as and rename by name, copying audio in, and
+      the recent list (the future show library), out of `MainViewModel` and `MainViewModel.DeviceShows`. The desktop
+      keeps its file dialogs for importing and choosing a folder, and asks the server to do the rest.
+   4. **Commands in the server:** `AppShowControl` drives the desktop's view models today, including "the timeline open
+      in the editor" for the simple remote page's transport. It becomes the server's, with the focused timeline as
+      something a screen tells it.
+   5. **The remote server's host in the server:** `AppRemoteHost` and Remote Access's settings, so the server can
+      serve devices with no window at all (`GhostShow.Cli` or step 7's tray program can then run it).
+   Then step 5 points the desktop's screens at the server over the connection instead of in-process.
 5. **The native Timeline over the connection.** The riskiest step, and it has never been tried. The existing UI tests
    will show whether the idea holds. If it goes badly, stop here: the current design still works.
 6. **Move the other screens, one at a time** (proposed 2026-11-07 to be done through one shared main view, ahead of
