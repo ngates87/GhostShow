@@ -17,13 +17,6 @@ using Microsoft.Extensions.Logging;
 
 namespace GhostShow.App.ViewModels;
 
-/// <summary>A show in the Home screen's recent list.</summary>
-/// <param name="Path">The show folder, or an older single-file show.</param>
-public sealed record RecentShowRow(string Path, string Name, string Location, bool Exists)
-{
-    public string Note => Exists ? "" : "Not found (moved, renamed or on a drive that isn't connected)";
-}
-
 /// <summary>
 /// The show computer's main view: the shared frame (<see cref="ShellViewModel"/>) on this computer's own services, plus
 /// what only the show computer does: files and saving, sound, inputs, diagnostics, the web remote, and the UI refresh
@@ -98,7 +91,7 @@ public sealed partial class MainViewModel : ShellViewModel
         });
         _session.Document.Changed += OnDocumentChanged;
 
-        _unsavedChanges = new UnsavedChangesGuard(() => IsDirty, () => ShowName, Save, savePrompt);
+        _unsavedChanges = new UnsavedChangesGuard(() => IsDirty, () => ShowName, SaveShowAsync, savePrompt);
         _tick = new DispatcherTimer(TickInterval, DispatcherPriority.Background, (_, _) => Tick());
         _autoSave = new DispatcherTimer(AutoSaveDelay, DispatcherPriority.Background, OnAutoSaveTimer);
         _autoSave.Stop();
@@ -204,16 +197,23 @@ public sealed partial class MainViewModel : ShellViewModel
     readonly SerialInputs _serial;
     public PerformanceMeterViewModel Performance { get; }
 
+    public override bool IsShowComputer => true;
+    public override object? HomePage => _home ??= new HomePageViewModel(this);
+    HomePageViewModel? _home;
+    public override object AudioPage => Audio;
+    public override object InputsPage => Inputs;
+    public override object DiagnosticsPage => Diagnostics;
+    public override object ButtonsPart => Buttons;
+    public override object? GuidePart => Guide;
+    public override object? MenuBarPart => Remote;
+    public override object? StatusPart => Performance;
+
     public string ShowFile => _session.IsSingleFileShow ? $"{_session.FilePath} (older single-file show: Save will ask for a folder)"
                             : _session.ShowFolder ?? "Not saved yet";
 
     // ---- Home screen ----
 
-    /// <summary>Shows opened or saved on this computer, most recent first.</summary>
-    public ObservableCollection<RecentShowRow> RecentShows { get; } = new();
-
-    [RelayCommand]
-    async Task OpenRecent(RecentShowRow? row)
+    protected override async Task OpenRecent(RecentShowRow? row)
     {
         if (row is null) return;
         if (!row.Exists)
@@ -311,8 +311,7 @@ public sealed partial class MainViewModel : ShellViewModel
         StatusMessage = "Blackout: playback stopped and every manual level set to 0.";
     }
 
-    [RelayCommand]
-    async Task New()
+    protected override async Task NewShowAsync()
     {
         if (!await _unsavedChanges.ConfirmAsync("starting a new show")) return;
         _session.New();
@@ -330,8 +329,7 @@ public sealed partial class MainViewModel : ShellViewModel
     /// File → Import VenueMagic project: a new show from a VenueMagic project's patch (its fixture types become custom
     /// types), with an empty timeline for each of its timelines. Unsaved until Save picks a folder.
     /// </summary>
-    [RelayCommand]
-    async Task ImportVenueMagic()
+    protected override async Task ImportVenueMagic()
     {
         if (!await _unsavedChanges.ConfirmAsync("importing a VenueMagic project")) return;
         var files = await _storage.OpenFilePickerAsync(new FilePickerOpenOptions { Title = "Choose a VenueMagic project (.vmp)", FileTypeFilter = [VenueMagicProjects] });
@@ -367,8 +365,7 @@ public sealed partial class MainViewModel : ShellViewModel
     }
 
     /// <summary>Closes the show (offering to save) and returns to Home.</summary>
-    [RelayCommand]
-    async Task CloseShow()
+    protected override async Task CloseShow()
     {
         if (!IsShowOpen || !await _unsavedChanges.ConfirmAsync("closing the show")) return;
         _session.New();   // an empty show underneath, so the engine and outputs carry on (dark)
@@ -377,15 +374,8 @@ public sealed partial class MainViewModel : ShellViewModel
         StatusMessage = "";
     }
 
-    /// <summary>File → Exit: the window closes as if its close button was pressed (offering to save first).</summary>
-    public event Action? ExitRequested;
-
-    [RelayCommand]
-    void Exit() => ExitRequested?.Invoke();
-
     /// <summary>Opens a show folder (one with a show.json).</summary>
-    [RelayCommand]
-    async Task Open()
+    protected override async Task OpenShowAsync()
     {
         if (!await _unsavedChanges.ConfirmAsync("opening another show")) return;
         var folders = await _storage.OpenFolderPickerAsync(new FolderPickerOpenOptions { Title = "Open show folder" });
@@ -400,8 +390,7 @@ public sealed partial class MainViewModel : ShellViewModel
     }
 
     /// <summary>Opens a show saved by an older version as a single .json file. It's saved as a folder from then on.</summary>
-    [RelayCommand]
-    async Task OpenOldShow()
+    protected override async Task OpenOldShow()
     {
         if (!await _unsavedChanges.ConfirmAsync("opening another show")) return;
         var files = await _storage.OpenFilePickerAsync(new FilePickerOpenOptions { Title = "Open older single-file show", FileTypeFilter = [OldShowFiles] });
@@ -440,8 +429,7 @@ public sealed partial class MainViewModel : ShellViewModel
     /// play from the local disk instead of a slow or cloud drive. Runs after every save too (quietly when there's
     /// nothing to copy), so a sound added from elsewhere is copied in shortly after.
     /// </summary>
-    [RelayCommand]
-    Task CollectAudio() => CollectAudioAsync(quiet: false);
+    protected override Task CollectAudio() => CollectAudioAsync(quiet: false);
 
     async Task CollectAudioAsync(bool quiet)
     {
@@ -490,8 +478,7 @@ public sealed partial class MainViewModel : ShellViewModel
         }
     }
 
-    [RelayCommand]
-    async Task Save()
+    protected override async Task SaveShowAsync()
     {
         if (_session.FilePath is null || _session.IsSingleFileShow) await SaveAs();
         else await WriteShowAsync(folder: null);
@@ -502,8 +489,7 @@ public sealed partial class MainViewModel : ShellViewModel
     /// anywhere else, a new folder named after the show is made inside it, so a show is never mixed into another
     /// folder's files.
     /// </summary>
-    [RelayCommand]
-    async Task SaveAs()
+    protected override async Task SaveAs()
     {
         var picked = await _storage.OpenFolderPickerAsync(new FolderPickerOpenOptions
         {
@@ -667,3 +653,6 @@ public sealed partial class MainViewModel : ShellViewModel
         ShowWarnings(warnings);
     }
 }
+
+/// <summary>The Home page's place in the main view (HomeView shows it, on the show computer only).</summary>
+public sealed record HomePageViewModel(MainViewModel Main);

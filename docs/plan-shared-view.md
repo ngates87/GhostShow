@@ -1,6 +1,6 @@
 # Plan: one main view for the desktop and the browser
 
-Status: approved 2026-11-07, with the decisions below. Steps 1 and 2 are done; step 3 is next. Restarted 2026-11-20 as the
+Status: approved 2026-11-07, with the decisions below. Steps 1-3 are done; step 4 is next. Restarted 2026-11-20 as the
 priority ahead of new features (see "Decided 2026-11-20" in [plan-remote.md](plan-remote.md)): features wait until
 step 7 is done, and until then nothing new goes into the frame unless it reaches the browser in the same change.
 
@@ -18,13 +18,15 @@ its steps 4 and 5 (a separate server, and the native window over the connection)
 |---|---|---|
 | Timeline screen, envelope editor, Timeline properties | shared | shared |
 | Lighting section (fixtures, channels, faders, monitor, outputs) | shared | shared |
-| Frame: sections, status bar, warnings, Blackout | `MainWindow` + `MainViewModel` | hand-built in `ShellView.cs` |
-| Menus (File, Edit, View, Playback) | full | a separate File button (`FileMenu.cs`) |
-| Buttons panel: tiles, editor, triggers, arming | full | a plain row of buttons that press |
-| Inputs: the show's input devices, input monitor | full | missing |
-| Audio screen | full | a hand-built summary |
-| Diagnostics, Home (recent shows) | full | missing |
-| Keys: Space, trigger keys, learning keys, fields | `MainWindow.axaml.cs` | only Ctrl+S |
+| Frame: sections, status bar, warnings, Blackout | shared (`MainView`, `ShellViewModel`) | shared |
+| Menus (File, Edit, View, Playback) | shared | shared; File has the browser's own New, Open, Save, Rename |
+| Buttons panel: tiles, editor, triggers, arming | full | a column of buttons that press |
+| Inputs: the show's input devices, input monitor | full | "on the show computer" |
+| Audio screen | full | "on the show computer" |
+| Diagnostics, Home (recent shows) | full | "on the show computer"; no Home (a device always has a show) |
+| Keys: Space, trigger keys, learning keys, fields | `MainView` | `MainView` (no triggers, as decided), and Ctrl+S |
+
+The table above is as of step 3 (2026-11-20).
 
 Three things make the shared parts work today:
 - **The browser builds the desktop's own files.** `GhostShow.Browser.csproj` links the view models and some views, so a
@@ -100,13 +102,23 @@ tried in Chromium against the desktop.
      The host also makes `BottomWorkspace`, because its panes depend on where it runs.
    - `MainViewModel` derives from it, and keeps files and saving, Audio, Inputs, Diagnostics, Remote, the guide and the 30 Hz tick.
    - `IShowControl` is now in `GhostShow.Core.Playback`.
-3. **The browser shows `MainView`.** The browser's host builds `ShellViewModel` on the remote services. The Timeline and
+3. **The browser shows `MainView` (done 2026-11-20; tried in Chromium the same day).** The browser's host builds `ShellViewModel` on the remote services. The Timeline and
    Lighting sections come across as they are; the browser's hand-built frame and File button go. Screens with no remote
    version yet show "On the show computer" instead of the screen, and say so.
+   - What differs between the hosts is in `ShellViewModel`'s places: `HomePage`, `AudioPage`, `InputsPage`,
+     `DiagnosticsPage`, `ButtonsPart`, `GuidePart`, `MenuBarPart` and `StatusPart`. Each host's `App.axaml` has the data
+     templates that show them, so `MainView` names no screen that only one host has.
+   - The File menu's commands are on `ShellViewModel`: New, Open and Save on both, the show computer's own (Save As,
+     Import, Open Recent, Copy Audio, Close, Exit) shown only where `IsShowComputer`, and Rename only in a browser.
+     The File menu is hidden from operators (`IsEditor`).
+   - The window does what only a window can: Remote Access and About open from the `RemoteAccessRequested` and
+     `AboutRequested` events.
+   - The browser: `BrowserShellViewModel`, with its status (who, saved) and a column of buttons that press until step 4.
+     `ShellView.cs` is now only the connection. The page's title is the show's.
 4. **Buttons and triggers in the browser.** The Buttons panel with its editor: pressing, editing, learning keys and
    commands, arming, turning a trigger off, each trigger's state. Includes the trigger feed from the show computer.
 5. **Inputs in the browser.** The input monitor (from the same feed) and the Inputs screen's devices and ports.
-6. **Audio in the browser.** The real Audio screen replaces the hand-built summary.
+6. **Audio in the browser.** The real Audio screen replaces "on the show computer".
 7. **Diagnostics and Home.** The Diagnostics section from the show computer's figures. Home's recent shows become the
    show computer's show library (decided 2026-11-20: GhostShow manages where shows are saved; files come in by upload;
    no folder browser).

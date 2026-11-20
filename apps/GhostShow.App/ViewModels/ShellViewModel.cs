@@ -14,6 +14,19 @@ namespace GhostShow.App.ViewModels;
 /// (see docs/plan-shared-view.md). <paramref name="History"/>: where edits go when they aren't simply the show's own
 /// undo history (a browser's go to the show computer); null on the show computer.
 /// </summary>
+/// <summary>A show in the Home screen's recent list.</summary>
+/// <param name="Path">The show folder, or an older single-file show.</param>
+public sealed record RecentShowRow(string Path, string Name, string Location, bool Exists)
+{
+    public string Note => Exists ? "" : "Not found (moved, renamed or on a drive that isn't connected)";
+}
+
+/// <summary>A screen that's only on the show computer for now, in its place on a device (see docs/plan-shared-view.md).</summary>
+public sealed record OnShowComputerViewModel(string Screen)
+{
+    public string Message => $"{Screen} is on the show computer for now.";
+}
+
 public sealed record ShellServices(IPlayback Playback, IFixtureLibrary Library, IOutputSetup OutputSetup, ILiveLevels Levels,
                                    AudioDeviceList AudioDevices, IEditHistory? History = null);
 
@@ -75,6 +88,87 @@ public abstract partial class ShellViewModel : ObservableObject
 
     /// <summary>Asks for a sound file: its path on the show computer, or null if none was chosen.</summary>
     protected abstract Task<string?> PickAudioFileAsync();
+
+    /// <summary>
+    /// This is the show computer (the desktop app), not a device's browser. Things only the show computer has are shown
+    /// only there: its files and folders, its own windows, trigger keys.
+    /// </summary>
+    public abstract bool IsShowComputer { get; }
+
+    /// <summary>
+    /// Whoever is using this may change the show: always on the show computer; on a device, unless it's paired as an
+    /// operator (who runs the show but can't change it).
+    /// </summary>
+    [ObservableProperty]
+    public partial bool IsEditor { get; protected set; } = true;
+
+    // ---- the File menu: the host does the work (folders and pickers on the show computer, names in the shows folder from a device) ----
+
+    [RelayCommand]
+    Task New() => NewShowAsync();
+
+    [RelayCommand]
+    Task Open() => OpenShowAsync();
+
+    [RelayCommand]
+    Task Save() => SaveShowAsync();
+
+    protected abstract Task NewShowAsync();
+    protected abstract Task OpenShowAsync();
+    protected abstract Task SaveShowAsync();
+
+    // The show computer's own (shown only there; see IsShowComputer).
+    [RelayCommand] protected virtual Task SaveAs() => Task.CompletedTask;
+    [RelayCommand] protected virtual Task ImportVenueMagic() => Task.CompletedTask;
+    [RelayCommand] protected virtual Task OpenRecent(RecentShowRow? row) => Task.CompletedTask;
+    [RelayCommand] protected virtual Task OpenOldShow() => Task.CompletedTask;
+    [RelayCommand] protected virtual Task CollectAudio() => Task.CompletedTask;
+    [RelayCommand] protected virtual Task CloseShow() => Task.CompletedTask;
+
+    /// <summary>A device's: gives the show another name (on the show computer, its folder is renamed).</summary>
+    [RelayCommand] protected virtual Task Rename() => Task.CompletedTask;
+
+    /// <summary>Shows opened or saved on the show computer, most recent first (empty on a device).</summary>
+    public ObservableCollection<RecentShowRow> RecentShows { get; } = new();
+
+    /// <summary>File → Exit: the window closes as if its close button was pressed (offering to save first).</summary>
+    public event Action? ExitRequested;
+
+    [RelayCommand]
+    void Exit() => ExitRequested?.Invoke();
+
+    /// <summary>View → Remote Access…, and the menu bar's indicator: the host opens its window.</summary>
+    public event Action? RemoteAccessRequested;
+
+    [RelayCommand]
+    void ShowRemoteAccess() => RemoteAccessRequested?.Invoke();
+
+    /// <summary>Help → About GhostShow: the host opens it.</summary>
+    public event Action? AboutRequested;
+
+    [RelayCommand]
+    void ShowAbout() => AboutRequested?.Invoke();
+
+    // ---- what each host shows in the frame's places (see the data templates in its App.axaml) ----
+
+    /// <summary>Home: shown while no show is open (never on a device: the show computer always has one).</summary>
+    public virtual object? HomePage => null;
+
+    public abstract object AudioPage { get; }
+    public abstract object InputsPage { get; }
+    public abstract object DiagnosticsPage { get; }
+
+    /// <summary>The show's buttons, beside the timeline.</summary>
+    public abstract object ButtonsPart { get; }
+
+    /// <summary>Getting started, above the pages (null: none).</summary>
+    public virtual object? GuidePart => null;
+
+    /// <summary>In the menu bar, beside the warnings (null: nothing).</summary>
+    public virtual object? MenuBarPart => null;
+
+    /// <summary>At the right of the status bar (null: nothing).</summary>
+    public virtual object? StatusPart => null;
 
     // ---- the frame ----
 
@@ -152,6 +246,9 @@ public abstract partial class ShellViewModel : ObservableObject
     /// calls this first.
     /// </summary>
     protected virtual void OnPageShown() => Lighting.IsOnScreen = CurrentPage is >= Page.DmxSetup and <= Page.Monitor;
+
+    /// <summary>Whether the keyboard here fires triggers: only the show computer's does (decided 2026-11-07).</summary>
+    public bool KeysFireTriggers => IsShowComputer;
 
     /// <summary>
     /// The screens that move while the show plays: the transport, lit buttons, the lighting screens. The host calls it

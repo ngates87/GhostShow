@@ -2,21 +2,23 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:GhostShow.App.ViewModels"
              xmlns:views="using:GhostShow.App.Views"
-             xmlns:controls="using:GhostShow.App.Controls"
              x:Class="GhostShow.App.Views.MainView"
-             x:DataType="vm:MainViewModel">
+             x:DataType="vm:ShellViewModel">
   <!-- Everything inside the window: menus, sections and pages, the Buttons panel, the status bar. The desktop window
-       hosts it, and (see docs/plan-shared-view.md) the browser page will too, so each part is built once. -->
+       hosts it, and so does a device's browser page (see docs/plan-shared-view.md), so each part is built once. What
+       differs is in ShellViewModel's places (HomePage, AudioPage, ButtonsPart…), which each host's App.axaml fills
+       with its own data templates. -->
+  <UserControl.DataTemplates>
+    <DataTemplate DataType="vm:OnShowComputerViewModel">
+      <TextBlock Text="{Binding Message}" Opacity="0.7" FontSize="16" Margin="24" HorizontalAlignment="Center" VerticalAlignment="Center" TextWrapping="Wrap" />
+    </DataTemplate>
+  </UserControl.DataTemplates>
   <DockPanel>
     <!-- Menu bar, with what needs attention and Blackout at its right (on every screen; Blackout even with no show
          open). The transport and time are under the timeline. -->
     <DockPanel DockPanel.Dock="Top">
       <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8" Margin="8,2" VerticalAlignment="Center">
-        <!-- Remote access is on: how many devices are connected (opens Remote Access). -->
-        <Button Padding="10,3" IsVisible="{Binding Remote.IsOn}" Click="OnRemote"
-                ToolTip.Tip="Devices on this network can connect (View → Remote Access…)">
-          <TextBlock Text="{Binding Remote.ConnectedLabel}" />
-        </Button>
+        <ContentControl Content="{Binding MenuBarPart}" VerticalAlignment="Center" />
         <!-- Problems worth knowing about (patch errors, failing outputs); only there when there are some. -->
         <Button Padding="10,3" Background="#5A3A00" IsVisible="{Binding !!Warnings.Count}"
                 ToolTip.Tip="Things that need attention">
@@ -33,11 +35,14 @@
             </Flyout>
           </Button.Flyout>
         </Button>
-        <!-- Triggers are off: easy to forget after working on the show, so it shows on every screen. -->
+        <!-- Triggers are off: easy to forget after working on the show, so it shows on every screen. Triggers fire
+             only on the show computer, so only it says so. -->
         <Panel IsVisible="{Binding IsShowOpen}">
+          <Panel IsVisible="{Binding IsShowComputer}">
           <Button x:Name="TriggersOffButton" Content="Triggers off" Command="{Binding Buttons.ToggleArmedCommand}" IsVisible="{Binding !Buttons.TriggersArmed}"
                   Background="#B71C1C" Foreground="White" Padding="10,3"
                   ToolTip.Tip="Keys and other triggers don't press buttons. Click to arm them." />
+          </Panel>
         </Panel>
         <Button Content="Blackout" Command="{Binding BlackoutCommand}"
                 ToolTip.Tip="Stop playback and set every channel of every universe to 0 (Ctrl+B)"
@@ -46,30 +51,31 @@
       <!-- Shortcut keys shown in the menus are handled by the window (file, view) or the timeline screen (editing,
            Space for play/pause), so they work whether or not the menu is open. -->
       <Menu>
-      <MenuItem Header="_File">
+      <MenuItem Header="_File" IsVisible="{Binding IsEditor}">
         <MenuItem Header="_New Show" InputGesture="Ctrl+N" Command="{Binding NewCommand}" />
         <MenuItem Header="_Open Show…" InputGesture="Ctrl+O" Command="{Binding OpenCommand}" />
-        <MenuItem Header="_Import VenueMagic Project…" Command="{Binding ImportVenueMagicCommand}" />
-        <MenuItem Header="Open _Recent" Classes="recentRoot" ItemsSource="{Binding RecentShows}" IsEnabled="{Binding !!RecentShows.Count}">
+        <MenuItem Header="_Import VenueMagic Project…" Command="{Binding ImportVenueMagicCommand}" IsVisible="{Binding IsShowComputer}" />
+        <MenuItem Header="Open _Recent" Classes="recentRoot" ItemsSource="{Binding RecentShows}" IsEnabled="{Binding !!RecentShows.Count}" IsVisible="{Binding IsShowComputer}">
           <MenuItem.Styles>
             <Style Selector="MenuItem:not(.recentRoot)" x:DataType="vm:RecentShowRow">
               <Setter Property="Header" Value="{Binding Path}" />
               <Setter Property="IsEnabled" Value="{Binding Exists}" />
-              <Setter Property="Command" Value="{Binding $parent[views:MainView].((vm:MainViewModel)DataContext).OpenRecentCommand}" />
+              <Setter Property="Command" Value="{Binding $parent[views:MainView].((vm:ShellViewModel)DataContext).OpenRecentCommand}" />
               <Setter Property="CommandParameter" Value="{Binding}" />
             </Style>
           </MenuItem.Styles>
         </MenuItem>
-        <MenuItem Header="Open Older Show _File (.json)…" Command="{Binding OpenOldShowCommand}" />
+        <MenuItem Header="Open Older Show _File (.json)…" Command="{Binding OpenOldShowCommand}" IsVisible="{Binding IsShowComputer}" />
         <Separator />
         <MenuItem Header="_Save" InputGesture="Ctrl+S" Command="{Binding SaveCommand}" />
-        <MenuItem Header="Save _As…" InputGesture="Ctrl+Shift+S" Command="{Binding SaveAsCommand}" />
-        <MenuItem Header="Copy _Audio Into Show Folder" Command="{Binding CollectAudioCommand}"
+        <MenuItem Header="Save _As…" InputGesture="Ctrl+Shift+S" Command="{Binding SaveAsCommand}" IsVisible="{Binding IsShowComputer}" />
+        <MenuItem Header="_Rename…" Command="{Binding RenameCommand}" IsVisible="{Binding !IsShowComputer}" />
+        <MenuItem Header="Copy _Audio Into Show Folder" Command="{Binding CollectAudioCommand}" IsVisible="{Binding IsShowComputer}"
                   ToolTip.Tip="Copies sounds the show uses from elsewhere (another drive, Google Drive, …) into its audio folder, so the folder holds everything and plays from the local disk" />
-        <Separator />
-        <MenuItem Header="_Close Show" InputGesture="Ctrl+W" Command="{Binding CloseShowCommand}" />
-        <Separator />
-        <MenuItem Header="E_xit" InputGesture="Ctrl+Q" Command="{Binding ExitCommand}" />
+        <Separator IsVisible="{Binding IsShowComputer}" />
+        <MenuItem Header="_Close Show" InputGesture="Ctrl+W" Command="{Binding CloseShowCommand}" IsVisible="{Binding IsShowComputer}" />
+        <Separator IsVisible="{Binding IsShowComputer}" />
+        <MenuItem Header="E_xit" InputGesture="Ctrl+Q" Command="{Binding ExitCommand}" IsVisible="{Binding IsShowComputer}" />
       </MenuItem>
       <MenuItem Header="_Edit">
         <MenuItem Header="{Binding Timeline.UndoLabel}" InputGesture="Ctrl+Z" Command="{Binding Timeline.UndoCommand}" />
@@ -94,7 +100,7 @@
         <MenuItem Header="_Audio" InputGesture="Ctrl+3" Command="{Binding GoToCommand}" CommandParameter="{x:Static vm:Page.Audio}" />
         <MenuItem Header="I_nputs" InputGesture="Ctrl+4" Command="{Binding GoToCommand}" CommandParameter="{x:Static vm:Page.InputMonitor}" />
         <MenuItem Header="D_iagnostics" InputGesture="Ctrl+5" Command="{Binding GoToCommand}" CommandParameter="{x:Static vm:Page.Diagnostics}" />
-        <MenuItem Header="_Remote Access…" Click="OnRemote" />
+        <MenuItem Header="_Remote Access…" Command="{Binding ShowRemoteAccessCommand}" IsVisible="{Binding IsShowComputer}" />
         <Separator />
         <MenuItem Header="Zoom _In" Command="{Binding Timeline.ZoomInCommand}" />
         <MenuItem Header="Zoom _Out" Command="{Binding Timeline.ZoomOutCommand}" />
@@ -108,30 +114,25 @@
         <MenuItem Header="_Blackout" InputGesture="Ctrl+B" Command="{Binding BlackoutCommand}" />
       </MenuItem>
       <MenuItem Header="_Help">
-        <MenuItem Header="_About GhostShow" Click="OnAbout" />
+        <MenuItem Header="_About GhostShow" Command="{Binding ShowAboutCommand}" />
       </MenuItem>
     </Menu>
     </DockPanel>
 
-    <!-- Armed key triggers, but another window has the keyboard: they can't work, so say so loudly. -->
-    <Border DockPanel.Dock="Top" Background="#B71C1C" Padding="12,6" IsVisible="{Binding Buttons.ShowFocusWarning}">
-      <TextBlock Foreground="White" FontWeight="SemiBold" TextWrapping="Wrap"
-                 Text="GhostShow isn't the active window, so its trigger keys won't work. Click anywhere in GhostShow to bring them back." />
-    </Border>
+    <!-- Armed key triggers, but another window has the keyboard: they can't work, so say so loudly. Only on the show
+         computer: a device's keyboard never fires triggers. -->
+    <Panel DockPanel.Dock="Top" IsVisible="{Binding IsShowComputer}">
+      <Border Background="#B71C1C" Padding="12,6" IsVisible="{Binding Buttons.ShowFocusWarning}">
+        <TextBlock Foreground="White" FontWeight="SemiBold" TextWrapping="Wrap"
+                   Text="GhostShow isn't the active window, so its trigger keys won't work. Click anywhere in GhostShow to bring them back." />
+      </Border>
+    </Panel>
 
     <!-- Status bar -->
     <Border DockPanel.Dock="Bottom" Padding="8,4" BorderThickness="0,1,0,0"
             BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}">
       <DockPanel>
-        <!-- Load meter: the worst of CPU, playback timing and UI response; click for Diagnostics (with a show open) -->
-        <Button DockPanel.Dock="Right" Margin="12,0,0,0" Padding="4,1" MinHeight="0" Background="Transparent" BorderThickness="0"
-                Command="{Binding GoToCommand}" CommandParameter="{x:Static vm:Page.Diagnostics}"
-                ToolTip.Tip="{Binding Performance.Tip}">
-          <StackPanel Orientation="Horizontal" Spacing="6">
-            <TextBlock Text="LOAD" FontSize="10" FontWeight="SemiBold" Opacity="0.7" VerticalAlignment="Center" />
-            <controls:LoadMeter Value="{Binding Performance.Level}" Width="120" Height="14" VerticalAlignment="Center" />
-          </StackPanel>
-        </Button>
+        <ContentControl DockPanel.Dock="Right" Content="{Binding StatusPart}" VerticalAlignment="Center" Margin="16,0,0,0" />
         <TextBlock DockPanel.Dock="Right" Text="{Binding Library.Summary}" Opacity="0.7" />
         <TextBlock Text="{Binding StatusMessage}" TextTrimming="CharacterEllipsis" />
       </DockPanel>
@@ -149,53 +150,26 @@
       </TabStrip>
     </StackPanel>
 
-    <!-- Getting started: on the Timeline screen while the show isn't set up yet -->
-    <Border DockPanel.Dock="Top" Classes="card" Margin="8,6,8,0" Padding="12,8" IsVisible="{Binding Guide.IsVisible}">
-      <DockPanel>
-        <Button DockPanel.Dock="Right" Content="×" Command="{Binding Guide.DismissCommand}" VerticalAlignment="Top" Padding="8,2"
-                Background="Transparent" ToolTip.Tip="Hide (for this show)" />
-        <TextBlock DockPanel.Dock="Top" Text="Getting started" FontWeight="SemiBold" Margin="0,0,0,6" />
-        <ItemsControl ItemsSource="{Binding Guide.Steps}">
-          <ItemsControl.ItemsPanel>
-            <ItemsPanelTemplate>
-              <WrapPanel />
-            </ItemsPanelTemplate>
-          </ItemsControl.ItemsPanel>
-          <ItemsControl.ItemTemplate>
-            <DataTemplate x:DataType="vm:SetupStepViewModel">
-              <DockPanel Margin="0,0,24,4" MaxWidth="380">
-                <TextBlock DockPanel.Dock="Left" Text="{Binding Mark}" FontSize="16" Margin="0,0,8,0" VerticalAlignment="Top"
-                           Foreground="{Binding IsDone, Converter={x:Static vm:Converters.DoneBrush}}" />
-                <Button DockPanel.Dock="Right" Content="{Binding ActionLabel}" Command="{Binding GoCommand}" IsVisible="{Binding !IsDone}"
-                        VerticalAlignment="Center" Margin="8,0,0,0" Padding="10,3" />
-                <StackPanel>
-                  <TextBlock Text="{Binding Title}" Opacity="{Binding IsDone, Converter={x:Static vm:Converters.DoneOpacity}}" />
-                  <TextBlock Text="{Binding Hint}" FontSize="11" Opacity="0.6" TextWrapping="Wrap" IsVisible="{Binding !IsDone}" />
-                </StackPanel>
-              </DockPanel>
-            </DataTemplate>
-          </ItemsControl.ItemTemplate>
-        </ItemsControl>
-      </DockPanel>
-    </Border>
+    <!-- Getting started (the show computer's, while the show isn't set up yet) -->
+    <ContentControl DockPanel.Dock="Top" Content="{Binding GuidePart}" />
 
     <Panel Margin="8,0,8,0">
-      <views:HomeView IsVisible="{Binding CurrentPage, Converter={x:Static vm:Converters.PageIs}, ConverterParameter={x:Static vm:Page.Home}}" />
+      <ContentControl Content="{Binding HomePage}"
+                      IsVisible="{Binding CurrentPage, Converter={x:Static vm:Converters.PageIs}, ConverterParameter={x:Static vm:Page.Home}}" />
       <!-- The timeline, with the show's buttons beside it -->
       <DockPanel IsVisible="{Binding CurrentPage, Converter={x:Static vm:Converters.PageIs}, ConverterParameter={x:Static vm:Page.Timeline}}">
-        <views:ButtonsPanel DockPanel.Dock="Right" DataContext="{Binding Buttons}" />
+        <ContentControl x:Name="ButtonsPart" DockPanel.Dock="Right" Content="{Binding ButtonsPart}" />
         <views:TimelineView DataContext="{Binding Timeline}"
-                            BottomWorkspace="{Binding $parent[views:MainView].((vm:MainViewModel)DataContext).BottomWorkspace}" />
+                            BottomWorkspace="{Binding $parent[views:MainView].((vm:ShellViewModel)DataContext).BottomWorkspace}" />
       </DockPanel>
-      <views:DiagnosticsView DataContext="{Binding Diagnostics}"
-                             IsVisible="{Binding $parent[views:MainView].((vm:MainViewModel)DataContext).CurrentPage, Converter={x:Static vm:Converters.PageIs}, ConverterParameter={x:Static vm:Page.Diagnostics}}" />
+      <ContentControl Content="{Binding DiagnosticsPage}"
+                      IsVisible="{Binding CurrentPage, Converter={x:Static vm:Converters.PageIs}, ConverterParameter={x:Static vm:Page.Diagnostics}}" />
       <views:LightingView DataContext="{Binding Lighting}"
-                          IsVisible="{Binding $parent[views:MainView].((vm:MainViewModel)DataContext).SelectedSection, Converter={x:Static vm:Converters.SectionIs}, ConverterParameter={x:Static vm:Section.Lighting}}" />
-      <views:InputsView DataContext="{Binding Inputs}"
-                        IsVisible="{Binding $parent[views:MainView].((vm:MainViewModel)DataContext).CurrentPage, Converter={x:Static vm:Converters.PageIs}, ConverterParameter={x:Static vm:Page.InputMonitor}}" />
-
-      <views:AudioView DataContext="{Binding Audio}"
-                     IsVisible="{Binding $parent[views:MainView].((vm:MainViewModel)DataContext).CurrentPage, Converter={x:Static vm:Converters.PageIs}, ConverterParameter={x:Static vm:Page.Audio}}" />
+                          IsVisible="{Binding $parent[views:MainView].((vm:ShellViewModel)DataContext).SelectedSection, Converter={x:Static vm:Converters.SectionIs}, ConverterParameter={x:Static vm:Section.Lighting}}" />
+      <ContentControl Content="{Binding InputsPage}"
+                      IsVisible="{Binding CurrentPage, Converter={x:Static vm:Converters.PageIs}, ConverterParameter={x:Static vm:Page.InputMonitor}}" />
+      <ContentControl Content="{Binding AudioPage}"
+                      IsVisible="{Binding CurrentPage, Converter={x:Static vm:Converters.PageIs}, ConverterParameter={x:Static vm:Page.Audio}}" />
     </Panel>
   </DockPanel>
 </UserControl>

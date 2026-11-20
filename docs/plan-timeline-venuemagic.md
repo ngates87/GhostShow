@@ -74,3 +74,10 @@ volume, master lamp level, loop, play-once-only.
    a project Fixture Effects library (chasers; built-ins such as Candelabra and Lightning),
    project-level events on event tracks (Run, Stop and Pause Timeline), audio clips with waveforms and volume/pan
    envelopes.
+
+## Later (after plan-shared-view and plan-remote step 7)
+
+- **One editor per clip, not two** (asked 2026-11-20). A control clip such as Tilt has its own editor for its move,
+  and the Envelope Editor also opens on it: two ways to edit the same thing. Envelopes (and double-click) on a control
+  clip should open that clip's own editor instead. Decide then what the Envelope Editor is still for: Level Control
+  clips only, or the editor every clip kind's own editor grows into.

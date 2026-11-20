@@ -1,6 +1,8 @@
 using Avalonia;
 using Avalonia.Controls;
+using GhostShow.App.Dialogs;
 using GhostShow.App.ViewModels;
+using GhostShow.App.Views;
 
 namespace GhostShow.App;
 
@@ -18,8 +20,26 @@ public partial class MainWindow : Window
         Activated += (_, _) => View.HostGotFocus();
         DataContextChanged += (_, _) =>
         {
-            if (DataContext is MainViewModel viewModel) viewModel.ExitRequested += Close;
+            if (DataContext is not MainViewModel viewModel) return;
+            viewModel.ExitRequested += Close;
+            viewModel.RemoteAccessRequested += () => ShowRemoteAccess(viewModel);
+            viewModel.AboutRequested += async () => await new AboutDialog().ShowDialog(this);
         };
+    }
+
+    RemoteWindow? _remote;
+
+    /// <summary>View → Remote Access… (or the menu bar's indicator): one window, brought to the front if it's open.</summary>
+    void ShowRemoteAccess(MainViewModel viewModel)
+    {
+        if (_remote is { } open)
+        {
+            open.Activate();
+            return;
+        }
+        _remote = new RemoteWindow { DataContext = viewModel.Remote };
+        _remote.Closed += (_, _) => _remote = null;
+        _remote.Show(this);
     }
 
     /// <summary>The window's state before it was minimized, so bringing it back keeps it maximized if it was.</summary>

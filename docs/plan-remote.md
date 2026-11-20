@@ -219,7 +219,7 @@ fixture of that type and controlling it.
 with devices connected.
 
 **Problems found:**
-- **The Audio page is still hand-built, not the desktop's screen,** in `ShellView.cs`, until step 6.
+- **The Audio, Inputs and Diagnostics screens say "on the show computer" in the browser,** until steps 5-7 of [plan-shared-view.md](plan-shared-view.md).
 - **An exception during layout blanks every page until a reload,** with nothing on screen to say why. That's how the
   blank pages looked: an empty dropdown's template threw a null reference.
 - **Nothing in the repo tests the browser build.** It isn't in `GhostShow.slnx`, and the browser test scripts lived

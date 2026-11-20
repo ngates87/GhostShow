@@ -1,5 +1,6 @@
 <Application xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:browser="using:GhostShow.Browser"
              x:Class="GhostShow.Browser.BrowserApp"
              RequestedThemeVariant="Dark">
   <Application.Styles>
@@ -14,4 +15,26 @@
       </ResourceDictionary.MergedDictionaries>
     </ResourceDictionary>
   </Application.Resources>
+
+  <!-- A device's parts of the shared main view (ShellViewModel's places; the show computer fills them its own way). -->
+  <Application.DataTemplates>
+    <DataTemplate DataType="browser:BrowserStatusViewModel">
+      <StackPanel Orientation="Horizontal" Spacing="16">
+        <TextBlock Text="{Binding SaveState}" Opacity="0.7" IsVisible="{Binding ShowsSaveState}" />
+        <TextBlock Text="{Binding Who}" Opacity="0.7" />
+      </StackPanel>
+    </DataTemplate>
+    <DataTemplate DataType="browser:BrowserButtonsViewModel">
+      <ScrollViewer Width="150" Margin="6,6,0,6" IsVisible="{Binding !!Buttons.Count}">
+        <ItemsControl ItemsSource="{Binding Buttons}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate DataType="browser:BrowserButtonRow">
+              <Button Content="{Binding Name}" Command="{Binding PressCommand}" Background="{Binding Background}"
+                      HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Padding="10,10" Margin="0,0,0,6" />
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </ScrollViewer>
+    </DataTemplate>
+  </Application.DataTemplates>
 </Application>

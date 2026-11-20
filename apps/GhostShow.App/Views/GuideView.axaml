@@ -1,0 +1,35 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:GhostShow.App.ViewModels"
+             x:Class="GhostShow.App.Views.GuideView"
+             x:DataType="vm:SetupGuideViewModel">
+  <!-- Getting started: on the Timeline screen while the show isn't set up yet -->
+  <Border Classes="card" Margin="8,6,8,0" Padding="12,8" IsVisible="{Binding IsVisible}">
+    <DockPanel>
+      <Button DockPanel.Dock="Right" Content="×" Command="{Binding DismissCommand}" VerticalAlignment="Top" Padding="8,2"
+              Background="Transparent" ToolTip.Tip="Hide (for this show)" />
+      <TextBlock DockPanel.Dock="Top" Text="Getting started" FontWeight="SemiBold" Margin="0,0,0,6" />
+      <ItemsControl ItemsSource="{Binding Steps}">
+        <ItemsControl.ItemsPanel>
+          <ItemsPanelTemplate>
+            <WrapPanel />
+          </ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:SetupStepViewModel">
+            <DockPanel Margin="0,0,24,4" MaxWidth="380">
+              <TextBlock DockPanel.Dock="Left" Text="{Binding Mark}" FontSize="16" Margin="0,0,8,0" VerticalAlignment="Top"
+                         Foreground="{Binding IsDone, Converter={x:Static vm:Converters.DoneBrush}}" />
+              <Button DockPanel.Dock="Right" Content="{Binding ActionLabel}" Command="{Binding GoCommand}" IsVisible="{Binding !IsDone}"
+                      VerticalAlignment="Center" Margin="8,0,0,0" Padding="10,3" />
+              <StackPanel>
+                <TextBlock Text="{Binding Title}" Opacity="{Binding IsDone, Converter={x:Static vm:Converters.DoneOpacity}}" />
+                <TextBlock Text="{Binding Hint}" FontSize="11" Opacity="0.6" TextWrapping="Wrap" IsVisible="{Binding !IsDone}" />
+              </StackPanel>
+            </DockPanel>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </DockPanel>
+  </Border>
+</UserControl>

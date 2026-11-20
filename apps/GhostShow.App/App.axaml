@@ -2,6 +2,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:GhostShow.App.ViewModels"
              xmlns:views="using:GhostShow.App.Views"
+             xmlns:controls="using:GhostShow.App.Controls"
              x:Class="GhostShow.App.App"
              RequestedThemeVariant="Dark">
   <Application.Styles>
@@ -21,6 +22,44 @@
   <Application.DataTemplates>
     <DataTemplate DataType="vm:DiagnosticsPaneViewModel">
       <views:DiagnosticsView DataContext="{Binding Diagnostics}" />
+    </DataTemplate>
+
+    <!-- The show computer's parts of the main view (ShellViewModel's places; a device's browser fills them its own way). -->
+    <DataTemplate DataType="vm:HomePageViewModel">
+      <views:HomeView DataContext="{Binding Main}" />
+    </DataTemplate>
+    <DataTemplate DataType="vm:AudioViewModel">
+      <views:AudioView />
+    </DataTemplate>
+    <DataTemplate DataType="vm:InputsViewModel">
+      <views:InputsView />
+    </DataTemplate>
+    <DataTemplate DataType="vm:DiagnosticsViewModel">
+      <views:DiagnosticsView />
+    </DataTemplate>
+    <DataTemplate DataType="vm:ButtonsViewModel">
+      <views:ButtonsPanel />
+    </DataTemplate>
+    <DataTemplate DataType="vm:SetupGuideViewModel">
+      <views:GuideView />
+    </DataTemplate>
+    <!-- Remote access is on: how many devices are connected (opens Remote Access). -->
+    <DataTemplate DataType="vm:RemoteViewModel">
+      <Button Padding="10,3" IsVisible="{Binding IsOn}" Command="{Binding $parent[views:MainView].((vm:ShellViewModel)DataContext).ShowRemoteAccessCommand}"
+              ToolTip.Tip="Devices on this network can connect (View → Remote Access…)">
+        <TextBlock Text="{Binding ConnectedLabel}" />
+      </Button>
+    </DataTemplate>
+    <!-- Load meter: the worst of CPU, playback timing and UI response; click for Diagnostics (with a show open) -->
+    <DataTemplate DataType="vm:PerformanceMeterViewModel">
+      <Button Margin="12,0,0,0" Padding="4,1" MinHeight="0" Background="Transparent" BorderThickness="0"
+              Command="{Binding $parent[views:MainView].((vm:ShellViewModel)DataContext).GoToCommand}" CommandParameter="{x:Static vm:Page.Diagnostics}"
+              ToolTip.Tip="{Binding Tip}">
+        <StackPanel Orientation="Horizontal" Spacing="6">
+          <TextBlock Text="LOAD" FontSize="10" FontWeight="SemiBold" Opacity="0.7" VerticalAlignment="Center" />
+          <controls:LoadMeter Value="{Binding Level}" Width="120" Height="14" VerticalAlignment="Center" />
+        </StackPanel>
+      </Button>
     </DataTemplate>
   </Application.DataTemplates>
 </Application>

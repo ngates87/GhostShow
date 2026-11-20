@@ -9,20 +9,18 @@ using GhostShow.Browser.Remote;
 namespace GhostShow.Browser;
 
 /// <summary>
-/// The browser's File menu: New, Open, Save and Rename. The show computer does the work and picks the place (see
-/// MainViewModel.DeviceShows.cs); this only asks the questions. Its questions appear in <see cref="Questions"/>, laid
-/// over the page, because a browser page can't open a second window.
+/// The browser's side of the File menu (in the shared main view): New, Open, Save and Rename. The show computer does
+/// the work and picks the place, in its shows folder (see MainViewModel.DeviceShows.cs); this only asks the questions.
+/// They appear in <see cref="Questions"/>, laid over the page, because a browser page can't open a second window.
 /// </summary>
 sealed class FileMenu
 {
     readonly RemoteLink _link;
     readonly Action<string> _notice;
     readonly Func<string> _showName;
-    readonly MenuItem _rename = new() { Header = "Rename…" };
     bool _unsaved;
     bool _needsFirstSave;
 
-    public Button Button { get; } = new() { Content = "File", Padding = new(12, 3), Margin = new(4, 3), VerticalAlignment = VerticalAlignment.Center };
     public Border Questions { get; } = new() { IsVisible = false, Background = new SolidColorBrush(Colors.Black, 0.6) };
 
     public FileMenu(RemoteLink link, Action<string> notice, Func<string> showName)
@@ -30,18 +28,6 @@ sealed class FileMenu
         _link = link;
         _notice = notice;
         _showName = showName;
-
-        var newShow = new MenuItem { Header = "New" };
-        var open = new MenuItem { Header = "Open…" };
-        var save = new MenuItem { Header = "Save" };
-        newShow.Click += (_, _) => New();
-        open.Click += (_, _) => _link.Send("listShows");
-        save.Click += (_, _) => Save();
-        _rename.Click += (_, _) => AskForName("Rename show", "Rename", _showName(), name => RequestAsync("renameShow", name));
-        var menu = new MenuFlyout();
-        foreach (var item in new[] { newShow, open, save, _rename }) menu.Items.Add(item);
-        Button.Flyout = menu;
-
         _link.Shows += message => Dispatcher.UIThread.Post(() => ShowList(message));
     }
 
@@ -50,7 +36,16 @@ sealed class FileMenu
     {
         _unsaved = unsaved;
         _needsFirstSave = needsFirstSave;
-        _rename.IsEnabled = !needsFirstSave;
+    }
+
+    /// <summary>File → Open…: asks the show computer for its shows; the list comes back as a "shows" message.</summary>
+    public void Open() => _link.Send("listShows");
+
+    /// <summary>File → Rename…: only a show that has a name already (a new one is named when it's first saved).</summary>
+    public void Rename()
+    {
+        if (_needsFirstSave) Save();
+        else AskForName("Rename show", "Rename", _showName(), name => RequestAsync("renameShow", name));
     }
 
     /// <summary>File → Save and Ctrl+S: a show without a name is asked for one, and saves itself from then on.</summary>
@@ -67,7 +62,7 @@ sealed class FileMenu
         if (await _link.RequestAsync("save") is { } error) _notice(error);
     }
 
-    void New() => IfLosingWorkIsAgreed("starting a new show", discard => _ = LeaveAsync("newShow", discard, name: null));
+    public void New() => IfLosingWorkIsAgreed("starting a new show", discard => _ = LeaveAsync("newShow", discard, name: null));
 
     void ShowList(JsonObject message)
     {

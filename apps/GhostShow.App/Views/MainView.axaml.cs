@@ -4,7 +4,6 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.VisualTree;
-using GhostShow.App.Dialogs;
 using GhostShow.App.ViewModels;
 using GhostShow.Core.Model;
 
@@ -12,8 +11,8 @@ namespace GhostShow.App.Views;
 
 /// <summary>
 /// Everything inside the main window: menus, sections and pages, the Buttons panel and the status bar, with the keys
-/// that work everywhere (Space, trigger keys, learning a key, leaving a field). The desktop's window hosts it; the plan
-/// is for the browser page to host it too (docs/plan-shared-view.md).
+/// that work everywhere (Space, trigger keys, learning a key, leaving a field). The desktop's window hosts it, and so
+/// does a device's browser page (docs/plan-shared-view.md). Keys fire triggers only on the show computer.
 /// </summary>
 public partial class MainView : UserControl
 {
@@ -26,8 +25,6 @@ public partial class MainView : UserControl
     /// <summary>The window (or page) this view is in. Key presses go to it when no control has focus, so the keys are
     /// listened for there rather than on this view, or a key pressed with nothing focused would never be seen.</summary>
     TopLevel? Host { get; set; }
-
-    Window? Window => Host as Window;
 
     public MainView() => InitializeComponent();
 
@@ -62,13 +59,13 @@ public partial class MainView : UserControl
     {
         _heldKeys.Clear();
         _inputKeys.Clear();
-        if (DataContext is MainViewModel viewModel) viewModel.Buttons.IsAppFocused = false;
+        if (DataContext is ShellViewModel viewModel) viewModel.Buttons.IsAppFocused = false;
     }
 
     /// <summary>The host has the keyboard again.</summary>
     public void HostGotFocus()
     {
-        if (DataContext is MainViewModel viewModel) viewModel.Buttons.IsAppFocused = true;
+        if (DataContext is ShellViewModel viewModel) viewModel.Buttons.IsAppFocused = true;
     }
 
     /// <summary>
@@ -81,7 +78,7 @@ public partial class MainView : UserControl
     void OnKeyDown(object? sender, KeyEventArgs e)
     {
         bool isRepeat = !_heldKeys.Add(e.Key);
-        if (DataContext is not MainViewModel { IsShowOpen: true } viewModel) return;
+        if (DataContext is not ShellViewModel { IsShowOpen: true } viewModel) return;
         var buttons = viewModel.Buttons;
         if (buttons.IsLearningKey)
         {
@@ -100,6 +97,7 @@ public partial class MainView : UserControl
         }
         if (typing && TriggerKeys.TypesText(key)) return;   // it goes to the field
 
+        if (!viewModel.KeysFireTriggers) return;   // a device's keyboard: only learning a key and Space (above)
         if (!isRepeat)
         {
             _inputKeys.Add(e.Key);
@@ -118,7 +116,7 @@ public partial class MainView : UserControl
     void OnKeyUp(object? sender, KeyEventArgs e)
     {
         _heldKeys.Remove(e.Key);
-        if (_inputKeys.Remove(e.Key) && DataContext is MainViewModel viewModel)
+        if (_inputKeys.Remove(e.Key) && DataContext is ShellViewModel viewModel)
             viewModel.Buttons.Input(InputTrigger.Keyboard, e.Key.ToString(), isPressed: false);
     }
 
@@ -130,9 +128,9 @@ public partial class MainView : UserControl
     {
         if (e.Source is not Visual clicked) return;
         LeaveFieldUnlessClickedIn(clicked);
-        if (DataContext is not MainViewModel { Buttons.IsLearningKey: true } viewModel) return;
+        if (DataContext is not ShellViewModel { Buttons.IsLearningKey: true } viewModel) return;
         bool inField = clicked is TextBox || clicked.FindAncestorOfType<TextBox>() is not null;
-        if (inField || clicked.FindAncestorOfType<ButtonsPanel>() is null) viewModel.Buttons.CancelLearningKey();
+        if (inField || !ButtonsPart.IsVisualAncestorOf(clicked)) viewModel.Buttons.CancelLearningKey();
     }
 
     /// <summary>
@@ -157,27 +155,5 @@ public partial class MainView : UserControl
         if (e.Key is not (Key.Enter or Key.Escape) || Host?.FocusManager?.GetFocusedElement() is not TextBox) return;
         LeaveField();
         e.Handled = true;
-    }
-
-    async void OnAbout(object? sender, RoutedEventArgs e)
-    {
-        if (Window is { } window) await new AboutDialog().ShowDialog(window);
-    }
-
-    RemoteWindow? _remote;
-
-    /// <summary>View → Remote Access… (or the menu bar's indicator): one window, brought to the front if it's open.</summary>
-    void OnRemote(object? sender, RoutedEventArgs e)
-    {
-        if (DataContext is not MainViewModel viewModel) return;
-        if (Window is null) return;   // only a window has other windows
-        if (_remote is { } open)
-        {
-            open.Activate();
-            return;
-        }
-        _remote = new RemoteWindow { DataContext = viewModel.Remote };
-        _remote.Closed += (_, _) => _remote = null;
-        _remote.Show(Window);
     }
 }
