@@ -292,9 +292,10 @@ Small steps; each one leaves the app working.
       auto-save, new, open, save and save as, a device's save as and rename by name, copying audio in, and the recent
       list (the future show library). The desktop keeps its file dialogs (importing, choosing a folder, asking to save
       changes) and asks it to do the rest; it tells the desktop when another show is open, and what to say.
-   4. **Commands in the server:** `AppShowControl` drives the desktop's view models today, including "the timeline open
-      in the editor" for the simple remote page's transport. It becomes the server's, with the focused timeline as
-      something a screen tells it.
+   4. **Commands in the server** (done 2026-11-20): `ShowControl` (GhostShow.Server, was `AppShowControl` over the
+      desktop's view models) works playback, triggers and files directly. The desktop tells it which timeline is open
+      in the editor (the transport's), does Blackout and the test tone for it, and opens a timeline a device asks for
+      (`OpenRequested`).
    5. **The remote server's host in the server:** `AppRemoteHost` and Remote Access's settings, so the server can
       serve devices with no window at all (`GhostShow.Cli` or step 7's tray program can then run it).
    Then step 5 points the desktop's screens at the server over the connection instead of in-process.

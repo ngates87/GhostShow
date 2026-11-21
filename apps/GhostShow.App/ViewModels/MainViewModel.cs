@@ -41,6 +41,7 @@ public sealed partial class MainViewModel : ShellViewModel
     readonly SettingsSaver _settingsSaver;
     readonly DispatcherTimer _tick;
     readonly ShowFiles _files;
+    readonly ShowControl _control;
     int _tickCount;
 
     public MainViewModel(ShowServices services, IStorageProvider storage, ISaveChangesPrompt savePrompt, ILogger<MainViewModel> logger)
@@ -71,6 +72,15 @@ public sealed partial class MainViewModel : ShellViewModel
         Performance = new PerformanceMeterViewModel(() => services.PlaybackLoop.Timing, () => services.Probe.Snapshot(last: 20).P95Ms);
         _triggers = local.Triggers;
         _files = new ShowFiles(session, settings, paths, SaveSettingsAsync, services.Thread);
+        _control = new ShowControl(session, local.Playback, _triggers, _files, () => Playback.FocusedId, () => BlackoutCommand.Execute(null),
+                                   (device, side) => AudioDevices.PlayTestSound(device, side));
+        // A device opened a timeline: the editor shows it, and the transport works it.
+        _control.OpenRequested += id =>
+        {
+            if (_session.Project.Timelines.FirstOrDefault(t => t.Id == id) is not { } timeline) return;
+            Timeline.OpenTimeline(timeline);
+            Timeline.Tree.Reveal(timeline);
+        };
         _serial = services.SerialInputs ?? new SerialInputs(logger);
         _inputSetup = new LocalInputSetup(session, _serial, settings, SaveSettingsAsync,
             // Only adapters that have their port open: one that's missing keeps the name of the port it was last on, and
@@ -87,7 +97,7 @@ public sealed partial class MainViewModel : ShellViewModel
         });
         _serial.StatusChanged += _ => Dispatcher.UIThread.Post(_inputSetup.Refresh);
         _audioSetup = new LocalAudioSetup(services.Audio, session, settings, SaveSettingsAsync, services.Thread);
-        Remote = new RemoteViewModel(new AppRemoteHost(session, ShowPlayback, Playback, new AppShowControl(this), () => WarningsSnapshot, AudioDevices, () => IsDirty, () => _session.FilePath is null || _session.IsSingleFileShow, local.Library, _outputSetup, local.Levels,
+        Remote = new RemoteViewModel(new AppRemoteHost(session, ShowPlayback, Playback, _control, () => WarningsSnapshot, AudioDevices, () => IsDirty, () => _session.FilePath is null || _session.IsSingleFileShow, local.Library, _outputSetup, local.Levels,
                                                        _triggers, _inputSetup, _audioSetup, _diagnostics),
                                      settings.Remote, SaveSettingsAsync, logger);
         Audio = new AudioViewModel(_audioSetup, AudioDevices);
@@ -105,16 +115,9 @@ public sealed partial class MainViewModel : ShellViewModel
             OnPropertyChanged(nameof(Title));
             OnPropertyChanged(nameof(ShowFile));
         };
-        _files.Saved += () =>
-        {
-            Timeline.RefreshTitles();
-            RefreshRecentShows();
-        };
-        _files.Renamed += () =>
-        {
-            Remote.ShowReplaced();   // devices show the new name
-            RefreshRecentShows();
-        };
+        _files.Saved += Timeline.RefreshTitles;
+        _files.RecentChanged += RefreshRecentShows;
+        _files.Renamed += Remote.ShowReplaced;   // devices show the new name
         _files.Status += message => StatusMessage = message;
         _files.Problem += ReportError;
 
@@ -415,12 +418,7 @@ public sealed partial class MainViewModel : ShellViewModel
         if (files is [var file] && file.TryGetLocalPath() is { } path) await OpenPathAsync(path);
     }
 
-    async Task OpenPathAsync(string path)
-    {
-        if (!await _files.OpenAsync(path)) return;
-        ShowEditor();
-        RefreshRecentShows();
-    }
+    async Task OpenPathAsync(string path) => await _files.OpenAsync(path);
 
     /// <summary>
     /// Copies the sounds the show uses from outside its folder into its "audio" folder (see <see cref="ShowFiles.CollectAudioAsync"/>).
@@ -464,6 +462,7 @@ public sealed partial class MainViewModel : ShellViewModel
         Inputs.Reload();
         Remote.ShowReplaced();
         Guide.Reset();
+        ShowEditor();   // (closing the show goes back to Home after this)
         await _outputSetup.ApplyAsync();
         OnPropertyChanged(nameof(Title));
         OnPropertyChanged(nameof(ShowFile));

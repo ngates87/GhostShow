@@ -9,20 +9,9 @@ public sealed partial class MainViewModel
 {
     public IReadOnlyList<string> SavedShowsForDevice() => _files.SavedShows();
 
-    public async Task<string?> NewShowForDeviceAsync(bool discardUnsaved)
-    {
-        if (await _files.NewForDeviceAsync(discardUnsaved) is { } problem) return problem;
-        ShowEditor();
-        return null;
-    }
+    public Task<string?> NewShowForDeviceAsync(bool discardUnsaved) => _files.NewForDeviceAsync(discardUnsaved);
 
-    public async Task<string?> OpenShowForDeviceAsync(string name, bool discardUnsaved)
-    {
-        if (await _files.OpenByNameAsync(name, discardUnsaved) is { } problem) return problem;
-        ShowEditor();
-        RefreshRecentShows();
-        return null;
-    }
+    public Task<string?> OpenShowForDeviceAsync(string name, bool discardUnsaved) => _files.OpenByNameAsync(name, discardUnsaved);
 
     public Task<string?> SaveShowAsForDeviceAsync(string name) => _files.SaveAsByNameAsync(name);
 

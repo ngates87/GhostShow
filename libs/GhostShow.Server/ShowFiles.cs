@@ -48,6 +48,9 @@ public sealed class ShowFiles : IDisposable
     /// <summary>The show was written: its timelines' titles lose their unsaved mark.</summary>
     public event Action? Saved;
 
+    /// <summary>The recent list changed (a show opened or saved went to its top, or one was removed).</summary>
+    public event Action? RecentChanged;
+
     /// <summary>The show got a name from a device (saved by name, or renamed): devices show it.</summary>
     public event Action? Renamed;
 
@@ -273,6 +276,7 @@ public sealed class ShowFiles : IDisposable
     public async Task ForgetRecentAsync(string path)
     {
         _settings.RemoveRecentShow(path);
+        RecentChanged?.Invoke();
         await _saveSettings();
     }
 
@@ -282,6 +286,7 @@ public sealed class ShowFiles : IDisposable
         string? path = _session.IsSingleFileShow ? _session.FilePath : _session.ShowFolder;
         if (path is null) return;
         _settings.AddRecentShow(path);
+        RecentChanged?.Invoke();
         await _saveSettings();
     }
 
