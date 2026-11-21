@@ -126,7 +126,7 @@ tried in Chromium against the desktop.
      (`learning`); while any device is, the show computer sends it the commands that arrive (`input`) instead of setting
      off triggers with them, as it does while learning one itself. The same feed will serve the input monitor (step 5).
    - Operators: the panel can't be edited (`CanEdit`), and `learning` is editor-only on the show computer.
-   - On the show computer, `AppTriggerControl` is what the server works through (`IRemoteHost.Triggers`).
+   - On the show computer, the server works through `ShowTriggers` (`IRemoteHost.Triggers`; it was `AppTriggerControl`, over the panel, until plan-remote step 4 part 2).
    - A role changed on the show computer (`device`) changes the page at once: the File menu and the panel's editing.
 5. **Inputs in the browser (done 2026-11-20).** The browser shows the desktop's `InputsView`
    and input monitor on the shared `InputsViewModel`.

@@ -121,7 +121,7 @@ sealed class ShellView : Border
         _audioDevices.Update(message["audioDevices"] as JsonArray);
         if (_shell is null)
         {
-            _shell = new BrowserShellViewModel(_session, new ShellServices(_remote, _library, _outputSetup, _levels, _audioDevices, _edits, _triggers), _inputSetup, _audioSetup, _diagnostics, _link, _fileMenu);
+            _shell = new BrowserShellViewModel(_session, new ShellServices(_remote, _library, _outputSetup, _levels, _audioDevices, _triggers, _edits), _inputSetup, _audioSetup, _diagnostics, _link, _fileMenu);
             _shell.PropertyChanged += (_, e) =>
             {
                 if (e.PropertyName == nameof(ShellViewModel.Title)) ShowTitle();

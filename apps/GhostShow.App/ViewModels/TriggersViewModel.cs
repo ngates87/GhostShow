@@ -7,8 +7,9 @@ using GhostShow.Core.Inputs;
 namespace GhostShow.App.ViewModels;
 
 /// <summary>
-/// A device's way to the show computer's triggers, which run only there (docs/plan-shared-view.md, decision 1). The
-/// show computer sends how they stand (<see cref="ButtonsViewModel.ShowStates"/>).
+/// A Buttons panel's way to the show's triggers, which run only on the show computer, in its server (docs/plan-shared-view.md,
+/// decision 1): over the connection from a device, in-process on the show computer itself. They send how they stand
+/// (<see cref="ButtonsViewModel.ShowStates"/>) and the inputs that arrive (<see cref="ButtonsViewModel.ShowInput"/>).
 /// </summary>
 public interface IRemoteTriggers
 {
@@ -17,13 +18,25 @@ public interface IRemoteTriggers
     void SetOn(Guid owner, int index, bool on);
     void Reset(Guid owner, int index);
 
-    /// <summary>This device is waiting for a trigger (or stopped): the show computer sends it the commands that arrive.</summary>
+    /// <summary>This panel is waiting for a trigger (or stopped): the show computer sends it the commands that arrive.</summary>
     void SetLearning(bool learning);
+
+    /// <summary>
+    /// An input on the show computer (its keys): its triggers hear it. Returns the button it pressed, or null. Only the
+    /// show computer's keyboard fires triggers, so from a device this does nothing.
+    /// </summary>
+    Guid? Input(InputEvent input) => null;
+
+    /// <summary>The panel that shows them, once it's made: the show computer's own is sent how they stand as it happens.</summary>
+    void Attach(ButtonsViewModel panel) { }
 }
 
 /// <summary>What has a list of triggers: a show button (they press it), or a timeline (they run it).</summary>
-public interface ITriggerOwner : ITriggerTarget
+public interface ITriggerOwner
 {
+    /// <summary>"Scare", "Hallway".</summary>
+    string Name { get; }
+
     /// <summary>The button's or timeline's id.</summary>
     Guid Id { get; }
 
@@ -134,7 +147,7 @@ public sealed class TriggerListViewModel : ObservableCollection<TriggerViewModel
 
 /// <summary>
 /// One trigger, in its button's or timeline's editor: its settings (saved with the show), and while the show runs, how
-/// it stands (not saved), from its <see cref="TriggerRunner"/>.
+/// it stands on the show computer (not saved), where it runs.
 /// </summary>
 public sealed partial class TriggerViewModel : ObservableObject
 {
@@ -146,12 +159,9 @@ public sealed partial class TriggerViewModel : ObservableObject
         Trigger = trigger;
         _list = list;
         _hub = hub;
-        Runner = new TriggerRunner(trigger, list.Owner);
     }
 
     public InputTrigger Trigger { get; }
-
-    internal TriggerRunner Runner { get; }
 
     internal ITriggerOwner Owner => _list.Owner;
 
@@ -363,66 +373,39 @@ public sealed partial class TriggerViewModel : ObservableObject
     /// <summary>Off: does nothing until turned back on or the show is reopened. For a sensor that misbehaves mid-show.</summary>
     public bool IsOn
     {
-        get => Runner.IsOn;
+        get => _isOn;
         set
         {
-            if (value == Runner.IsOn) return;
-            Runner.IsOn = value;
+            if (value == _isOn) return;
+            _isOn = value;
             OnPropertyChanged();
-            if (_hub.Remote is { } remote) remote.SetOn(Owner.Id, _list.IndexOf(this), value);
-            else Tick(_hub.Now, _hub.TriggersArmed);
+            _hub.Remote.SetOn(Owner.Id, _list.IndexOf(this), value);
         }
     }
+
+    bool _isOn = true;
 
     /// <summary>A run-once trigger that has fired: Reset lets it fire again.</summary>
     [ObservableProperty]
     public partial bool IsSpent { get; private set; }
 
     [RelayCommand]
-    void Reset()
-    {
-        _hub.Remote?.Reset(Owner.Id, _list.IndexOf(this));
-        Runner.Reset();
-        IsSpent = false;
-        State = Runner.Describe(_hub.Now);
-    }
+    void Reset() => _hub.Remote.Reset(Owner.Id, _list.IndexOf(this));
 
     /// <summary>"Ready", "Active", "Re-arms in 2.5 s", "Off", with when it last fired.</summary>
     [ObservableProperty]
     public partial string State { get; private set; } = "Ready";
 
-    /// <summary>An event from its input: what came of it (see <see cref="TriggerRunner.Handle"/>).</summary>
-    internal (bool Fired, string Outcome) Handle(InputEvent e, bool armed)
-    {
-        var result = Runner.Handle(e, armed);
-        Show(e.Time);
-        return result;
-    }
-
-    /// <summary>From the panel's refresh: re-arming, and firing again while held. Returns what it did, or null.</summary>
-    internal string? Tick(DateTimeOffset now, bool armed)
-    {
-        var did = Runner.Tick(now, armed);
-        Show(now);
-        return did;
-    }
-
-    /// <summary>On a device: how it stands on the show computer, where it runs.</summary>
+    /// <summary>How it stands on the show computer, where it runs.</summary>
     internal void ShowRemote(TriggerState state)
     {
-        if (Runner.IsOn != state.IsOn)
+        if (_isOn != state.IsOn)
         {
-            Runner.IsOn = state.IsOn;
+            _isOn = state.IsOn;
             OnPropertyChanged(nameof(IsOn));
         }
         IsSpent = state.IsSpent;
         State = state.State;
-    }
-
-    void Show(DateTimeOffset now)
-    {
-        IsSpent = Runner.IsSpent;
-        State = Runner.Describe(now);
     }
 }
 

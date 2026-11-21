@@ -3,6 +3,7 @@ using GhostShow.App.ViewModels;
 using GhostShow.Core.Editing;
 using GhostShow.Core.Inputs;
 using GhostShow.Core.Model;
+using GhostShow.Server;
 
 namespace GhostShow.App.Tests;
 
@@ -44,7 +45,7 @@ public class RemoteInputsTests : IDisposable
         }
     }
 
-    public RemoteInputsTests() => _buttons = new ButtonsViewModel(_rig.Session, _rig.Playback, () => { }, () => { });
+    public RemoteInputsTests() => _buttons = new ButtonsViewModel(_rig.Session, _rig.Playback, () => { }, new LocalTriggers(new ShowTriggers(_rig.Session, _rig.Playback.Show, () => { })));
 
     public void Dispose() => _rig.Dispose();
 

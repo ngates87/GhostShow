@@ -282,10 +282,12 @@ Small steps; each one leaves the app working.
       became `IShowThread` (the desktop's `UiShowThread` posts to its UI thread) and its timer a `Debouncer`. Playback
       in words (`PlaybackText`) moved to Core. The probe now measures the show thread's queue at normal priority
       rather than at input priority.
-   2. **Triggers in the server.** Today they run in `ButtonsViewModel` and `TriggerViewModel` (dispatching inputs,
-      arming, run-once and re-arm, firing again while held). They move into a Core/server `ShowTriggers` behind
-      `ITriggerControl`, and the desktop's panel shows them the way a device's already does (`IRemoteTriggers`, the
-      `triggers` feed), in-process. The show computer's keyboard reaches them as an input, as serial commands do.
+   2. **Triggers in the server** (done 2026-11-20). `ShowTriggers` (GhostShow.Server) runs them: dispatching inputs,
+      arming, run-once and re-arm, firing again while held, pressing buttons. Every Buttons panel shows them through
+      `IRemoteTriggers`: a device's over the connection, the desktop's in-process (`LocalTriggers`), sent how they
+      stand after each change. The show computer's keys and serial commands are inputs to it; a panel waiting for a
+      trigger (on a device or the desktop) is sent the commands that arrive, and learns them itself. For now the
+      desktop's refresh timer ticks it; part 5 gives the server its own.
    3. **The show's files in the server:** new, open, save, auto-save, save as and rename by name, copying audio in, and
       the recent list (the future show library), out of `MainViewModel` and `MainViewModel.DeviceShows`. The desktop
       keeps its file dialogs for importing and choosing a folder, and asks the server to do the rest.

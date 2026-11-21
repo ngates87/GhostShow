@@ -3,6 +3,7 @@ using GhostShow.Core.Inputs;
 using GhostShow.Core.Model;
 using GhostShow.Core.Playback;
 using GhostShow.Core.Timeline;
+using GhostShow.Server;
 
 namespace GhostShow.App.Tests;
 
@@ -11,6 +12,7 @@ public class ButtonsTests : IDisposable
 {
     readonly TimelineRig _rig = new();
     readonly ButtonsViewModel _buttons;
+    readonly ShowTriggers _triggers;
     readonly ShowTimeline _scare;
     readonly FakeTime _time = new();
     int _blackouts, _edits;
@@ -28,15 +30,24 @@ public class ButtonsTests : IDisposable
     {
         _scare = new ShowTimeline { Name = "Scare", Folder = "Rooms", Length = TimeSpan.FromSeconds(10), Tracks = [] };
         _rig.Session.Project.Timelines.Add(_scare);
-        _buttons = new ButtonsViewModel(_rig.Session, _rig.Playback, () => _blackouts++, () => _edits++, _time);
+        _triggers = new ShowTriggers(_rig.Session, _rig.Playback.Show, () => _blackouts++, _time);
+        _buttons = new ButtonsViewModel(_rig.Session, _rig.Playback, () => _edits++, new LocalTriggers(_triggers));
     }
 
     public void Dispose() => _rig.Dispose();
+
+    /// <summary>The refresh: triggers re-arm and repeat (on the show computer), and buttons light.</summary>
+    void Tick()
+    {
+        _triggers.Tick();
+        _buttons.Tick();
+    }
 
     /// <summary>A button with these actions, as if the show was opened with it.</summary>
     ShowButtonViewModel Button(string name, params ButtonAction[] actions)
     {
         _rig.Session.Project.Buttons.Add(new ShowButton { Name = name, Actions = [.. actions] });
+        _triggers.Reload();
         _buttons.Reload();
         return _buttons.Buttons[^1];
     }
@@ -58,7 +69,7 @@ public class ButtonsTests : IDisposable
         _buttons.Press(scare);
 
         Assert.Equal(2, Copies);   // VenueMagic: each press runs it again
-        _buttons.Tick();
+        Tick();
         Assert.True(scare.IsLit);
 
         _rig.Manager.StopTimeline(_scare.Id);
@@ -67,6 +78,7 @@ public class ButtonsTests : IDisposable
         _buttons.Press(scare);
         _buttons.Press(scare);
         Assert.Equal(1, Copies);   // it doesn't stack
+        _rig.Playback.Tick();
         Assert.True(Assert.Single(_rig.Playback.Running).OneOnly);   // and the Playing list shows it
 
         _rig.Session.Document.UndoLatest(null);
@@ -82,6 +94,7 @@ public class ButtonsTests : IDisposable
         Assert.True(((RunTimelineAction)run.Button.Actions[0]).Loop);
 
         _buttons.Press(run);
+        _rig.Playback.Tick();
         var row = Assert.Single(_rig.Playback.Running);
         Assert.True((row.Loops, row.OneOnly) == (true, false));
 
@@ -103,7 +116,7 @@ public class ButtonsTests : IDisposable
         _rig.Manager.Tick();
 
         Assert.False(_rig.Manager.IsRunning(_scare.Id));
-        _buttons.Tick();
+        Tick();
         Assert.False(run.IsLit);
 
         _buttons.Press(run);
@@ -147,7 +160,7 @@ public class ButtonsTests : IDisposable
     {
         _rig.Manager.StopTimeline(_scare.Id);
         _rig.Manager.Tick();
-        _buttons.Tick();
+        Tick();
     }
 
     [Fact]
@@ -163,13 +176,14 @@ public class ButtonsTests : IDisposable
         _buttons.Press(button);   // a click
         Assert.Equal(1, Copies);
 
+        _triggers.Reload();
         _buttons.Reload();   // the show opened again: armed, not saved as off
         Assert.True(_buttons.TriggersArmed);
 
         var trigger = _buttons.Buttons.Single().Triggers.Single();
         trigger.IsOn = false;   // just this one
         Assert.False(_buttons.PressKey("F5"));
-        _buttons.Tick();
+        Tick();
         Assert.Equal("Off", trigger.State);
         trigger.IsOn = true;
         Assert.True(_buttons.PressKey("F5"));
@@ -186,7 +200,7 @@ public class ButtonsTests : IDisposable
         _time.Advance(2);
         Assert.False(_buttons.PressKey("F5"));
         Assert.True(_buttons.HasKey("F5"));   // still the button's key: it's taken, and does nothing yet
-        _buttons.Tick();
+        Tick();
         Assert.Equal("Re-arms in 3.0 s · last fired 20:00:00", trigger.State);
 
         _time.Advance(3);
@@ -204,7 +218,7 @@ public class ButtonsTests : IDisposable
 
         Assert.True(_buttons.PressKey("F5"));
         _time.Advance(30);
-        _buttons.Tick();
+        Tick();
         Assert.False(_buttons.PressKey("F5"));   // the scare is still playing
         Assert.StartsWith("Waiting for its timelines to finish", trigger.State);
 
@@ -778,6 +792,7 @@ public class ButtonsTests : IDisposable
         _scare.Triggers.Add(new InputTrigger { Address = "F7" });
         var shown = _buttons.TriggersFor(_scare)!;
 
+        _triggers.Reload();
         _buttons.Reload();
 
         Assert.Same(shown, _buttons.TriggersFor(_scare));

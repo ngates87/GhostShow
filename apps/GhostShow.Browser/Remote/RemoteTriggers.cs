@@ -36,7 +36,6 @@ sealed class RemoteTriggers(RemoteLink link) : IRemoteTriggers
         string source = message["source"]!.GetValue<string>(), address = message["address"]!.GetValue<string>();
         bool pressed = message["pressed"]?.GetValue<bool>() != false;
         string? value = message["value"]?.GetValue<string>();
-        if (buttons.IsLearningKey) buttons.Input(source, address, pressed, device, value);
-        else buttons.ShowInput(new InputEvent(source, address, pressed, DateTimeOffset.Now, device, value), message["outcome"]?.GetValue<string>() ?? "");
+        buttons.ShowInput(new InputEvent(source, address, pressed, DateTimeOffset.Now, device, value), message["outcome"]?.GetValue<string>() ?? "");
     }
 }

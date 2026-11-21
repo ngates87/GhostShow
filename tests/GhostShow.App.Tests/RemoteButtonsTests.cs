@@ -2,6 +2,7 @@ using GhostShow.App.ViewModels;
 using GhostShow.Core.Inputs;
 using GhostShow.Core.Model;
 using GhostShow.Core.Timeline;
+using GhostShow.Server;
 
 namespace GhostShow.App.Tests;
 
@@ -46,9 +47,14 @@ public class RemoteButtonsTests : IDisposable
 
     public void Dispose() => _rig.Dispose();
 
-    ButtonsViewModel Device(ShowComputer showComputer) => new(_rig.Session, _rig.Playback, () => { }, () => { }, remote: showComputer);
+    ButtonsViewModel Device(ShowComputer showComputer) => new(_rig.Session, _rig.Playback, () => { }, showComputer);
 
-    ButtonsViewModel ShowComputerPanel() => new(_rig.Session, _rig.Playback, () => { }, () => { });
+    /// <summary>The show computer's triggers (its server's), and its own panel on them.</summary>
+    (ShowTriggers Triggers, ButtonsViewModel Panel) ShowComputerPanel()
+    {
+        var triggers = new ShowTriggers(_rig.Session, _rig.Playback.Show, () => { });
+        return (triggers, new ButtonsViewModel(_rig.Session, _rig.Playback, () => { }, new LocalTriggers(triggers)));
+    }
 
     int Copies => _rig.Manager.Running.Count(r => r.TimelineId == _scare.Id);
 
@@ -73,7 +79,7 @@ public class RemoteButtonsTests : IDisposable
         buttons.Input(InputTrigger.Serial, "BTN24", isPressed: true, _box);
         buttons.Tick();
         Assert.Equal(0, Copies);
-        Assert.Empty(showComputer.Calls);   // the show computer hears its own inputs
+        Assert.Empty(showComputer.Calls);   // the show computer hears its own inputs (a device's keys don't fire triggers)
     }
 
     [Fact]
@@ -116,30 +122,30 @@ public class RemoteButtonsTests : IDisposable
     [Fact]
     public void While_a_device_learns_the_show_computer_holds_commands_for_it_but_its_keys_still_work()
     {
-        var buttons = ShowComputerPanel();
+        var (triggers, buttons) = ShowComputerPanel();
         string? outcome = null;
         buttons.InputReceived += (_, said) => outcome = said;
 
-        buttons.IsDeviceLearning = true;
-        buttons.Command(_box, "BTN24");
+        triggers.SetDeviceLearning(true);
+        triggers.Command(_box, "BTN24");
         Assert.Equal(0, Copies);
-        Assert.Equal("Sent to the device waiting for a trigger", outcome);
+        Assert.Equal("Sent to the trigger being learned", outcome);
         buttons.PressKey("F5");
         Assert.Equal(1, Copies);
 
-        buttons.IsDeviceLearning = false;
-        buttons.Command(_box, "BTN24");
+        triggers.SetDeviceLearning(false);
+        triggers.Command(_box, "BTN24");
         Assert.Equal(2, Copies);
     }
 
     [Fact]
     public void The_show_computer_says_how_each_trigger_stands_by_its_button_and_place()
     {
-        var buttons = ShowComputerPanel();
-        buttons.Command(_box, "BTN24");   // the run-once trigger fires, and is spent
+        var (triggers, buttons) = ShowComputerPanel();
+        triggers.Command(_box, "BTN24");   // the run-once trigger fires, and is spent
         buttons.FindTrigger(_button.Id, 0)!.IsOn = false;
 
-        var states = buttons.States;
+        var states = triggers.States;
         Assert.True(states.Armed);
         Assert.Equal([(0, false, false), (1, true, true)], states.Triggers.Where(t => t.Owner == _button.Id).Select(t => (t.Index, t.IsOn, t.IsSpent)));
         Assert.Null(buttons.FindTrigger(_button.Id, 2));

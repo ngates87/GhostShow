@@ -51,42 +51,6 @@ sealed class AppRemoteHost(ShowSession session, ShowPlayback playback, PlaybackV
     }
 }
 
-/// <summary>The show's triggers, for devices: the Buttons panel's, which run them here. On the UI thread.</summary>
-sealed class AppTriggerControl(ButtonsViewModel buttons) : ITriggerControl
-{
-    const string Gone = "That trigger isn't in the show any more.";
-
-    public TriggerStates States => buttons.States;
-
-    public string? SetArmed(bool armed)
-    {
-        buttons.TriggersArmed = armed;
-        return null;
-    }
-
-    public string? SetOn(Guid owner, int index, bool on)
-    {
-        if (buttons.FindTrigger(owner, index) is not { } trigger) return Gone;
-        trigger.IsOn = on;
-        return null;
-    }
-
-    public string? Reset(Guid owner, int index)
-    {
-        if (buttons.FindTrigger(owner, index) is not { } trigger) return Gone;
-        trigger.ResetCommand.Execute(null);
-        return null;
-    }
-
-    public void SetDeviceLearning(bool learning) => buttons.IsDeviceLearning = learning;
-
-    public event Action<InputEvent, string>? InputReceived
-    {
-        add => buttons.InputReceived += value;
-        remove => buttons.InputReceived -= value;
-    }
-}
-
 /// <summary>
 /// A device's commands, done the way the desktop's own controls do them (the transport, the Playing list, show buttons,
 /// Blackout), so a device and the desktop never behave differently. On the UI thread.

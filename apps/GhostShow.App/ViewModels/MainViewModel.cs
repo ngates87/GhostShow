@@ -72,23 +72,25 @@ public sealed partial class MainViewModel : ShellViewModel
         _diagnostics = new LocalDiagnostics(services, () => Playback.Timeline);
         Diagnostics = new DiagnosticsViewModel(_diagnostics);
         Performance = new PerformanceMeterViewModel(() => services.PlaybackLoop.Timing, () => services.Probe.Snapshot(last: 20).P95Ms);
+        _triggers = local.Triggers;
         _serial = services.SerialInputs ?? new SerialInputs(logger);
         _inputSetup = new LocalInputSetup(session, _serial, settings, SaveSettingsAsync,
             // Only adapters that have their port open: one that's missing keeps the name of the port it was last on, and
             // another device may have that name now (the DMX output checks the adapter's serial number, so it won't take it).
             () => outputs.Services.Where(s => s.Status == DmxOutputStatus.Connected && s.Device.Port is not null).Select(s => (s.Universe, s.Device.Port!)));
         Inputs = new InputsViewModel(session, _inputSetup, Buttons);
+        _inputSetup.Changed += () => _triggers.SerialListening = _inputSetup.State.Devices.Any(d => d.IsListening);
         BottomWorkspace = new BottomWorkspaceViewModel(Playback, Inputs.Monitor, Lighting, Diagnostics, settings.Panels, offersPlaying: false);
         // Both come on a port's reading thread, and are handled on this one. A command is an input like a key.
         _serial.CommandReceived += (device, command) => Dispatcher.UIThread.Post(() =>
         {
             _inputSetup.OnCommand(device, command, DateTimeOffset.Now);   // shown on its card
-            Buttons.Command(device, command);
+            _triggers.Command(device, command);
         });
         _serial.StatusChanged += _ => Dispatcher.UIThread.Post(_inputSetup.Refresh);
         _audioSetup = new LocalAudioSetup(services.Audio, session, settings, SaveSettingsAsync, services.Thread);
         Remote = new RemoteViewModel(new AppRemoteHost(session, ShowPlayback, Playback, new AppShowControl(this), () => WarningsSnapshot, AudioDevices, () => IsDirty, () => _session.FilePath is null || _session.IsSingleFileShow, local.Library, _outputSetup, local.Levels,
-                                                       new AppTriggerControl(Buttons), _inputSetup, _audioSetup, _diagnostics),
+                                                       _triggers, _inputSetup, _audioSetup, _diagnostics),
                                      settings.Remote, SaveSettingsAsync, logger);
         Audio = new AudioViewModel(_audioSetup, AudioDevices);
         _ = AudioDevices.RefreshAsync();
@@ -108,7 +110,7 @@ public sealed partial class MainViewModel : ShellViewModel
 
     /// <summary>This computer's own versions of the services the screens use.</summary>
     sealed record LocalServices(ShellServices Shell, ShowPlayback Playback, LocalOutputSetup OutputSetup, LocalLiveLevels Levels,
-                                LocalFixtureLibrary Library, SettingsSaver Saver)
+                                LocalFixtureLibrary Library, SettingsSaver Saver, ShowTriggers Triggers)
     {
         public static LocalServices For(ShowServices services, ILogger logger)
         {
@@ -117,8 +119,9 @@ public sealed partial class MainViewModel : ShellViewModel
             var levels = new LocalLiveLevels(services.Session.Engine, services.Outputs.Find);
             var library = new LocalFixtureLibrary(services.Session, services.Paths, services.Settings, logger);
             var playback = new ShowPlayback(services.Session, services.Playback, services.Audio, logger);
-            var shell = new ShellServices(playback, library, outputSetup, levels, new AudioDeviceList(services.Audio));
-            return new(shell, playback, outputSetup, levels, library, saver);
+            var triggers = new ShowTriggers(services.Session, playback, () => Blackout(services));
+            var shell = new ShellServices(playback, library, outputSetup, levels, new AudioDeviceList(services.Audio), new LocalTriggers(triggers));
+            return new(shell, playback, outputSetup, levels, library, saver, triggers);
         }
     }
 
@@ -204,6 +207,7 @@ public sealed partial class MainViewModel : ShellViewModel
     public InputsViewModel Inputs { get; }
     readonly SerialInputs _serial;
     readonly LocalInputSetup _inputSetup;
+    readonly ShowTriggers _triggers;
     readonly LocalAudioSetup _audioSetup;
     readonly LocalDiagnostics _diagnostics;
     public PerformanceMeterViewModel Performance { get; }
@@ -315,10 +319,16 @@ public sealed partial class MainViewModel : ShellViewModel
         _logger.LogInformation(clean ? "Shut down cleanly." : "Shut down; an output didn't stop in time.");
     }
 
+    /// <summary>Stops playback and sets every manual level to 0 (Blackout, or a button's Blackout action).</summary>
+    static void Blackout(ShowServices services)
+    {
+        services.Playback.StopAllNow();   // otherwise the timelines would put their levels straight back
+        services.Session.Engine.Blackout();
+    }
+
     protected override void BlackoutShow()
     {
-        _services.Playback.StopAllNow();   // otherwise the timelines would put their levels straight back
-        _session.Engine.Blackout();
+        Blackout(_services);
         StatusMessage = "Blackout: playback stopped and every manual level set to 0.";
     }
 
@@ -580,6 +590,7 @@ public sealed partial class MainViewModel : ShellViewModel
         Lighting.Reload();
         Playback.Reset();    // the old show's timelines stop at once
         Timeline.Reload();   // focuses the new show's first timeline
+        _triggers.Reload();   // every trigger ready, and armed
         Buttons.Reload();
         _inputSetup.Reload();   // the new show's input devices, on this computer's ports
         Inputs.Reload();
@@ -634,6 +645,7 @@ public sealed partial class MainViewModel : ShellViewModel
     /// <summary>Screens refresh only while visible; slow-changing status refreshes once a second.</summary>
     protected override void Tick()
     {
+        _triggers.Tick();   // re-arming, and firing again while held (the server's, run from here while the desktop hosts it)
         base.Tick();
 
         _tickCount++;

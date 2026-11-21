@@ -21,23 +21,18 @@ public sealed partial class ButtonsViewModel : ObservableObject
 
     readonly ShowSession _session;
     readonly PlaybackViewModel _playback;
-    readonly Action _blackout;
     readonly Action _markDirty;
-    readonly TimeProvider _time;
-    readonly IRemoteTriggers? _remote;
+    readonly IRemoteTriggers _remote;
 
-    /// <param name="time">The clock for re-arm times and "last fired"; tests pass their own.</param>
-    /// <param name="remote">On a device: the show computer, where the triggers run (null on the show computer itself).</param>
-    public ButtonsViewModel(ShowSession session, PlaybackViewModel playback, Action blackout, Action markDirty, TimeProvider? time = null,
-                            IRemoteTriggers? remote = null)
+    /// <param name="triggers">The show's triggers, which run on the show computer: in-process there, over the connection from a device.</param>
+    public ButtonsViewModel(ShowSession session, PlaybackViewModel playback, Action markDirty, IRemoteTriggers triggers)
     {
         _session = session;
         _playback = playback;
-        _blackout = blackout;
         _markDirty = markDirty;
-        _time = time ?? TimeProvider.System;
-        _remote = remote;
+        _remote = triggers;
         Reload();
+        triggers.Attach(this);
         // Button edits made here, undone, or made on another device: the panel follows.
         session.Document.Changed += change =>
         {
@@ -194,74 +189,45 @@ public sealed partial class ButtonsViewModel : ObservableObject
 
     // ---- pressing ----
 
-    /// <summary>Runs a button's actions, in order. One that can't run (its timeline was deleted) is skipped and reported.</summary>
-    public void Press(ShowButtonViewModel button)
-    {
-        if (_remote is not null)
-        {
-            _remote.Press(button.Button.Id);   // pressed on the show computer, as its own click would
-            return;
-        }
-        var problems = new List<string>();
-        foreach (var action in button.Button.Actions)
-        {
-            switch (action)
-            {
-                case RunTimelineAction run:
-                    if (Find(run.TimelineId) is { } timeline) _playback.Launch(timeline, run.Options);
-                    else problems.Add("a timeline it runs is gone");
-                    break;
-                case EndLoopAction endLoop:
-                    if (Find(endLoop.TimelineId) is { } looping) _playback.EndLoop(looping);
-                    else problems.Add("a timeline it ends the loop of is gone");
-                    break;
-                case StopTimelineAction stop:
-                    if (Find(stop.TimelineId) is { } stopped) _playback.StopTimeline(stopped);
-                    else problems.Add("a timeline it stops is gone");
-                    break;
-                case StopAllAction:
-                    _playback.StopAllCommand.Execute(null);
-                    break;
-                case BlackoutAction:
-                    _blackout();
-                    break;
-            }
-        }
-        Status = problems.Count > 0 ? $"{button.Name}: {string.Join("; ", problems)}." : button.Button.Actions.Count == 0 ? $"{button.Name} has no actions yet." : $"{button.Name}";
-        Tick();
-    }
+    /// <summary>Runs a button's actions, in order, on the show computer, as a click there does.</summary>
+    public void Press(ShowButtonViewModel button) => _remote.Press(button.Button.Id);
 
     // ---- inputs: keys and serial commands now, Stream Deck keys later, setting off buttons' and timelines' triggers ----
 
     /// <summary>Every input event, with what came of it in a few words, for the input monitor.</summary>
     public event Action<InputEvent, string>? InputReceived;
 
-    internal DateTimeOffset Now => _time.GetLocalNow();
-
     /// <summary>
-    /// An input event from any source, handed to every trigger listening to that input, on buttons and timelines alike:
-    /// each decides what to do as its settings say (see <see cref="TriggerRunner"/>), e.g. fire when its input becomes
-    /// active, stop what it started when it rests. Returns the button it pressed, or null. A click on the button always
-    /// works, whatever its triggers.
+    /// An input event, handed to the show computer's triggers (see GhostShow.Server's ShowTriggers), which say what came
+    /// of it (<see cref="ShowInput"/>). Returns the button it pressed, or null. A click on the button always works,
+    /// whatever its triggers.
     ///
-    /// While a button or timeline waits for a trigger, a serial command is learned instead: it becomes its trigger,
+    /// While a button or timeline here waits for a trigger, a serial command is learned instead: it becomes its trigger,
     /// listening to the device it came from. (Keys being learned never get here: the window hands them to <see cref="LearnKey"/>.)
     /// </summary>
     /// <param name="device">The show's input device it came from (<see cref="Project.Inputs"/>); null for the keyboard.</param>
     /// <param name="value">A serial command's value (On, for BTN24=On, whose address is BTN24); null for one without.</param>
     public ShowButtonViewModel? Input(string source, string address, bool isPressed, Guid? device = null, string? value = null)
     {
-        var input = new InputEvent(source, address, isPressed, Now, device, value);
-        var (pressed, outcome) = source == InputTrigger.Keyboard ? Dispatch(input)
-            : LearningFor is not null ? (null, Learn(input))
-            : IsDeviceLearning ? (null, "Sent to the device waiting for a trigger")
-            : Dispatch(input);
-        InputReceived?.Invoke(input, outcome);
-        return pressed;
+        var input = new InputEvent(source, address, isPressed, DateTimeOffset.Now, device, value);
+        if (source != InputTrigger.Keyboard && LearningFor is not null)
+        {
+            string learned = Learn(input);   // (not inside ?.Invoke: with no one listening, it wouldn't be learned)
+            InputReceived?.Invoke(input, learned);
+            return null;
+        }
+        return _remote.Input(input) is { } pressed ? Buttons.FirstOrDefault(b => b.Button.Id == pressed) : null;
     }
 
-    /// <summary>On a device: an input that arrived on the show computer, and what came of it there, for the input monitor.</summary>
-    public void ShowInput(InputEvent input, string outcome) => InputReceived?.Invoke(input, outcome);
+    /// <summary>
+    /// An input that arrived on the show computer, and what came of it there, for the input monitor; while a button or
+    /// timeline here waits for a trigger, a command is learned instead.
+    /// </summary>
+    public void ShowInput(InputEvent input, string outcome)
+    {
+        if (input.Source != InputTrigger.Keyboard && LearningFor is not null) outcome = Learn(input);
+        InputReceived?.Invoke(input, outcome);
+    }
 
     /// <summary>A serial command, as it arrived: BTN24=On is input BTN24 at On (see <see cref="InputEvent.SplitCommand"/>).</summary>
     public ShowButtonViewModel? Command(Guid device, string command)
@@ -272,31 +238,6 @@ public sealed partial class ButtonsViewModel : ObservableObject
 
     /// <summary>Every trigger, on every button and timeline.</summary>
     IEnumerable<TriggerViewModel> AllTriggers => Buttons.SelectMany(b => b.Triggers).Concat(_timelineTriggers.Values.SelectMany(l => l));
-
-    (ShowButtonViewModel? Pressed, string Outcome) Dispatch(InputEvent input)
-    {
-        if (_remote is not null) return (null, "");   // triggers run on the show computer
-        // A run-once trigger's reset input resets it, whatever else the input does.
-        var resets = AllTriggers.Where(t => t.Trigger.RunOnce && t.Trigger.ResetBy?.IsSetOffBy(input) == true).ToList();
-        foreach (var trigger in resets) trigger.ResetCommand.Execute(null);
-
-        var matches = AllTriggers.Where(t => t.Trigger.Matches(input)).ToList();
-        if (matches.Count == 0)
-            return (null, resets.Count > 0 ? $"Reset {string.Join(", ", resets.Select(t => t.Owner.Name).Distinct())}"
-                        : input.Source == InputTrigger.Keyboard && !input.IsPressed ? "" : "Nothing uses it");
-
-        ShowButtonViewModel? pressed = null;
-        var outcomes = new List<string>();
-        foreach (var trigger in matches)
-        {
-            var (fired, outcome) = trigger.Handle(input, TriggersArmed);
-            if (fired) pressed ??= trigger.Owner as ShowButtonViewModel;
-            if (outcome.Length > 0 && !outcomes.Contains(outcome)) outcomes.Add(outcome);
-            if (outcome.StartsWith("Ran ", StringComparison.Ordinal) || outcome.StartsWith("Stopped ", StringComparison.Ordinal)) Status = outcome;
-        }
-        if (outcomes.Count > 0 || resets.Count > 0) Tick();
-        return (pressed, string.Join("; ", outcomes));
-    }
 
     /// <summary>An input in words: "Key F5", "Ethereal FX “BTN24”" (the device's name in the show).</summary>
     public string Describe(string source, Guid? device, string address, string? value = null) => source switch
@@ -371,7 +312,7 @@ public sealed partial class ButtonsViewModel : ObservableObject
         OnPropertyChanged(nameof(ShowFocusWarning));
     }
 
-    /// <summary>A timeline as what its triggers set off: they run it.</summary>
+    /// <summary>A timeline, whose triggers run it.</summary>
     sealed class TimelineTriggerOwner(ShowTimeline timeline, ButtonsViewModel hub) : ITriggerOwner
     {
         public ShowTimeline Timeline => timeline;
@@ -379,17 +320,6 @@ public sealed partial class ButtonsViewModel : ObservableObject
         public string Name => timeline.Name;
         public List<InputTrigger> TriggerModels => timeline.Triggers;
         public bool IsTimeline => true;
-        public bool CanPlay => true;
-        public bool IsPlaying => hub._playback.IsRunning(timeline.Id);
-
-        public string Fire(InputTrigger trigger)
-        {
-            hub._playback.Launch(timeline, new RunOptions(trigger.Loop));
-            return $"Ran {timeline.Name}";
-        }
-
-        public void Stop() => hub._playback.StopTimeline(timeline);
-        public void FinishPass() => hub._playback.EndLoop(timeline);
 
         public void EditTriggers(string description, Action change, InputTrigger? only = null) =>
             hub._session.Document.Record(description, change, [only ?? ShowDocument.Shallow(timeline)], within: timeline);
@@ -404,7 +334,7 @@ public sealed partial class ButtonsViewModel : ObservableObject
 
     partial void OnLearningForChanged(object? oldValue, object? newValue)
     {
-        if (oldValue is null != newValue is null) _remote?.SetLearning(newValue is not null);   // its commands come here to learn
+        if (oldValue is null != newValue is null) _remote.SetLearning(newValue is not null);   // its commands come here to learn
         if (oldValue is TriggerListViewModel oldList) oldList.IsLearning = false;
         if (oldValue is TriggerViewModel oldTrigger) oldTrigger.IsLearningReset = false;
         if (newValue is TriggerListViewModel newList) newList.IsLearning = true;
@@ -475,17 +405,10 @@ public sealed partial class ButtonsViewModel : ObservableObject
         return $"Learned by {list.Owner.Name}";
     }
 
-    /// <summary>
-    /// From the UI's refresh timer: which buttons are lit (a timeline they run is playing), and how triggers stand:
-    /// re-arming, and firing again while their input is held.
-    /// </summary>
+    /// <summary>From the UI's refresh timer: which buttons are lit (a timeline they run is playing). How triggers stand comes from <see cref="ShowStates"/>.</summary>
     public void Tick()
     {
-        var now = Now;
         foreach (var button in Buttons) button.IsLit = button.IsPlaying;
-        if (_remote is not null) return;   // the show computer's triggers: see ShowStates
-        foreach (var trigger in AllTriggers.ToList())
-            if (trigger.Tick(now, TriggersArmed) is { } did) Status = did;
     }
 
     // ---- arming: triggers can be turned off while working on the show ----
@@ -503,13 +426,7 @@ public sealed partial class ButtonsViewModel : ObservableObject
     /// <summary>Arming the triggers again resets the run-once ones, ready for the next group.</summary>
     partial void OnTriggersArmedChanged(bool value)
     {
-        if (_remote is not null)
-        {
-            if (!_applyingStates) _remote.SetArmed(value);
-            return;
-        }
-        if (!value) return;
-        foreach (var trigger in AllTriggers.Where(t => t.IsSpent)) trigger.ResetCommand.Execute(null);
+        if (!_applyingStates) _remote.SetArmed(value);
     }
 
     [RelayCommand]
@@ -525,19 +442,12 @@ public sealed partial class ButtonsViewModel : ObservableObject
 
     // ---- the show computer's triggers, and a device's view of them ----
 
-    /// <summary>On a device: the show computer's triggers (null on the show computer).</summary>
-    internal IRemoteTriggers? Remote => _remote;
+    /// <summary>The show computer's triggers, where they run.</summary>
+    internal IRemoteTriggers Remote => _remote;
 
     bool _applyingStates;
     TriggerStates? _states;
     string _lastRemoteStatus = "";
-
-    /// <summary>On the show computer: a device is waiting for a trigger, so serial commands go to it (see <see cref="Input"/>).</summary>
-    public bool IsDeviceLearning { get; set; }
-
-    /// <summary>How the triggers stand, for devices.</summary>
-    public TriggerStates States => new(TriggersArmed, Status, IsSerialListening,
-        [.. TriggerLists.SelectMany(list => list.Select((t, i) => new TriggerState(list.Owner.Id, i, t.IsOn, t.IsSpent, t.State)))]);
 
     /// <summary>The trigger at this place: on a button or timeline (by its id), at its index in that one's list.</summary>
     public TriggerViewModel? FindTrigger(Guid owner, int index) =>
@@ -545,7 +455,7 @@ public sealed partial class ButtonsViewModel : ObservableObject
 
     IEnumerable<TriggerListViewModel> TriggerLists => Buttons.Select(b => b.Triggers).Concat(_timelineTriggers.Values);
 
-    /// <summary>On a device: how the show computer's triggers stand, shown here.</summary>
+    /// <summary>How the show computer's triggers stand, shown here.</summary>
     public void ShowStates(TriggerStates states)
     {
         _states = states;
@@ -711,32 +621,12 @@ public sealed partial class ShowButtonViewModel : ObservableObject, ITriggerOwne
     [RelayCommand]
     void AddKeyFromMenu() => _owner.StartLearningKey(this);
 
-    IEnumerable<ShowTimeline> RunsTimelines => Button.Actions.OfType<RunTimelineAction>().Select(r => _owner.Find(r.TimelineId)).OfType<ShowTimeline>();
-
     /// <summary>A timeline it runs is playing (any copy).</summary>
     internal bool IsPlaying => Button.Actions.OfType<RunTimelineAction>().Any(r => _owner.Playback.IsRunning(r.TimelineId));
 
     Guid ITriggerOwner.Id => Button.Id;
     List<InputTrigger> ITriggerOwner.TriggerModels => Button.Triggers;
     bool ITriggerOwner.IsTimeline => false;
-    bool ITriggerTarget.CanPlay => Button.Actions.OfType<RunTimelineAction>().Any();
-    bool ITriggerTarget.IsPlaying => IsPlaying;
-
-    string ITriggerTarget.Fire(InputTrigger trigger)
-    {
-        _owner.Press(this);
-        return $"Pressed {Name}";
-    }
-
-    void ITriggerTarget.Stop()
-    {
-        foreach (var timeline in RunsTimelines) _owner.Playback.StopTimeline(timeline);
-    }
-
-    void ITriggerTarget.FinishPass()
-    {
-        foreach (var timeline in RunsTimelines) _owner.Playback.EndLoop(timeline);
-    }
 
     void ITriggerOwner.EditTriggers(string description, Action change, InputTrigger? only) =>
         _owner.Edit(description, change, null, only ?? ButtonsViewModel.Only(Button));

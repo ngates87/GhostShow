@@ -9,7 +9,6 @@ using GhostShow.Core.Storage;
 using GhostShow.Core.Timeline;
 using GhostShow.Dmx;
 using Microsoft.Extensions.Logging.Abstractions;
-
 using GhostShow.Server;
 
 namespace GhostShow.App.Tests;

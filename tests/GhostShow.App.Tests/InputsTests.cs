@@ -7,7 +7,6 @@ using GhostShow.Core.Storage;
 using GhostShow.Dmx.Discovery;
 using GhostShow.Inputs;
 using Microsoft.Extensions.Logging.Abstractions;
-
 using GhostShow.Server;
 
 namespace GhostShow.App.Tests;
@@ -50,7 +49,7 @@ public class InputsTests : IDisposable
             lock (_opened) _opened.Add($"{port} {baud}");
             return new QuietLink();
         }, TimeSpan.FromMilliseconds(20));
-        _buttons = new ButtonsViewModel(_rig.Session, _rig.Playback, () => { }, () => { });
+        _buttons = new ButtonsViewModel(_rig.Session, _rig.Playback, () => { }, new LocalTriggers(new ShowTriggers(_rig.Session, _rig.Playback.Show, () => { })));
     }
 
     public void Dispose()
