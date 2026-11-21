@@ -39,6 +39,8 @@ public sealed partial class FixtureSetupViewModel : ObservableObject
     object? _addingAsOne;
     FixtureProfile? _lastAddedProfile;
     string? _lastAddedMode;
+    /// <summary>The fixture whose type is being edited from its settings (Edit type…, Copy and edit type…): back to it after.</summary>
+    Guid? _editingTypeOf;
 
     /// <param name="history">Undo and Redo: the show document's, unless they're elsewhere (in the browser build, on the show computer).</param>
     public FixtureSetupViewModel(ShowSession session, ProfileLibraryViewModel library, IEditHistory? history = null)
@@ -157,12 +159,17 @@ public sealed partial class FixtureSetupViewModel : ObservableObject
 
     /// <summary>"Can't find it? New fixture type": a blank custom type.</summary>
     [RelayCommand]
-    void NewProfile() => EditProfile(null, editInPlace: false);
+    void NewProfile()
+    {
+        _editingTypeOf = null;
+        EditProfile(null, editInPlace: false);
+    }
 
     /// <summary>"Copy and edit": a custom type starting from the picked profile (usually the quickest way).</summary>
     [RelayCommand]
     void CopyProfile()
     {
+        _editingTypeOf = null;
         if (Browser.Pending?.Profile is { } profile) EditProfile(profile, editInPlace: false);
     }
 
@@ -170,7 +177,32 @@ public sealed partial class FixtureSetupViewModel : ObservableObject
     [RelayCommand]
     void EditCustomProfile()
     {
+        _editingTypeOf = null;
         if (Browser.Pending?.Profile is { } profile && CustomProfiles.IsCustom(profile)) EditProfile(profile, editInPlace: true);
+    }
+
+    /// <summary>
+    /// Edit type…, beside the selected fixture's settings: its custom type, in the type editor. Every fixture of that
+    /// type changes with it. Saving or cancelling comes back to the fixture.
+    /// </summary>
+    [RelayCommand]
+    void EditSelectedType()
+    {
+        if (Selected is not { Profile: { } profile } fixture || !CustomProfiles.IsCustom(profile)) return;
+        _editingTypeOf = fixture.Model.Id;
+        EditProfile(profile, editInPlace: true);
+    }
+
+    /// <summary>
+    /// Copy and edit type…, beside the selected fixture's settings: a custom type made from its library type. Once
+    /// saved, this fixture uses it (in the same mode, if the copy still has it); others of the old type keep theirs.
+    /// </summary>
+    [RelayCommand]
+    void CopySelectedType()
+    {
+        if (Selected is not { Profile: { } profile } fixture) return;
+        _editingTypeOf = fixture.Model.Id;
+        EditProfile(profile, editInPlace: false);
     }
 
     void EditProfile(FixtureProfile? source, bool editInPlace)
@@ -211,11 +243,25 @@ public sealed partial class FixtureSetupViewModel : ObservableObject
         BackToBrowser(null);
     }
 
-    /// <summary>Back to choosing a type (for new fixtures, or the selected one's), with a profile picked if given.</summary>
+    /// <summary>
+    /// Back to choosing a type (for new fixtures, or the selected one's), with a profile picked if given; or, when the
+    /// type was edited from a fixture's settings, back to that fixture, using the saved type.
+    /// </summary>
     void BackToBrowser(FixtureProfile? pick)
     {
         ProfileEditor = null;
         Browser.SetLibrary(_session.Profiles);
+        if (_editingTypeOf is { } id)
+        {
+            _editingTypeOf = null;
+            Step = SetupStep.Overview;
+            if (Fixtures.FirstOrDefault(f => f.Model.Id == id) is not { } fixture) return;
+            Selected = fixture;
+            if (pick is not null && !string.Equals(fixture.Model.ProfileId, pick.Id, StringComparison.OrdinalIgnoreCase) && pick.Modes.Count > 0)
+                fixture.SetProfile(pick, pick.FindMode(fixture.Model.ModeName) ?? pick.Modes[0]);
+            fixture.Refresh();
+            return;
+        }
         if (_changingType && Selected is { } selected) Browser.Start(selected.Profile, selected.Model.ModeName, $"Use this type for '{selected.Name}'");
         else Browser.Start(_lastAddedProfile, _lastAddedMode, "Next: place them ▶");
         Step = SetupStep.ChooseType;

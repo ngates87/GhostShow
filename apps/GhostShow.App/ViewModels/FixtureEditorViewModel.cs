@@ -1,6 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using GhostShow.Core.Editing;
 using GhostShow.Core.Fixtures;
+using GhostShow.Core.Storage;
 
 namespace GhostShow.App.ViewModels;
 
@@ -35,6 +36,12 @@ public sealed partial class FixtureEditorViewModel : ObservableObject
     public partial ModeChoiceViewModel? ModeChoice { get; private set; }
 
     public string ProfileLabel => Profile?.ToString() ?? $"Missing profile '{Model.ProfileId}'";
+
+    /// <summary>Its type was made on this computer (a custom type), so it can be edited: Edit type….</summary>
+    public bool HasCustomType => Profile is { } profile && CustomProfiles.IsCustom(profile);
+
+    /// <summary>Its type is a library's, which isn't edited itself: Copy and edit type… makes a custom one from it.</summary>
+    public bool HasLibraryType => Profile is { } profile && !CustomProfiles.IsCustom(profile);
 
     /// <summary>e.g. "Color / RGB · 10 ch · U0 · 1-10", for the fixture list.</summary>
     public string Summary

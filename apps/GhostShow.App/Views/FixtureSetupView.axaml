@@ -73,8 +73,15 @@
           <WrapPanel>
             <TextBlock Text="Type:" Opacity="0.7" Margin="0,0,6,0" VerticalAlignment="Center" />
             <TextBlock Text="{Binding ProfileLabel}" FontWeight="SemiBold" Margin="0,0,10,0" VerticalAlignment="Center" />
+            <Button Content="Edit type…" Padding="8,2" Margin="0,0,8,0" IsVisible="{Binding HasCustomType}"
+                    Command="{Binding $parent[UserControl].((vm:FixtureSetupViewModel)DataContext).EditSelectedTypeCommand}"
+                    ToolTip.Tip="Change this custom fixture type: its name, modes and channels. Every fixture of this type changes with it." />
+            <Button Content="Copy and edit type…" Padding="8,2" Margin="0,0,8,0" IsVisible="{Binding HasLibraryType}"
+                    Command="{Binding $parent[UserControl].((vm:FixtureSetupViewModel)DataContext).CopySelectedTypeCommand}"
+                    ToolTip.Tip="Close, but not quite? Make your own type from this one, and this fixture uses it" />
             <Button Content="Change type…" Padding="8,2" Margin="0,0,24,0"
-                    Command="{Binding $parent[UserControl].((vm:FixtureSetupViewModel)DataContext).ChangeTypeCommand}" />
+                    Command="{Binding $parent[UserControl].((vm:FixtureSetupViewModel)DataContext).ChangeTypeCommand}"
+                    ToolTip.Tip="Use another fixture type for it" />
             <CheckBox Content="Enabled" IsChecked="{Binding Enabled}" ToolTip.Tip="Disabled fixtures stay in the show but aren't output" />
           </WrapPanel>
           <WrapPanel DataContext="{Binding ModeChoice}" x:DataType="vm:ModeChoiceViewModel"

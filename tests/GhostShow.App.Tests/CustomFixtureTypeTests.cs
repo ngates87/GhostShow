@@ -104,6 +104,66 @@ public class CustomFixtureTypeTests : IDisposable
     }
 
     [Fact]
+    public void A_fixture_s_custom_type_is_edited_from_its_settings_and_back_to_it()
+    {
+        Setup.StartAddCommand.Execute(null);
+        Setup.NewProfileCommand.Execute(null);
+        Setup.ProfileEditor!.Model = "Prop";
+        Setup.ProfileEditor.SelectedMode!.AddChannelCommand.Execute(Function(ChannelFunction.Generic));
+        Setup.ProfileEditor.SaveCommand.Execute(null);
+        Setup.Browser.ApplyCommand.Execute(null);
+        Setup.Map.Place(10);
+        Setup.DoneCommand.Execute(null);
+        var fixture = Setup.Selected!;
+        Assert.True(fixture.HasCustomType);
+        Assert.False(fixture.HasLibraryType);
+
+        Setup.EditSelectedTypeCommand.Execute(null);
+        var editor = Setup.ProfileEditor!;
+        Assert.True(editor.IsEditing);
+        editor.Model = "Coffin prop";
+        editor.SelectedMode!.AddChannelCommand.Execute(Function(ChannelFunction.Intensity));
+        editor.SaveCommand.Execute(null);
+
+        Assert.Equal(SetupStep.Overview, Setup.Step);   // back to the fixture, not the type picker
+        Assert.Equal(fixture.Model.Id, Setup.Selected!.Model.Id);
+        Assert.Equal("Coffin prop", Setup.Selected.Profile!.Model);
+        Assert.Equal([("Prop 1", 10, 11)], _rig.Patched());   // it has the new channel now
+
+        Setup.EditSelectedTypeCommand.Execute(null);
+        Setup.ProfileEditor!.Model = "Not this";
+        Setup.ProfileEditor.CancelCommand.Execute(null);
+        Assert.Equal(SetupStep.Overview, Setup.Step);
+        Assert.Equal("Coffin prop", Setup.Selected!.Profile!.Model);
+    }
+
+    [Fact]
+    public void Copy_and_edit_type_gives_one_library_fixture_its_own_type()
+    {
+        _rig.ChooseTypeToAdd(TestRig.Par, "3ch");
+        Setup.Map.Place(1);
+        Setup.Map.Place(10);
+        Setup.DoneCommand.Execute(null);
+        var fixture = Setup.Selected!;   // the last one added
+        Assert.True(fixture.HasLibraryType);
+        Assert.False(fixture.HasCustomType);
+
+        Setup.CopySelectedTypeCommand.Execute(null);
+        var editor = Setup.ProfileEditor!;
+        Assert.False(editor.IsEditing);   // a copy: the library's type isn't changed
+        Assert.Equal("PAR (custom)", editor.Model);
+        editor.SaveCommand.Execute(null);
+
+        Assert.Equal(SetupStep.Overview, Setup.Step);
+        var copied = Setup.Selected!;
+        Assert.Equal(fixture.Model.Id, copied.Model.Id);
+        Assert.True(copied.HasCustomType);
+        Assert.Equal(("PAR (custom)", "3ch"), (copied.Profile!.Model, copied.Model.ModeName));   // in the mode it was in
+        Assert.Equal(TestRig.Par.Id, Setup.Fixtures[0].Model.ProfileId);   // the other one keeps the library's
+        Assert.Empty(_rig.Session.Patch.Issues);
+    }
+
+    [Fact]
     public void An_unused_custom_type_can_be_deleted_after_confirming()
     {
         Setup.StartAddCommand.Execute(null);
