@@ -38,6 +38,9 @@ public interface IRemoteHost
     /// <summary>Problems worth knowing about (the desktop's ⚠ list: patch errors, failing outputs). Safe from any thread.</summary>
     IReadOnlyList<string> Warnings { get; }
 
+    /// <summary>How hard the show computer is working, for every device's load meter. Read on any thread.</summary>
+    LoadReading Load => LoadReading.Measuring;
+
     /// <summary>Whether the show has changes not saved yet. Safe from any thread.</summary>
     bool HasUnsavedChanges { get; }
 

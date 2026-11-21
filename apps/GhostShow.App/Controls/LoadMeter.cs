@@ -11,7 +11,7 @@ namespace GhostShow.App.Controls;
 public sealed class LoadMeter : Control
 {
     /// <summary>Where segments turn yellow, then red (fractions of the bar).</summary>
-    public const double YellowFrom = 0.6, RedFrom = 0.85;
+    public const double YellowFrom = Core.Diagnostics.LoadReading.YellowFrom, RedFrom = Core.Diagnostics.LoadReading.RedFrom;
 
     static readonly Color Green = Color.Parse("#3FBF4F"), Yellow = Color.Parse("#E6C229"), Red = Color.Parse("#E5483B");
     const double Gap = 2;

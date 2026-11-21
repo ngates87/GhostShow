@@ -69,7 +69,7 @@ public sealed partial class MainViewModel : ShellViewModel
         services.Audio.LengthMeasured += path => Dispatcher.UIThread.Post(() => ShowPlayback.OnAudioMeasured(path));
         _diagnostics = new LocalDiagnostics(services, () => Playback.Timeline);
         Diagnostics = new DiagnosticsViewModel(_diagnostics);
-        Performance = new PerformanceMeterViewModel(() => services.PlaybackLoop.Timing, () => services.Probe.Snapshot(last: 20).P95Ms);
+        _load = new ShowLoad(services);
         _triggers = local.Triggers;
         _files = new ShowFiles(session, settings, paths, SaveSettingsAsync, services.Thread);
         _control = new ShowControl(session, local.Playback, _triggers, _files, () => Playback.FocusedId, () => BlackoutCommand.Execute(null),
@@ -98,7 +98,7 @@ public sealed partial class MainViewModel : ShellViewModel
         _serial.StatusChanged += _ => Dispatcher.UIThread.Post(_inputSetup.Refresh);
         _audioSetup = new LocalAudioSetup(services.Audio, session, settings, SaveSettingsAsync, services.Thread);
         Remote = new RemoteViewModel(new AppRemoteHost(session, ShowPlayback, Playback, _control, () => WarningsSnapshot, AudioDevices, () => IsDirty, () => _session.FilePath is null || _session.IsSingleFileShow, local.Library, _outputSetup, local.Levels,
-                                                       _triggers, _inputSetup, _audioSetup, _diagnostics),
+                                                       _triggers, _inputSetup, _audioSetup, _diagnostics, _load),
                                      settings.Remote, SaveSettingsAsync, logger);
         Audio = new AudioViewModel(_audioSetup, AudioDevices);
         _ = AudioDevices.RefreshAsync();
@@ -229,7 +229,8 @@ public sealed partial class MainViewModel : ShellViewModel
     readonly ShowTriggers _triggers;
     readonly LocalAudioSetup _audioSetup;
     readonly LocalDiagnostics _diagnostics;
-    public PerformanceMeterViewModel Performance { get; }
+    public PerformanceMeterViewModel Performance { get; } = new();
+    readonly ShowLoad _load;
 
     public override bool IsShowComputer => true;
     public override object? HomePage => _home ??= new HomePageViewModel(this);
@@ -496,7 +497,7 @@ public sealed partial class MainViewModel : ShellViewModel
         base.Tick();
 
         _tickCount++;
-        if (_tickCount % 15 == 0) Performance.Update();   // twice a second, so the meter moves like one
+        if (_tickCount % 15 == 0) Performance.Show(_load.Measure());   // twice a second, so the meter moves like one (devices get it in the status)
         if (_tickCount % 30 != 0) return;
         _outputSetup.Tick();
         _inputSetup.Tick();

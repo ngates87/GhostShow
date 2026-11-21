@@ -3,6 +3,7 @@
              xmlns:browser="using:GhostShow.Browser"
              xmlns:vm="using:GhostShow.App.ViewModels"
              xmlns:views="using:GhostShow.App.Views"
+             xmlns:controls="using:GhostShow.App.Controls"
              x:Class="GhostShow.Browser.BrowserApp"
              RequestedThemeVariant="Dark">
   <Application.Styles>
@@ -22,9 +23,21 @@
   <Application.DataTemplates>
     <DataTemplate DataType="browser:BrowserStatusViewModel">
       <StackPanel Orientation="Horizontal" Spacing="16">
-        <TextBlock Text="{Binding SaveState}" Opacity="0.7" IsVisible="{Binding ShowsSaveState}" />
-        <TextBlock Text="{Binding Who}" Opacity="0.7" />
+        <TextBlock Text="{Binding SaveState}" Opacity="0.7" IsVisible="{Binding ShowsSaveState}" VerticalAlignment="Center" />
+        <TextBlock Text="{Binding Who}" Opacity="0.7" VerticalAlignment="Center" />
+        <ContentControl Content="{Binding Load}" VerticalAlignment="Center" />
       </StackPanel>
+    </DataTemplate>
+    <!-- The show computer's load meter, as on its own screen (App.axaml); click for Diagnostics -->
+    <DataTemplate DataType="vm:PerformanceMeterViewModel">
+      <Button Padding="4,1" MinHeight="0" Background="Transparent" BorderThickness="0"
+              Command="{Binding $parent[views:MainView].((vm:ShellViewModel)DataContext).GoToCommand}" CommandParameter="{x:Static vm:Page.Diagnostics}"
+              ToolTip.Tip="{Binding Tip}">
+        <StackPanel Orientation="Horizontal" Spacing="6">
+          <TextBlock Text="LOAD" FontSize="10" FontWeight="SemiBold" Opacity="0.7" VerticalAlignment="Center" />
+          <controls:LoadMeter Value="{Binding Level}" Width="120" Height="14" VerticalAlignment="Center" />
+        </StackPanel>
+      </Button>
     </DataTemplate>
     <DataTemplate DataType="vm:ButtonsViewModel">
       <views:ButtonsPanel />

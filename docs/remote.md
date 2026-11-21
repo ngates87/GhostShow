@@ -116,8 +116,9 @@ Audio shows the show computer's devices and the files used by the show; its sett
   - `status`: the editor's timeline, what's playing (each player with its priority), the desktop's warnings,
     whether the show has unsaved changes (`unsaved`) and whether it still needs its first save on the show computer
     (`needsFirstSave`), up to 20 times a second while something plays. It also says where each timeline a device is watching is
-    (`timelines`, stopped ones included, with their length). A slow device gets only the newest status, never a
-    backlog.
+    (`timelines`, stopped ones included, with their length), and how hard the show computer is working (`load`:
+    `level` 0-1 and `tip`, for every device's load meter; always the show computer's, never the device's). A slow
+    device gets only the newest status, never a backlog.
   - `issues`: a watched timeline's problems (missing fixtures, files, timelines), each time it's compiled.
   - `device`: the device again, when its role changes.
   - `library`: the fixture library's text for its screen, and its `version`, which goes up when its profiles change. Also

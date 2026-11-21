@@ -136,4 +136,7 @@ sealed partial class BrowserStatusViewModel : ObservableObject
 
     [ObservableProperty]
     public partial bool ShowsSaveState { get; set; } = true;
+
+    /// <summary>The show computer's load (not this device's), as its status says.</summary>
+    public PerformanceMeterViewModel Load { get; } = new();
 }

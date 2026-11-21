@@ -1,6 +1,7 @@
 using GhostShow.App.Controls;
 using GhostShow.App.ViewModels;
 using GhostShow.Core.Diagnostics;
+using GhostShow.Server;
 
 namespace GhostShow.App.Tests;
 
@@ -9,25 +10,27 @@ public class PerformanceMeterTests
     [Fact]
     public void The_load_is_the_worst_part()
     {
-        Assert.Equal((0.2, "CPU"), Round(PerformanceMeterViewModel.Score(cpu: 0.2, playbackIntervalP95Ms: 10.5, uiWaitP95Ms: 3)));
-        Assert.Equal((0.8, "Playback timing"), Round(PerformanceMeterViewModel.Score(0.2, 30, 3)));   // 20 ms late of 25
-        Assert.Equal((1.0, "UI responsiveness"), Round(PerformanceMeterViewModel.Score(0.2, 10, 250)));   // capped at full
-        Assert.Equal((0.0, "CPU"), Round(PerformanceMeterViewModel.Score(null, null, 0)));   // nothing measured yet
+        Assert.Equal((0.2, "CPU"), Round(ShowLoad.Score(cpu: 0.2, playbackIntervalP95Ms: 10.5, waitP95Ms: 3)));
+        Assert.Equal((0.8, "Playback timing"), Round(ShowLoad.Score(0.2, 30, 3)));   // 20 ms late of 25
+        Assert.Equal((1.0, "Show responsiveness"), Round(ShowLoad.Score(0.2, 10, 250)));   // capped at full
+        Assert.Equal((0.0, "CPU"), Round(ShowLoad.Score(null, null, 0)));   // nothing measured yet
     }
 
     [Fact]
     public void A_spike_shows_at_once_and_falls_back_gently()
     {
         double playbackP95 = 10;
-        var meter = new PerformanceMeterViewModel(() => new FrameTimingSnapshot(100, 100, 10, playbackP95, 12), () => 0, cpu: () => 0.1);
+        var load = new ShowLoad(() => new FrameTimingSnapshot(100, 100, 10, playbackP95, 12), () => 0, cpu: () => 0.1);
+        var meter = new PerformanceMeterViewModel();
 
         playbackP95 = 35;   // 25 ms late: full
-        meter.Update();
+        meter.Show(load.Measure());
         Assert.True(meter.Level >= 0.99);
         Assert.Contains("Playback timing is the bottleneck", meter.Tip);
+        Assert.Equal(meter.Tip, load.Reading.Tip);   // the reading devices are sent
 
         playbackP95 = 10;
-        meter.Update();
+        meter.Show(load.Measure());
         Assert.InRange(meter.Level, 0.3, 0.9);   // on its way down, not dropped
     }
 

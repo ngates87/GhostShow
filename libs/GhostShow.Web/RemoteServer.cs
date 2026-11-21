@@ -614,6 +614,7 @@ public sealed partial class RemoteServer : IAsyncDisposable
             ["unsaved"] = _host.HasUnsavedChanges,
             ["needsFirstSave"] = _host.NeedsFirstSave,
             ["warnings"] = new JsonArray([.. _host.Warnings.Select(w => JsonValue.Create(w))]),
+            ["load"] = new JsonObject { ["level"] = Math.Round(_host.Load.Load, 3), ["tip"] = _host.Load.Tip },
         };
     }
 

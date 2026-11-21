@@ -8,6 +8,7 @@ using GhostShow.App.ViewModels;
 using Page = GhostShow.App.ViewModels.Page;
 using GhostShow.App.Views;
 using GhostShow.Browser.Remote;
+using GhostShow.Core.Diagnostics;
 using GhostShow.Core.Editing;
 using GhostShow.Core.Engine;
 using GhostShow.Core.Fixtures;
@@ -224,6 +225,8 @@ sealed class ShellView : Border
         bool unsaved = message["unsaved"]?.GetValue<bool>() == true;
         bool needsFirstSave = message["needsFirstSave"]?.GetValue<bool>() == true;
         _shell.OnStatus(warnings, unsaved, needsFirstSave);
+        if (message["load"] is JsonObject load)
+            _shell.Status.Load.Show(new LoadReading(load["level"]?.GetValue<double>() ?? 0, load["tip"]?.GetValue<string>() ?? ""));
         _fileMenu.Update(unsaved, needsFirstSave);
         if (unsaved != _unsaved)
         {

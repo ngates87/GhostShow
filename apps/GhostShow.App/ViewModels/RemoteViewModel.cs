@@ -23,7 +23,7 @@ sealed class AppRemoteHost(ShowSession session, ShowPlayback playback, PlaybackV
                             Func<IReadOnlyList<string>> warnings, AudioDeviceList audioDevices, Func<bool> hasUnsavedChanges,
                             Func<bool> needsFirstSave, IFixtureLibrary library, IOutputSetup outputs, ILiveLevels levels,
                             ITriggerControl triggers, IInputSetup inputs, LocalAudioSetup audio,
-                            LocalDiagnostics diagnostics) : IRemoteHost
+                            LocalDiagnostics diagnostics, ShowLoad load) : IRemoteHost
 {
     public Task<T> InvokeAsync<T>(Func<T> function) => Dispatcher.UIThread.InvokeAsync(function).GetTask();
     public ShowSession Session => session;
@@ -41,6 +41,7 @@ sealed class AppRemoteHost(ShowSession session, ShowPlayback playback, PlaybackV
     public IAudioSetup Audio => audio;
     public void WatchAudio(object device, bool watching) => audio.SetWatching(device, watching);
     public IDiagnostics Diagnostics => diagnostics;
+    public LoadReading Load => load.Reading;
     public void WatchDiagnostics(object device, bool watching) => diagnostics.SetWatching(device, watching);
     public IReadOnlyList<string> AudioDevices => audioDevices.Names;
 
