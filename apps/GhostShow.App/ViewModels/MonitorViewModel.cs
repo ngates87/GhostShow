@@ -9,13 +9,45 @@ namespace GhostShow.App.ViewModels;
 /// All 512 channels of the active universe, as last sent to the output device (or held by the engine if the
 /// universe has no running output), for <see cref="DmxMonitorGrid"/>. The arrays are reused; <see cref="Revision"/>
 /// goes up only when a value changes or a change highlight expires, so a steady look costs nothing to display.
+/// Show fixtures draws the patch over it, so it's clear which fixture's channels are moving.
 /// </summary>
 public sealed partial class MonitorViewModel : ObservableObject
 {
     readonly ILiveLevels _levels;
+    readonly ShowSession _session;
     readonly byte[] _frame = new byte[512];
+    int? _universe;
+    IReadOnlyList<PatchMapBlock> _fixtures = [];
 
-    public MonitorViewModel(ILiveLevels levels) => _levels = levels;
+    public MonitorViewModel(ILiveLevels levels, ShowSession session)
+    {
+        _levels = levels;
+        _session = session;
+        session.Applied += MapFixtures;   // a fixture added, moved or re-typed (here, undone, or from another device)
+    }
+
+    /// <summary>Draw each fixture over its channels: its name, its colour, and what each channel does.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(Fixtures))]
+    public partial bool ShowFixtures { get; set; }
+
+    /// <summary>The fixtures patched on the universe shown, for the grid; null while Show fixtures is off.</summary>
+    public IReadOnlyList<PatchMapBlock>? Fixtures => ShowFixtures ? _fixtures : null;
+
+    /// <summary>
+    /// The patched fixtures on the universe shown (only those that are output: enabled, with their type), coloured by
+    /// their place in the show's list, as the Fixtures screen colours them.
+    /// </summary>
+    void MapFixtures()
+    {
+        if (_universe is not { } universe) return;
+        var place = _session.Project.Fixtures.Select((fixture, index) => (fixture.Id, index)).ToDictionary(p => p.Id, p => p.index);
+        _fixtures = [.. _session.Patch.Fixtures
+            .Where(f => f.Universe == universe)
+            .OrderBy(f => f.StartAddress)
+            .Select(f => new PatchMapBlock(f.Id, f.Name, f.StartAddress, [.. f.Mode.Channels.Select(c => c.Name)], place.GetValueOrDefault(f.Id), true))];
+        OnPropertyChanged(nameof(Fixtures));
+    }
 
     /// <summary>Channel values, index = address - 1.</summary>
     public byte[] Values { get; } = new byte[512];
@@ -31,6 +63,11 @@ public sealed partial class MonitorViewModel : ObservableObject
 
     public void Tick(int universe)
     {
+        if (universe != _universe)
+        {
+            _universe = universe;
+            MapFixtures();
+        }
         Source = _levels.CopyAsSent(universe, _frame);
 
         long now = Stopwatch.GetTimestamp();

@@ -875,6 +875,7 @@ public class UiTests
         Assert.Equal("ok", Command("press", "button", rig.Session.Project.Buttons[0].Id));
         Assert.True(rig.Manager.IsRunning(room.Id));
         Assert.Equal("ok", Command("play"));
+        WindowRig.Pump(200);   // the transport shows it at its next refresh
         Assert.True(rig.ViewModel.Playback.IsPlaying);
         Assert.Equal("ok", Command("blackout"));
         Assert.Empty(rig.Manager.Running);
@@ -884,6 +885,33 @@ public class UiTests
         Assert.Equal("That timeline isn't in the show any more.", Command("run", "timeline", Guid.NewGuid()));
 
         Await(remote.SetEnabledAsync(false).ContinueWith(_ => true));
+    });
+
+    [Fact]
+    public Task The_DMX_monitor_can_show_the_patch_over_the_values() => Ui.Run(() =>
+    {
+        using var rig = new WindowRig();
+        rig.ViewModel.CurrentPage = ViewModels.Page.Monitor;
+        WindowRig.Pump(200);
+        var grid = rig.Window.GetVisualDescendants().OfType<Controls.DmxMonitorGrid>().Single();
+        double bare = grid.Bounds.Height;
+        Assert.Null(grid.Fixtures);
+
+        var toggle = rig.Window.GetVisualDescendants().OfType<ToggleSwitch>().Single(t => Equals(t.OnContent, "Show fixtures"));
+        rig.Click(rig.CenterOf(toggle));
+        WindowRig.Pump(200);
+
+        Assert.Equal(["Fog", "Entry LED"], grid.Fixtures!.Select(f => f.Name));   // the dimmer at 10, the RGBW at 20
+        Assert.True(grid.Bounds.Height > bare);   // room for the names above each row
+        using (var frame = new Avalonia.Media.Imaging.RenderTargetBitmap(new PixelSize((int)grid.Bounds.Width, (int)grid.Bounds.Height)))
+            frame.Render(grid);   // draws without trouble
+
+        // Hovering address 21 (the RGBW's second channel) says whose it is.
+        int columns = new[] { 32, 24, 16, 12, 8 }.First(c => grid.Bounds.Width / c >= 34);
+        double cell = grid.Bounds.Width / columns, row = grid.Bounds.Height / Math.Ceiling(512.0 / columns);
+        var at = grid.TranslatePoint(new Point(20 % columns * cell + cell / 2, 20 / columns * row + row / 2), rig.Window)!.Value;
+        rig.Window.MouseMove(at);
+        Assert.StartsWith("Address 21 · Entry LED · ", ToolTip.GetTip(grid) as string);
     });
 
     [Fact]

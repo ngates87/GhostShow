@@ -40,6 +40,9 @@ public sealed class PatchMap : Control
         Color.Parse("#2E8A82"), Color.Parse("#8A6E2E"),
     ];
 
+    /// <summary>A fixture's colour, by its place in the show's list: the same on every map, and over the DMX monitor.</summary>
+    public static Color ColorFor(int index) => Palette[index % Palette.Length];
+
     static readonly IBrush EmptyCell = new SolidColorBrush(Color.Parse("#232323"));
     static readonly IBrush AddressText = new SolidColorBrush(Color.FromArgb(150, 255, 255, 255));
     static readonly IBrush NameText = Brushes.White;

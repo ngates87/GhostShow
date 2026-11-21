@@ -170,6 +170,26 @@ public class LightingScreensTests : IDisposable
     }
 
     [Fact]
+    public void The_monitor_can_show_which_fixture_each_channel_is()
+    {
+        _rig.ChooseTypeToAdd(TestRig.Par, "3ch");
+        _rig.Setup.Map.Place(4);
+        _rig.Setup.DoneCommand.Execute(null);
+        _lighting.IsOnScreen = true;
+        _lighting.CurrentPage = Page.Monitor;
+        _lighting.Tick();
+        Assert.Null(_lighting.Monitor.Fixtures);   // off until asked for
+
+        _lighting.Monitor.ShowFixtures = true;
+        var par = Assert.Single(_lighting.Monitor.Fixtures!);
+        Assert.Equal(("PAR 1", 4, 6), (par.Name, par.Start, par.End));
+        Assert.Equal(["Ch 1", "Ch 2", "Ch 3"], par.ChannelLabels);
+
+        _rig.Setup.Selected!.StartAddress = 20;   // moved: the monitor follows the patch
+        Assert.Equal(20, Assert.Single(_lighting.Monitor.Fixtures!).Start);
+    }
+
+    [Fact]
     public void Screens_off_show_do_not_refresh()
     {
         _lighting.CurrentPage = Page.Monitor;

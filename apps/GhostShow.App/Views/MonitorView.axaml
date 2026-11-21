@@ -9,11 +9,13 @@
       <StackPanel Orientation="Horizontal" Spacing="8">
         <TextBlock Text="DMX monitor" Classes="heading" VerticalAlignment="Center" />
         <ComboBox ItemsSource="{Binding UniverseNumbers}" SelectedItem="{Binding ActiveUniverseChoice}" MinWidth="80" Margin="12,0,0,0" />
+        <ToggleSwitch IsChecked="{Binding Monitor.ShowFixtures}" OnContent="Show fixtures" OffContent="Show fixtures" Margin="16,0,0,0"
+                      ToolTip.Tip="Draw the patch over the values: each fixture's name and colour over its channels, and what each channel does" />
       </StackPanel>
       <TextBlock Text="{Binding Monitor.Source}" Opacity="0.75" />
     </StackPanel>
     <ScrollViewer HorizontalScrollBarVisibility="Disabled">
-      <controls:DmxMonitorGrid Values="{Binding Monitor.Values}" ChangedAt="{Binding Monitor.ChangedAt}"
+      <controls:DmxMonitorGrid Values="{Binding Monitor.Values}" ChangedAt="{Binding Monitor.ChangedAt}" Fixtures="{Binding Monitor.Fixtures}"
                                Revision="{Binding Monitor.Revision}" Fill="{DynamicResource SystemControlHighlightAccentBrush}" />
     </ScrollViewer>
   </DockPanel>

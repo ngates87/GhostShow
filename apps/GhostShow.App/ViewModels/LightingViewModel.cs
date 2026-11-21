@@ -23,7 +23,7 @@ public sealed partial class LightingViewModel : ObservableObject
         Fixtures = fixtures;
         Control = new FixtureControlViewModel(session, levels, reportError);
         Channels = new ChannelsViewModel(levels, reportError);
-        Monitor = new MonitorViewModel(levels);
+        Monitor = new MonitorViewModel(levels, session);
         session.Applied += OnApplied;
         OnApplied();
     }
