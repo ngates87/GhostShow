@@ -888,6 +888,29 @@ public class UiTests
     });
 
     [Fact]
+    public Task The_timeline_tree_marks_what_is_playing() => Ui.Run(() =>
+    {
+        using var rig = new WindowRig();
+        var main = rig.Editor.SelectedTimeline!;
+        var node = rig.Editor.Tree.AllNodes().OfType<TimelineNode>().Single(n => n.Timeline == main);
+        Assert.False(node.ShowsPlaying);
+
+        rig.ViewModel.Playback.Launch(main);
+        WindowRig.Pump(200);
+        Assert.True(node.ShowsPlaying);
+        var icon = rig.Window.GetVisualDescendants().OfType<PathIcon>().Single(i => i.DataContext == node && Equals(ToolTip.GetTip(i), "Playing"));
+        Assert.True(icon.IsEffectivelyVisible);
+
+        rig.ViewModel.Playback.Show.Pause(main.Id);
+        WindowRig.Pump(200);
+        Assert.Equal((false, true), (node.ShowsPlaying, node.ShowsPaused));
+
+        rig.ViewModel.Playback.StopTimeline(main);
+        WindowRig.Pump(300);
+        Assert.Equal((false, false), (node.ShowsPlaying, node.ShowsPaused));
+    });
+
+    [Fact]
     public Task The_DMX_monitor_can_show_the_patch_over_the_values() => Ui.Run(() =>
     {
         using var rig = new WindowRig();

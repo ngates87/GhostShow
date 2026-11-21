@@ -190,6 +190,10 @@
                   <Path Width="16" Height="14" Stretch="Uniform" VerticalAlignment="Center" IsVisible="{Binding !IsFolder}"
                         Stroke="#6FA8DC" StrokeThickness="2" Data="M0,2 L16,2 M0,7 L16,7 M0,12 L10,12" />
                   <TextBlock Text="{Binding Title}" VerticalAlignment="Center" />
+                  <PathIcon Data="{StaticResource Icon.Play}" Width="12" Height="12" VerticalAlignment="Center" Foreground="#4CAF50"
+                            IsVisible="{Binding ShowsPlaying}" ToolTip.Tip="Playing" />
+                  <PathIcon Data="{StaticResource Icon.Pause}" Width="12" Height="12" VerticalAlignment="Center" Foreground="#E6C229"
+                            IsVisible="{Binding ShowsPaused}" ToolTip.Tip="Paused" />
                 </StackPanel>
                 <TextBox Classes="rename" Text="{Binding EditName}" IsVisible="{Binding IsEditing}" MinHeight="0" Padding="4,1" />
               </Panel>

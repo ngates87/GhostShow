@@ -253,6 +253,7 @@ public abstract partial class ShellViewModel : ObservableObject
     {
         Playback.Tick();   // the toolbar transport shows on every screen
         Buttons.Tick();    // buttons light while what they run plays
+        Timeline.Tree.ShowRunning(Playback.Show.Running);   // ▶ by each timeline playing
         Lighting.Tick();
     }
 

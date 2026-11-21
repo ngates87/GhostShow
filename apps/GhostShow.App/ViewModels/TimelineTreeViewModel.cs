@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
+using GhostShow.Core.Playback;
 using CommunityToolkit.Mvvm.Input;
 using GhostShow.Core.Editing;
 using GhostShow.Core.Engine;
@@ -24,10 +25,27 @@ public abstract partial class TimelineTreeNode : ObservableObject
     public ObservableCollection<TimelineTreeNode> Children { get; } = new();
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowsPlaying), nameof(ShowsPaused))]
     public partial bool IsExpanded { get; set; }
 
     [ObservableProperty]
     public partial bool IsEditing { get; set; }
+
+    /// <summary>A timeline playing now (any copy of it), or a folder with one inside.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowsPlaying))]
+    public partial bool IsPlaying { get; internal set; }
+
+    /// <summary>A timeline paused (none of its copies playing), or a folder with one inside and none playing.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowsPaused))]
+    public partial bool IsPaused { get; internal set; }
+
+    /// <summary>The ▶ after its name: a folder shows it only while closed, since what's playing is in sight once it's open.</summary>
+    public bool ShowsPlaying => IsPlaying && !(IsFolder && IsExpanded);
+
+    /// <summary>The ⏸ after its name, as <see cref="ShowsPlaying"/>.</summary>
+    public bool ShowsPaused => IsPaused && !(IsFolder && IsExpanded);
 
     /// <summary>The text being typed while renaming.</summary>
     [ObservableProperty]
@@ -163,6 +181,39 @@ public sealed partial class TimelineTreeViewModel : ObservableObject
     public void RefreshTitles()
     {
         foreach (var node in AllNodes()) node.Refresh();
+    }
+
+    /// <summary>
+    /// A few times a second, from what's running (the Playing list's): which timelines are playing or paused, and the
+    /// folders with one inside.
+    /// </summary>
+    public void ShowRunning(IReadOnlyList<RunningTimeline> running)
+    {
+        var playing = new HashSet<Guid>();
+        var paused = new HashSet<Guid>();
+        foreach (var run in running)
+        {
+            if (run.IsHeld) continue;   // the held lights aren't a timeline
+            if (run.Status.State == TransportState.Playing) playing.Add(run.TimelineId);
+            else paused.Add(run.TimelineId);
+        }
+        Mark(Roots);
+
+        (bool Playing, bool Paused) Mark(IEnumerable<TimelineTreeNode> nodes)
+        {
+            bool anyPlaying = false, anyPaused = false;
+            foreach (var node in nodes)
+            {
+                var (isPlaying, isPaused) = node is TimelineNode timeline
+                    ? (playing.Contains(timeline.Timeline.Id), paused.Contains(timeline.Timeline.Id))
+                    : Mark(node.Children);
+                node.IsPlaying = isPlaying;
+                node.IsPaused = isPaused && !isPlaying;
+                anyPlaying |= isPlaying;
+                anyPaused |= isPaused;
+            }
+            return (anyPlaying, anyPaused);
+        }
     }
 
     /// <summary>Every node, in the order the tree shows them (top to bottom).</summary>
