@@ -17,13 +17,22 @@ public sealed class Debouncer(IShowThread thread, TimeSpan delay, Action action)
     Timer? _timer;
 
     /// <summary>Starts (or restarts) the wait.</summary>
-    public void Poke()
+    public void Poke() => Poke(delay);
+
+    /// <summary>Starts (or restarts) the wait, this long this time.</summary>
+    public void Poke(TimeSpan wait)
     {
         lock (_lock)
         {
             _timer ??= new Timer(_ => thread.Post(action));
-            _timer.Change(delay, Timeout.InfiniteTimeSpan);
+            _timer.Change(wait, Timeout.InfiniteTimeSpan);
         }
+    }
+
+    /// <summary>Stops waiting (an action already on its way to the show's thread still runs).</summary>
+    public void Cancel()
+    {
+        lock (_lock) _timer?.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
     }
 
     public void Dispose()

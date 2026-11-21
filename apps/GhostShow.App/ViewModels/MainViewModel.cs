@@ -29,7 +29,6 @@ public sealed partial class MainViewModel : ShellViewModel
     static readonly FilePickerFileType OldShowFiles = new("GhostShow single-file show (older versions)") { Patterns = ["*.json"] };
     static readonly FilePickerFileType AudioFiles = new("Audio (WAV, MP3)") { Patterns = ["*.wav", "*.mp3", "*.WAV", "*.MP3"] };
     static readonly TimeSpan TickInterval = TimeSpan.FromMilliseconds(33);
-    static readonly TimeSpan AutoSaveDelay = TimeSpan.FromMilliseconds(500);
 
     readonly ShowServices _services;
     readonly ShowSession _session;
@@ -41,10 +40,8 @@ public sealed partial class MainViewModel : ShellViewModel
     readonly LocalOutputSetup _outputSetup;
     readonly SettingsSaver _settingsSaver;
     readonly DispatcherTimer _tick;
-    readonly DispatcherTimer _autoSave;
-    readonly SemaphoreSlim _saveGate = new(1, 1);
+    readonly ShowFiles _files;
     int _tickCount;
-    long _dirtyGeneration;
 
     public MainViewModel(ShowServices services, IStorageProvider storage, ISaveChangesPrompt savePrompt, ILogger<MainViewModel> logger)
         : this(services, storage, savePrompt, logger, LocalServices.For(services, logger))
@@ -73,6 +70,7 @@ public sealed partial class MainViewModel : ShellViewModel
         Diagnostics = new DiagnosticsViewModel(_diagnostics);
         Performance = new PerformanceMeterViewModel(() => services.PlaybackLoop.Timing, () => services.Probe.Snapshot(last: 20).P95Ms);
         _triggers = local.Triggers;
+        _files = new ShowFiles(session, settings, paths, SaveSettingsAsync, services.Thread);
         _serial = services.SerialInputs ?? new SerialInputs(logger);
         _inputSetup = new LocalInputSetup(session, _serial, settings, SaveSettingsAsync,
             // Only adapters that have their port open: one that's missing keeps the name of the port it was last on, and
@@ -100,11 +98,28 @@ public sealed partial class MainViewModel : ShellViewModel
             if (Timeline.Tracks.FirstOrDefault(t => t.IsLighting) is { } lighting) Timeline.EditChannels(lighting);
         });
         _session.Document.Changed += OnDocumentChanged;
+        _files.AfterShowReplaced = AfterShowReplacedAsync;
+        _files.Changed += () =>
+        {
+            IsDirty = _files.IsDirty;
+            OnPropertyChanged(nameof(Title));
+            OnPropertyChanged(nameof(ShowFile));
+        };
+        _files.Saved += () =>
+        {
+            Timeline.RefreshTitles();
+            RefreshRecentShows();
+        };
+        _files.Renamed += () =>
+        {
+            Remote.ShowReplaced();   // devices show the new name
+            RefreshRecentShows();
+        };
+        _files.Status += message => StatusMessage = message;
+        _files.Problem += ReportError;
 
-        _unsavedChanges = new UnsavedChangesGuard(() => IsDirty, () => ShowName, SaveShowAsync, savePrompt);
+        _unsavedChanges = new UnsavedChangesGuard(() => _files.IsDirty, () => ShowName, SaveShowAsync, savePrompt);
         _tick = new DispatcherTimer(TickInterval, DispatcherPriority.Background, (_, _) => Tick());
-        _autoSave = new DispatcherTimer(AutoSaveDelay, DispatcherPriority.Background, OnAutoSaveTimer);
-        _autoSave.Stop();
         FollowPanelWidths();
     }
 
@@ -190,9 +205,10 @@ public sealed partial class MainViewModel : ShellViewModel
 
     readonly UnsavedChangesGuard _unsavedChanges;
 
-    protected override string ShowName => _session.ShowFolder is { } folder && !_session.IsSingleFileShow ? Path.GetFileName(folder)
-                                        : _session.FilePath is { } file ? Path.GetFileName(file)
-                                        : _session.Project.Name;
+    protected override string ShowName => _files.ShowName;
+
+    /// <summary>The open show's files (in GhostShow.Server): saving, opening, the recent list.</summary>
+    public ShowFiles Files => _files;
 
     /// <summary>Before the window closes: offers to save unsaved changes. False means the user cancelled closing.</summary>
     public Task<bool> ConfirmCloseAsync() => _unsavedChanges.ConfirmAsync("closing");
@@ -223,8 +239,7 @@ public sealed partial class MainViewModel : ShellViewModel
     public override object? MenuBarPart => Remote;
     public override object? StatusPart => Performance;
 
-    public string ShowFile => _session.IsSingleFileShow ? $"{_session.FilePath} (older single-file show: Save will ask for a folder)"
-                            : _session.ShowFolder ?? "Not saved yet";
+    public string ShowFile => _files.ShowFile;
 
     // ---- Home screen ----
 
@@ -244,29 +259,15 @@ public sealed partial class MainViewModel : ShellViewModel
     async Task ForgetRecent(RecentShowRow? row)
     {
         if (row is null) return;
-        _settings.RemoveRecentShow(row.Path);
+        await _files.ForgetRecentAsync(row.Path);
         RefreshRecentShows();
-        await SaveSettingsAsync();
     }
 
     void RefreshRecentShows()
     {
         RecentShows.Clear();
-        foreach (var path in _settings.RecentShows)
-        {
-            bool exists = Directory.Exists(path) ? ShowFolderStore.IsShowFolder(path) : File.Exists(path);
+        foreach (var (path, exists) in _files.RecentShows)
             RecentShows.Add(new RecentShowRow(path, Path.GetFileName(path), Path.GetDirectoryName(path) ?? "", exists));
-        }
-    }
-
-    /// <summary>After opening or saving: this show goes to the top of the recent list.</summary>
-    async Task RememberShowAsync()
-    {
-        string? path = _session.IsSingleFileShow ? _session.FilePath : _session.ShowFolder;
-        if (path is null) return;
-        _settings.AddRecentShow(path);
-        RefreshRecentShows();
-        await SaveSettingsAsync();
     }
 
     protected override void OnPageShown()
@@ -335,8 +336,7 @@ public sealed partial class MainViewModel : ShellViewModel
     protected override async Task NewShowAsync()
     {
         if (!await _unsavedChanges.ConfirmAsync("starting a new show")) return;
-        _session.New();
-        await AfterShowReplacedAsync();
+        await _files.NewAsync();
         ShowEditor();
         StatusMessage = "New show. Save (Ctrl+S) picks its folder.";
     }
@@ -373,9 +373,7 @@ public sealed partial class MainViewModel : ShellViewModel
         }
         foreach (var profile in result.Profiles)
             if (await Library.SaveCustomAsync(profile) is { } error) ReportError(error);
-        _session.Use(result.Project);
-        await AfterShowReplacedAsync();
-        IsDirty = true;
+        await _files.UseAsync(result.Project);
         ShowEditor();
         StatusMessage = $"Imported {Path.GetFileName(path)}: {result.Project.Fixtures.Count} fixtures, {result.Profiles.Count} fixture types, "
                         + $"{result.Project.Timelines.Count} timelines"
@@ -389,8 +387,7 @@ public sealed partial class MainViewModel : ShellViewModel
     protected override async Task CloseShow()
     {
         if (!IsShowOpen || !await _unsavedChanges.ConfirmAsync("closing the show")) return;
-        _session.New();   // an empty show underneath, so the engine and outputs carry on (dark)
-        await AfterShowReplacedAsync();
+        await _files.NewAsync();   // an empty show underneath, so the engine and outputs carry on (dark)
         IsShowOpen = false;
         StatusMessage = "";
     }
@@ -420,89 +417,20 @@ public sealed partial class MainViewModel : ShellViewModel
 
     async Task OpenPathAsync(string path)
     {
-        var result = await _session.OpenAsync(path);
-        if (result.Project is null)
-        {
-            ReportError(result.Error!);
-            return;
-        }
-        await AfterShowReplacedAsync();
+        if (!await _files.OpenAsync(path)) return;
         ShowEditor();
-        var notes = new List<string>();
-        if (_settings.AdoptMigratedOutputs(result.MigratedOutputs) > 0)
-        {
-            await SaveSettingsAsync();
-            notes.Add("Its output assignments were moved to this machine's settings.");
-        }
-        await RememberShowAsync();
-        if (result.IsSingleFileShow) notes.Add("This show is from an older version (a single file). Saving asks for a folder to save it in; the old file isn't changed.");
-        if (result.Warnings is { Count: > 0 } warnings) notes.Add($"{warnings.Count} problem(s) opening it: {string.Join(" ", warnings)}");
-        if (!result.IsSingleFileShow && _session.ShowFolder is { } folder && AudioCollector.Plan(_session.Project.Timelines, folder) is { Count: > 0 } outside)
-            notes.Add($"{(outside.Count == 1 ? "1 sound is" : $"{outside.Count} sounds are")} outside the show folder: File → Copy Audio Into Show Folder (or the next save) copies them in.");
-        StatusMessage = notes.Count > 0 ? string.Join(" ", notes) : $"Opened {ShowName}.";
+        RefreshRecentShows();
     }
-
-    bool _collectingAudio;
 
     /// <summary>
-    /// Copies the sounds the show uses from outside its folder into its "audio" folder, then points the clips at the
-    /// copies (one undo step): the show folder then holds everything, so it can be zipped and moved, and its sounds
-    /// play from the local disk instead of a slow or cloud drive. Runs after every save too (quietly when there's
-    /// nothing to copy), so a sound added from elsewhere is copied in shortly after.
+    /// Copies the sounds the show uses from outside its folder into its "audio" folder (see <see cref="ShowFiles.CollectAudioAsync"/>).
     /// </summary>
-    protected override Task CollectAudio() => CollectAudioAsync(quiet: false);
-
-    async Task CollectAudioAsync(bool quiet)
-    {
-        if (_collectingAudio) return;
-        if (_session.ShowFolder is not { } folder || _session.IsSingleFileShow)
-        {
-            if (!quiet) StatusMessage = "Save the show first: its sounds are copied into its folder.";
-            return;
-        }
-        var project = _session.Project;
-        var plan = AudioCollector.Plan(project.Timelines, folder);
-        if (plan.Count == 0)
-        {
-            if (!quiet) StatusMessage = "Every sound is already in the show folder.";
-            return;
-        }
-
-        _collectingAudio = true;
-        string what = plan.Count == 1 ? Path.GetFileName(plan[0].Source) : $"{plan.Count} sounds";
-        try
-        {
-            long shown = -1;
-            var progress = new Progress<(long Done, long Total)>(p =>
-            {
-                long percent = p.Done * 100 / Math.Max(1, p.Total);
-                if (percent == shown) return;
-                shown = percent;
-                StatusMessage = $"Copying {what} into the show folder… {percent}%";
-            });
-            await Task.Run(() => AudioCollector.CopyAsync(plan, folder, progress));
-            if (_session.Project != project || _session.ShowFolder != folder) return;   // another show meanwhile
-
-            var clips = AudioCollector.Clips(project.Timelines, plan, folder);
-            if (clips.Count > 0)
-                _session.Document.Record($"Copy {what} into the show folder", () => AudioCollector.Repoint(project.Timelines, plan, folder),
-                                         [.. clips.Select(ShowDocument.Shallow)]);
-            StatusMessage = $"Copied {what} into {Path.Combine(folder, AudioCollector.Folder)}; the show plays them from there now.";
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            ReportError($"Couldn't copy {what} into the show folder: {ex.Message}. The show still plays them from where they are.");
-        }
-        finally
-        {
-            _collectingAudio = false;
-        }
-    }
+    protected override Task CollectAudio() => _files.CollectAudioAsync(quiet: false);
 
     protected override async Task SaveShowAsync()
     {
-        if (_session.FilePath is null || _session.IsSingleFileShow) await SaveAs();
-        else await WriteShowAsync(folder: null);
+        if (_files.NeedsFirstSave) await SaveAs();
+        else await _files.SaveAsync();
     }
 
     /// <summary>
@@ -517,76 +445,16 @@ public sealed partial class MainViewModel : ShellViewModel
             Title = "Save show: choose a folder for it (an empty one, or a place to make it in)",
         });
         if (picked is not [var location] || location.TryGetLocalPath() is not { } path) return;
-        await WriteShowAsync(ShowFolderFor(path));
+        await _files.SaveAsAsync(_files.FolderFor(path));
     }
 
-    /// <summary>
-    /// Save, asked for by a device. Only where the show is saved already: the folder picker is on this computer, so a
-    /// device can't choose a place. Null when saved, otherwise why not.
-    /// </summary>
-    internal async Task<string?> SaveForDeviceAsync()
-    {
-        if (_session.FilePath is null || _session.IsSingleFileShow)
-            return "This show hasn't got a name yet: use File → Save.";
-        return await WriteShowAsync(folder: null) ? null : "Couldn't save the show: see the show computer.";
-    }
-
-    string ShowFolderFor(string picked)
-    {
-        bool usable = !Directory.EnumerateFileSystemEntries(picked).Any()
-                      || (_session.ShowFolder is { } current && !_session.IsSingleFileShow && Path.GetFullPath(picked) == Path.GetFullPath(current));
-        if (usable) return picked;
-        string name = TimelineNames.Sanitize(_session.Project.Name, "Show");
-        return Path.Combine(picked, TimelineNames.Unique(name, Directory.EnumerateFileSystemEntries(picked).Select(Path.GetFileName).OfType<string>()));
-    }
-
-    async Task<bool> WriteShowAsync(string? folder, bool automatic = false)
-    {
-        await _saveGate.WaitAsync();
-        long generation = _dirtyGeneration;
-        bool saved = false;
-        try
-        {
-            if (automatic && !IsDirty) return true;
-            var warnings = await _session.SaveAsync(folder);
-            saved = true;
-            if (_dirtyGeneration == generation) IsDirty = false;
-            else
-            {
-                // The disk snapshot was taken before a newer edit. ShowFolderStore may also have cleared timeline
-                // dirty flags while finishing its writes, so make the next pass write the complete current state.
-                foreach (var timeline in _session.Project.Timelines) timeline.HasUnsavedChanges = true;
-                IsDirty = true;
-            }
-            Timeline.RefreshTitles();
-            if (!automatic) await RememberShowAsync();
-            if (!automatic)
-                StatusMessage = warnings.Count == 0 ? $"Saved {_session.ShowFolder}." : $"Saved {_session.ShowFolder}. {string.Join(" ", warnings)}";
-            OnPropertyChanged(nameof(Title));
-            OnPropertyChanged(nameof(ShowFile));
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
-        {
-            ReportError($"Couldn't save the show: {ex.Message}. Files already saved are complete; nothing was deleted.");
-        }
-        finally
-        {
-            _saveGate.Release();
-        }
-
-        if (saved) _ = CollectAudioAsync(quiet: true);   // sounds added from elsewhere: copied into the show folder
-        if (saved && _dirtyGeneration != generation) ScheduleAutoSave(AutoSaveDelay);
-        else if (!saved && IsDirty && _session.FilePath is not null && !_session.IsSingleFileShow)
-            ScheduleAutoSave(TimeSpan.FromSeconds(2));
-        return saved;
-    }
+    /// <summary>Save, asked for by a device (see <see cref="ShowFiles.SaveForDeviceAsync"/>).</summary>
+    internal Task<string?> SaveForDeviceAsync() => _files.SaveForDeviceAsync();
 
     Task SaveSettingsAsync() => _settingsSaver.SaveAsync();
 
     async Task AfterShowReplacedAsync()
     {
-        _autoSave.Stop();
-        IsDirty = false;
         Lighting.Reload();
         Playback.Reset();    // the old show's timelines stop at once
         Timeline.Reload();   // focuses the new show's first timeline
@@ -608,27 +476,7 @@ public sealed partial class MainViewModel : ShellViewModel
         MarkDirty();
     }
 
-    protected override void MarkDirty()
-    {
-        IsDirty = true;
-        _dirtyGeneration++;
-        if (_session.FilePath is not null && !_session.IsSingleFileShow) ScheduleAutoSave(AutoSaveDelay);
-    }
-
-    void ScheduleAutoSave(TimeSpan delay)
-    {
-        if (_session.FilePath is null || _session.IsSingleFileShow || !IsDirty) return;
-        _autoSave.Stop();
-        _autoSave.Interval = delay;
-        _autoSave.Start();
-    }
-
-    async void OnAutoSaveTimer(object? sender, EventArgs e)
-    {
-        _autoSave.Stop();
-        if (IsDirty && _session.FilePath is not null && !_session.IsSingleFileShow)
-            await WriteShowAsync(folder: null, automatic: true);
-    }
+    protected override void MarkDirty() => _files.MarkDirty();
 
     protected override async Task<string?> PickAudioFileAsync()
     {

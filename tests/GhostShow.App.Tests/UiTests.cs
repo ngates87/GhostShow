@@ -90,7 +90,7 @@ public class UiTests
     {
         using var rig = new WindowRig();
         var app = rig.ViewModel;
-        rig.ViewModel.IsDirty = true;
+        rig.ViewModel.Files.MarkDirty();
         Assert.NotNull(Finish(app.NewShowForDeviceAsync(discardUnsaved: false)));   // it was never saved: the person has to agree
 
         Assert.Null(Finish(app.NewShowForDeviceAsync(discardUnsaved: true)));

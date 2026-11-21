@@ -288,9 +288,10 @@ Small steps; each one leaves the app working.
       stand after each change. The show computer's keys and serial commands are inputs to it; a panel waiting for a
       trigger (on a device or the desktop) is sent the commands that arrive, and learns them itself. For now the
       desktop's refresh timer ticks it; part 5 gives the server its own.
-   3. **The show's files in the server:** new, open, save, auto-save, save as and rename by name, copying audio in, and
-      the recent list (the future show library), out of `MainViewModel` and `MainViewModel.DeviceShows`. The desktop
-      keeps its file dialogs for importing and choosing a folder, and asks the server to do the rest.
+   3. **The show's files in the server** (done 2026-11-20): `ShowFiles` (GhostShow.Server) has unsaved changes and
+      auto-save, new, open, save and save as, a device's save as and rename by name, copying audio in, and the recent
+      list (the future show library). The desktop keeps its file dialogs (importing, choosing a folder, asking to save
+      changes) and asks it to do the rest; it tells the desktop when another show is open, and what to say.
    4. **Commands in the server:** `AppShowControl` drives the desktop's view models today, including "the timeline open
       in the editor" for the simple remote page's transport. It becomes the server's, with the focused timeline as
       something a screen tells it.
