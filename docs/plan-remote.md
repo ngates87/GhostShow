@@ -371,6 +371,20 @@ Small steps; each one leaves the app working.
          as possibly real: keys and the input monitor, the DMX setup screen keeping its row after an edit, and a
          timeline's length following its last clip. Next: the rig gives tests the window's copy, those 33 are
          reworked, any real difference is fixed, and then the switch flips.
+      5. **The UI tests over the connection (under way, 2026-11-22):** the rig gives tests the show the screens work
+         on (`rig.Shown`) and a way to set it up through its document (`rig.Change`), so the server has it too.
+         Over the connection **293 of 303 pass**. The other 10:
+         - waiting on a round trip the test doesn't allow for: keys pressed in the window are inputs sent to the
+           server (`Holding_a_button_s_key_presses_it_once`, `A_show_button_s_key_runs_its_timeline_…`,
+           `Keys_show_in_the_input_monitor_…`, `A_field_keeps_letter_keys_…`), an undo comes back from the server
+           (`Dragging_an_audio_track_s_volume_slider_…`), a length the server works out
+           (`A_timeline_ends_with_its_last_clip_…`);
+         - real, to fix in the product: the window resyncs mid-edit, so a test's objects go stale
+           (`Double_clicking_a_clip_opens_the_envelope_editor_…`, `A_first_effect_clip_s_start_dot_…`,
+           `A_new_lighting_track_asks_for_its_fixtures_…`). Likely the server answering an edit with one of its own
+           while the window's is on its way, which counts as being overtaken; a follow-up the server makes to an edit
+           shouldn't force a resync. And the DMX setup screen rebuilds its rows when the patch message arrives, so
+           its selection is lost (`The_dmx_setup_screen_adds_a_universe_and_undoes_it`).
 6. **Move the other screens, one at a time** (proposed 2026-11-07 to be done through one shared main view, ahead of
    steps 4 and 5: [plan-shared-view.md](plan-shared-view.md)):
    - Audio, with its settings as commands to the show computer;
