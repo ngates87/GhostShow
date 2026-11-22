@@ -11,8 +11,8 @@ namespace GhostShow.App;
 /// Developer hook for measuring UI responsiveness under load (docs/performance.md). Never active otherwise.
 /// - GHOSTSHOW_UI_LOAD_TEST=1: the app opens on the DMX monitor and a worker thread changes all 512 channels of the
 ///   first universe ~1,000 times a second.
-/// - GHOSTSHOW_UI_LOAD_TEST=timeline: the current show is replaced by a busy one (20 RGBW fixtures, a 60 s looping
-///   timeline with 2,000 fades), the app opens on the Timeline screen and plays it, and every
+/// - GHOSTSHOW_UI_LOAD_TEST=timeline: a new, unsaved show is made busy (20 RGBW fixtures, a 60 s looping timeline with
+///   2,000 fades), so nothing is saved over the show that was open; the app opens on the Timeline screen and plays it, and every
 ///   2 s a lighting point is moved through the editor (undoable edit, recompile and swap on the UI thread), as during
 ///   editing while playing.
 /// Either way, the UI-thread wait is logged every 30 s.
@@ -27,9 +27,13 @@ sealed class UiLoadTest(MainViewModel viewModel, ShowServices services, ILogger 
 
     public static bool IsRequested => Mode is "1" or "timeline";
 
-    public void Start()
+    public async Task StartAsync()
     {
-        if (Mode == "timeline") StartTimeline();
+        if (Mode == "timeline")
+        {
+            await viewModel.Files.NewAsync();   // a show with no folder isn't auto-saved: the edits below never reach a real show
+            StartTimeline();
+        }
         else StartChannels();
         Task.Run(ReportAsync);
     }

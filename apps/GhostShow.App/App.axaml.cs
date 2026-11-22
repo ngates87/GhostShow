@@ -61,7 +61,7 @@ public partial class App : Application
         {
             var loadTest = new UiLoadTest(viewModel, services, _loggerFactory.CreateLogger<UiLoadTest>());
             window.Closing += (_, _) => loadTest.Dispose();
-            loadTest.Start();
+            await loadTest.StartAsync();
         }
     }
 }

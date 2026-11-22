@@ -69,6 +69,24 @@ after each edit; at 10,000 events it takes 10 ms, a noticeable but acceptable co
 is more likely to have hundreds of events (microseconds). Evaluation time varies with how many fades are running at
 the position, hence the large spread at 10,000 events.
 
+## Working the show over the connection
+
+What the native window would pay if it worked the show over the connection, as a device does (plan-remote step 5):
+`GHOSTSHOW_MEASURE=<report.md> dotnet test tests/GhostShow.Tests -c Release --filter-method "*Measure_working_the_show_over_the_connection"`.
+The real web server over loopback; the show's thread is the test host's lock. Shows are lighting clips made from
+random level events, as in the timeline benchmarks. 2026-11-22, 12 logical processors:
+
+| Show | Snapshot | Arrives (p50 / max) | Loaded here (p50 / max) | Edit, 1 handle | Edit, 200 handles | Reaches another device |
+|---|---|---|---|---|---|---|
+| Haunt-sized, first connection after starting | 2.5 MB | 406 / 477 ms | 229 / 314 ms | 0.4 / 15 ms | 2.8 / 12 ms | 2.9 / 13 ms |
+| Haunt-sized: 20 timelines × 100 events, 40 fixtures | 2.5 MB | 63 / 357 ms | 49 / 75 ms | 0.3 / 0.6 ms | 1.6 / 17 ms | 1.8 / 17 ms |
+| Stress: 1 timeline × 10,000 events, 100 fixtures | 3.2 MB | 89 / 395 ms | 93 / 107 ms | 0.3 / 0.5 ms | 1.5 / 2.1 ms | 1.6 / 2.2 ms |
+
+"Loaded here" is parsing the JSON (9-19 ms warm), reading the show from it (41-76 ms) and using it (under 1 ms); the
+screens' own rebuild isn't included (it's what opening a show costs today). Making the snapshot on the show computer
+takes 27-56 ms warm. The first connection pays once for loading and compiling the code. The occasional ~360 ms
+maximum on arrival is one of five runs, not yet explained; it didn't repeat in the edits.
+
 ## Soak tests
 
 `ghostshow soak --minutes 30 [--opendmx /dev/ttyUSB0 --dark]`. Full reports, with per-minute rows:

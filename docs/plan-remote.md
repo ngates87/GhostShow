@@ -316,6 +316,24 @@ Small steps; each one leaves the app working.
    - how fast a drag of many points goes, when each step is sent to the server and comes back;
    - how smoothly the playhead moves (devices get the status 20 times a second; the window refreshes 30 times).
    Go ahead only if these are acceptable.
+
+   Since the shared view, every screen is one `MainView` on a `ShellViewModel`, so the unit that moves is the main view,
+   as the browser's did, rather than the Timeline alone (two copies of the show in one window would disagree).
+   1. **Measured (done 2026-11-22), and acceptable.** Over loopback with the real web server (results in
+      [performance.md](performance.md#working-the-show-over-the-connection)): a haunt-sized show (2.5 MB) arrives in
+      about 60 ms and loads into the window's copy in about 50 ms, the 10,000-event stress show (3.2 MB) in about 90 ms
+      each; the first connection after starting takes about 0.6 s while the code warms up. An edit is answered in under
+      2 ms (200 handles: 1.5-3 ms) and reaches another device as quickly. A drag of handles is one edit, sent when it's
+      let go (only its preview follows the mouse), so it doesn't stream. The playhead doesn't: the browser draws it
+      where each status puts it, 20 times a second, so the window needs it smoothed (part 3).
+   2. **The client side shared:** the browser's connection and its services (`RemoteLink`, `RemoteEdits`,
+      `RemotePlayback` and the other `Remote*` classes) move into the desktop's project, compiled for both, with the
+      address and token passed in; the browser keeps only what needs JavaScript.
+   3. **A smooth playhead** between status messages, in the browser too.
+   4. **The window over the connection:** it builds its `ShellViewModel` on the client services, connected over
+      loopback to the server in the same process (paired as this computer, without a PIN). What only the show
+      computer does (Home, its file dialogs, Remote Access, the close warning) keeps calling the server in-process.
+      Behind a switch at first; the UI tests run over the connection, and pass, before the switch flips.
 6. **Move the other screens, one at a time** (proposed 2026-11-07 to be done through one shared main view, ahead of
    steps 4 and 5: [plan-shared-view.md](plan-shared-view.md)):
    - Audio, with its settings as commands to the show computer;
