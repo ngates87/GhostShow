@@ -56,27 +56,17 @@ public class NativeClientTests
         var paired = Await(http.PostAsync($"{origin}/api/pair", new StringContent($$"""{"pin":"{{remote.Pin}}","name":"This computer"}""", Encoding.UTF8, "application/json")));
         string token = JsonNode.Parse(Await(paired.Content.ReadAsStringAsync()))!["token"]!.GetValue<string>();
 
-        var copy = new ShowSession(new ShowEngine(), new FixtureProfileLibrary(FixtureProfileLoader.LoadBuiltIn()), NullLogger<ShowSession>.Instance);
-        var link = new RemoteLink(new RemoteEndpoint(origin, () => token, "Not paired.", "Not paired any more."));
-        var edits = new RemoteEdits(copy.Document, link);
-        int hellos = 0;
-        link.Hello += m => Dispatcher.UIThread.Post(() =>
-        {
-            edits.OnHello();
-            copy.Use(ShowDocument.FromSnapshot(m["show"]!));
-            hellos++;
-        });
-        link.Changed += (description, ops) => Dispatcher.UIThread.Post(() =>
-        {
-            edits.OnRemoteChange();
-            copy.Document.Apply(new Transaction(description, ops), origin: "show computer");
-        });
-        link.Result += m => Dispatcher.UIThread.Post(() => edits.OnResult(m));
+        var show = new RemoteShow(new RemoteEndpoint(origin, () => token, "Not paired.", "Not paired any more."), FixtureProfileLoader.LoadBuiltIn());
+        var copy = show.Session;
+        int arrived = 0, statuses = 0;
+        show.Arrived += _ => arrived++;
+        show.StatusArrived += _ => statuses++;
         using var stop = new CancellationTokenSource();
-        var running = link.RunAsync(stop.Token);
+        var running = show.RunAsync(stop.Token);
 
-        Until(() => hellos == 1, "the show arrived");
+        Until(() => arrived == 1, "the show arrived");
         Assert.Equal(rig.Session.Project.Timelines.Select(t => t.Id), copy.Project.Timelines.Select(t => t.Id));
+        Assert.Equal(rig.Session.Project.Fixtures.Select(f => f.Name), copy.Project.Fixtures.Select(f => f.Name));
 
         // An edit here reaches the show computer's show...
         var timeline = copy.Project.Timelines[0];
@@ -87,7 +77,13 @@ public class NativeClientTests
         var track = rig.Session.Project.Timelines[0].Tracks[0];
         rig.Session.Document.Record("Rename track", () => track.Name = "Renamed on the show computer", track);
         Until(() => copy.Project.Timelines[0].Tracks[0].Name == "Renamed on the show computer", "the copy has the show computer's edit");
-        Assert.Equal(1, hellos);   // in step all along: no resync
+        Assert.Equal(1, arrived);   // in step all along: no resync
+
+        // Playing on the show computer shows here.
+        var main = rig.Session.Project.Timelines[0].Id;
+        rig.ViewModel.ShowPlayback.Play(main);
+        Until(() => show.Playback.StatusOf(main).State == Core.Playback.TransportState.Playing, "the copy hears it's playing");
+        Assert.True(statuses > 0);
 
         stop.Cancel();
         Until(() => running.IsCompleted, "the connection stopped");

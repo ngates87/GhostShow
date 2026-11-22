@@ -347,6 +347,10 @@ Small steps; each one leaves the app working.
          the editor and how its screens follow another show. `DedicatedShowThread` is a show thread of its own (awaits
          come back to it), and `ShowServerTests` runs the whole server on one with no window: it starts, serves a
          device the show, and ticks itself.
+      2. **What a device's view runs on, shared (done 2026-11-22):** `RemoteShow` (`App/Client`) is the copy of the
+         show kept in step over the connection, the services over it, and every message's handling; the browser's
+         page only decides what its screens do when the show arrives (its tabs, title, who it's paired as).
+         `NativeClientTests` runs it natively: the show arrives, edits go both ways, playing shows.
 6. **Move the other screens, one at a time** (proposed 2026-11-07 to be done through one shared main view, ahead of
    steps 4 and 5: [plan-shared-view.md](plan-shared-view.md)):
    - Audio, with its settings as commands to the show computer;
