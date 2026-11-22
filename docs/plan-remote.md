@@ -286,8 +286,8 @@ Small steps; each one leaves the app working.
       arming, run-once and re-arm, firing again while held, pressing buttons. Every Buttons panel shows them through
       `IRemoteTriggers`: a device's over the connection, the desktop's in-process (`LocalTriggers`), sent how they
       stand after each change. The show computer's keys and serial commands are inputs to it; a panel waiting for a
-      trigger (on a device or the desktop) is sent the commands that arrive, and learns them itself. For now the
-      desktop's refresh timer ticks it; part 5 gives the server its own.
+      trigger (on a device or the desktop) is sent the commands that arrive, and learns them itself. The server's own
+      tick (part 5) runs them.
    3. **The show's files in the server** (done 2026-11-20): `ShowFiles` (GhostShow.Server) has unsaved changes and
       auto-save, new, open, save and save as, a device's save as and rename by name, copying audio in, and the recent
       list (the future show library). The desktop keeps its file dialogs (importing, choosing a folder, asking to save
@@ -296,11 +296,26 @@ Small steps; each one leaves the app working.
       desktop's view models) works playback, triggers and files directly. The desktop tells it which timeline is open
       in the editor (the transport's), does Blackout and the test tone for it, and opens a timeline a device asks for
       (`OpenRequested`).
-   5. **The remote server's host in the server:** `AppRemoteHost` and Remote Access's settings, so the server can
-      serve devices with no window at all (`GhostShow.Cli` or step 7's tray program can then run it).
+   5. **The remote server's host in the server** (done 2026-11-22): `ShowRemoteHost` (was `AppRemoteHost`) serves
+      devices from the server's own pieces, with no view model in sight: the open timeline comes from `ShowControl`,
+      unsaved changes from `ShowFiles`, the sound devices from `AudioOutputs` (the desktop's `AudioDeviceList` wraps
+      it). `ShowRemote` is Remote Access: the web server, on or off, its port and the paired devices, saved with the
+      machine settings; the desktop's Remote Access window is a screen over it. `ServerTick` is the server's own
+      refresh: triggers every tick, the load meter twice a second, and once a second the outputs, inputs, a device's
+      Diagnostics and Audio screens, the sound devices tracks use, and the warnings. The desktop's refresh timer calls
+      it, at background priority as before, so the work and its priority haven't changed; a host with no window calls
+      `ServerTick.Start`, which never lets more than one tick wait (`ShowHeartbeat`). Remote Access now says
+      "something else is using it" for a port in use, as intended (it used to show the web server's own message).
    Then step 5 points the desktop's screens at the server over the connection instead of in-process.
 5. **The native Timeline over the connection.** The riskiest step, and it has never been tried. The existing UI tests
    will show whether the idea holds. If it goes badly, stop here: the current design still works.
+   It starts by measuring, on the stress timeline and a real haunt-sized show, before anything else moves (see
+   [Performance checks](#performance-checks)):
+   - how long the show takes to load over the connection, and to reload (the whole show is sent again when another
+     device's edit overtakes one of the window's own: 10,000 events are 8.7 MB of JSON);
+   - how fast a drag of many points goes, when each step is sent to the server and comes back;
+   - how smoothly the playhead moves (devices get the status 20 times a second; the window refreshes 30 times).
+   Go ahead only if these are acceptable.
 6. **Move the other screens, one at a time** (proposed 2026-11-07 to be done through one shared main view, ahead of
    steps 4 and 5: [plan-shared-view.md](plan-shared-view.md)):
    - Audio, with its settings as commands to the show computer;
@@ -308,8 +323,10 @@ Small steps; each one leaves the app working.
    - the file menu, with a browser for the show computer's folders (choosing a sound, opening a show, uploading sounds
      from the laptop).
 7. **Run the server on its own:** autostart and packaging (the Windows installer already serves `/app/` with no setup,
-   from the desktop app). Then delete
-   the old direct path and what's left of `ShellView.cs`.
+   from the desktop app). First, one place in the server builds it: today the desktop's `MainViewModel` constructor
+   (and its `LocalServices`) creates the server's pieces and connects some of them (serial commands to the triggers,
+   a show replaced to the triggers, inputs and outputs). Then delete the old direct path and what's left of
+   `ShellView.cs`.
 8. **Browser polish:**
    - A symbol font (▾ and ⚙ show as boxes).
    - Checking which keyboard shortcuts the browser takes first (Ctrl+W can't be taken back), and whether plain `http://`
@@ -347,6 +364,15 @@ Chromium on the development PC, against the real app without a window, 2026-10-3
 | Start, on this machine | ~1.1 s | about the same |
 | Stress timeline, 65,000 handles all in view: scroll / zoom / drag | 28 / 15 / 7 fps | 40 / 29 / 20 fps |
 | Same timeline zoomed in to editing scale: scroll / zoom / drag | | 48 / 109 / 55 fps |
+
+## Performance checks
+
+Agreed 2026-11-22. The yardsticks are in [performance.md](performance.md).
+- **Each part of step 4, and each later step:** the UI load test (`GHOSTSHOW_UI_LOAD_TEST=timeline`) before and after.
+  Part 5 moved work without changing it, its thread or its priority.
+- **Step 5:** the measurements above, before going further.
+- **Before August 2027:** a run of a few hours with two or three devices connected, the remote server included (the
+  soak tests so far cover DMX and playback, for 30 minutes, with no devices), and fader lag from a laptop on Wi-Fi.
 
 ## Risks and notes
 

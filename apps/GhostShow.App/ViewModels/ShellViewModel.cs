@@ -272,16 +272,10 @@ public abstract partial class ShellViewModel : ObservableObject
     /// <summary>What needs attention: patch errors, failing outputs, missing devices.</summary>
     public ObservableCollection<string> Warnings { get; } = new();
 
-    volatile string[] _warningsSnapshot = [];
-
-    /// <summary>The warnings, for other threads (the web remote's status).</summary>
-    internal IReadOnlyList<string> WarningsSnapshot => _warningsSnapshot;
-
     /// <summary>Shows these warnings (the list only changes when they do).</summary>
     protected void ShowWarnings(IReadOnlyList<string> warnings)
     {
         if (warnings.SequenceEqual(Warnings)) return;
-        _warningsSnapshot = [.. warnings];
         Warnings.Clear();
         foreach (var warning in warnings) Warnings.Add(warning);
     }

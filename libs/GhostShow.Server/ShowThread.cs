@@ -10,6 +10,68 @@ public interface IShowThread
     void Post(Action action);
 }
 
+public static class ShowThreadExtensions
+{
+    /// <summary>
+    /// Runs a function on the show's thread and returns what it returns (or throws what it throws). Whoever awaits it
+    /// carries on off that thread, so a device's connection never runs on the show's thread.
+    /// </summary>
+    public static Task<T> InvokeAsync<T>(this IShowThread thread, Func<T> function)
+    {
+        var done = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
+        thread.Post(() =>
+        {
+            try
+            {
+                done.SetResult(function());
+            }
+            catch (Exception e)
+            {
+                done.SetException(e);
+            }
+        });
+        return done.Task;
+    }
+}
+
+/// <summary>
+/// Runs an action on the show's thread at an interval, for a host with no refresh timer of its own. Never more than one
+/// waits: while the thread is busy, ticks that fall due are skipped rather than queued up behind it.
+/// </summary>
+public sealed class ShowHeartbeat : IDisposable
+{
+    readonly IShowThread _thread;
+    readonly Action _action;
+    readonly Timer _timer;
+    int _waiting;   // 1 while a tick is posted and hasn't finished
+
+    public ShowHeartbeat(IShowThread thread, TimeSpan interval, Action action)
+    {
+        _thread = thread;
+        _action = action;
+        _timer = new Timer(_ => Due(), null, interval, interval);
+    }
+
+    /// <summary>The interval is up: a tick is posted, unless the last one is still waiting or running.</summary>
+    internal void Due()
+    {
+        if (Interlocked.Exchange(ref _waiting, 1) == 1) return;
+        _thread.Post(() =>
+        {
+            try
+            {
+                _action();
+            }
+            finally
+            {
+                Volatile.Write(ref _waiting, 0);
+            }
+        });
+    }
+
+    public void Dispose() => _timer.Dispose();
+}
+
 /// <summary>Runs an action on the show's thread once calls have stopped for a while (a volume drag is saved once it settles).</summary>
 public sealed class Debouncer(IShowThread thread, TimeSpan delay, Action action) : IDisposable
 {

@@ -20,6 +20,9 @@ public sealed class ShowControl(ShowSession session, IPlayback playback, ShowTri
     /// <summary>A device opened a timeline: the editor on the show computer shows it, and the transport works it.</summary>
     public event Action<Guid>? OpenRequested;
 
+    /// <summary>The timeline open in the editor on the show computer (the transport's), if any.</summary>
+    public Guid? FocusedTimeline => focused();
+
     bool Has(Guid id) => session.Project.Timelines.Any(t => t.Id == id);
 
     public string? Transport(TransportAction action, TimeSpan? position)

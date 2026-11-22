@@ -1,5 +1,6 @@
 using GhostShow.Audio;
 using GhostShow.Core.Timeline;
+using GhostShow.Server;
 
 namespace GhostShow.App.ViewModels;
 
@@ -10,27 +11,32 @@ public sealed record AudioDeviceChoice(string Label, string? Name)
 }
 
 /// <summary>
-/// The output devices this computer has, shared by the Audio screen and the output pickers on audio tracks, and
-/// refreshed when either is opened (so a USB interface plugged in since shows up). The browser build has its own, which
-/// asks the show computer.
+/// The output devices this computer has (the server's <see cref="AudioOutputs"/>), shared by the Audio screen and the
+/// output pickers on audio tracks, and refreshed when either is opened (so a USB interface plugged in since shows up).
+/// The browser build has its own, which asks the show computer.
 /// </summary>
-public sealed class AudioDeviceList(AudioService audio)
+public sealed class AudioDeviceList(AudioOutputs outputs)
 {
-    public IReadOnlyList<string> Names { get; private set; } = [];
-
-    /// <summary>Raised on the UI thread when <see cref="Names"/> changes.</summary>
-    public event Action? Changed;
-
-    public async Task RefreshAsync()
+    public AudioDeviceList(AudioService audio) : this(new AudioOutputs(audio))
     {
-        var names = await audio.ListDevicesAsync();
-        if (names.SequenceEqual(Names)) return;
-        Names = names;
-        Changed?.Invoke();
     }
 
+    /// <summary>The server's list, which devices are sent too.</summary>
+    public AudioOutputs Outputs => outputs;
+
+    public IReadOnlyList<string> Names => outputs.Names;
+
+    /// <summary>Raised on the UI thread when <see cref="Names"/> changes.</summary>
+    public event Action? Changed
+    {
+        add => outputs.Changed += value;
+        remove => outputs.Changed -= value;
+    }
+
+    public Task RefreshAsync() => outputs.RefreshAsync();
+
     /// <summary>A short tone on a track's output (null: the default output). False if that device isn't open.</summary>
-    public bool PlayTestSound(string? device, AudioSide side = AudioSide.Stereo) => audio.PlayTestSound(device, side);
+    public bool PlayTestSound(string? device, AudioSide side = AudioSide.Stereo) => outputs.PlayTestSound(device, side);
 
     /// <summary>
     /// The choices for an audio track's output: the default output, every device, and the track's own device marked

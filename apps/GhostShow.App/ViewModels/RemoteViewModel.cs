@@ -1,111 +1,34 @@
 using System.Collections.ObjectModel;
-using System.Net.Sockets;
-using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using GhostShow.Core.Diagnostics;
-using GhostShow.Core.Dmx;
-using GhostShow.Core.Editing;
-using GhostShow.Core.Engine;
-using GhostShow.Core.Fixtures;
-using GhostShow.Core.Inputs;
-using GhostShow.Core.Playback;
 using GhostShow.Core.Storage;
-using GhostShow.Core.Timeline;
 using GhostShow.Server;
 using GhostShow.Web;
-using Microsoft.Extensions.Logging;
 
 namespace GhostShow.App.ViewModels;
 
-/// <summary>The web remote's host: the desktop app, with the show edited on the UI thread.</summary>
-sealed class AppRemoteHost(ShowSession session, ShowPlayback playback, PlaybackViewModel focus, IShowControl control,
-                            Func<IReadOnlyList<string>> warnings, AudioDeviceList audioDevices, Func<bool> hasUnsavedChanges,
-                            Func<bool> needsFirstSave, IFixtureLibrary library, IOutputSetup outputs, ILiveLevels levels,
-                            ITriggerControl triggers, IInputSetup inputs, LocalAudioSetup audio,
-                            LocalDiagnostics diagnostics, ShowLoad load) : IRemoteHost
-{
-    public Task<T> InvokeAsync<T>(Func<T> function) => Dispatcher.UIThread.InvokeAsync(function).GetTask();
-    public ShowSession Session => session;
-    public ShowPlayback Playback => playback;
-    public Guid? FocusedTimeline => focus.FocusedId;
-    public IShowControl Control => control;
-    public IReadOnlyList<string> Warnings => warnings();
-    public bool HasUnsavedChanges => hasUnsavedChanges();
-    public bool NeedsFirstSave => needsFirstSave();
-    public IFixtureLibrary Library => library;
-    public IOutputSetup Outputs => outputs;
-    public ILiveLevels Levels => levels;
-    public ITriggerControl Triggers => triggers;
-    public IInputSetup Inputs => inputs;
-    public IAudioSetup Audio => audio;
-    public void WatchAudio(object device, bool watching) => audio.SetWatching(device, watching);
-    public IDiagnostics Diagnostics => diagnostics;
-    public LoadReading Load => load.Reading;
-    public void WatchDiagnostics(object device, bool watching) => diagnostics.SetWatching(device, watching);
-    public IReadOnlyList<string> AudioDevices => audioDevices.Names;
-
-    public event Action? AudioDevicesChanged
-    {
-        add => audioDevices.Changed += value;
-        remove => audioDevices.Changed -= value;
-    }
-}
-
 /// <summary>
 /// View → Remote Access…: lets devices on the show's network (an iPad, a laptop, a phone) open GhostShow in their
-/// browser. Switching it on starts the web remote (<see cref="RemoteServer"/>); devices pair with the PIN shown here,
-/// as an editor or an operator, and stay paired until removed here. Off until switched on; it stays on (it starts with
-/// the app) until switched off. See docs/plan-remote.md.
+/// browser. The screen over the server's <see cref="ShowRemote"/>: switching it on starts the web remote; devices pair
+/// with the PIN shown here, as an editor or an operator, and stay paired until removed here. Off until switched on; it
+/// stays on (it starts with the app) until switched off. See docs/plan-remote.md.
 /// </summary>
 public sealed partial class RemoteViewModel : ObservableObject, IAsyncDisposable
 {
-    readonly RemoteServer _server;
-    readonly RemoteSettings _settings;
-    readonly Func<Task> _saveSettings;
-    readonly ILogger _logger;
+    readonly ShowRemote _remote;
 
-    internal RemoteViewModel(IRemoteHost host, RemoteSettings settings, Func<Task> saveSettings, ILogger logger)
+    internal RemoteViewModel(ShowRemote remote)
     {
-        _settings = settings;
-        _saveSettings = saveSettings;
-        _logger = logger;
-        _server = new RemoteServer(host, settings, logger) { BrowserAppFolder = FindBrowserApp() };
-        // Both come from the server's threads.
-        _server.Pairing.Changed += () => Dispatcher.UIThread.Post(() =>
-        {
-            Refresh();
-            _ = _saveSettings();
-        });
-        _server.ConnectionsChanged += () => Dispatcher.UIThread.Post(Refresh);
-        Port = settings.Port;
+        _remote = remote;
+        _remote.Changed += Refresh;   // on the show's thread: this one
+        Port = remote.Port;
         Refresh();
     }
 
-    public RemoteServer Server => _server;
-
-    /// <summary>
-    /// The browser build of the app (GhostShow.Browser, published), served at /app/: the folder in
-    /// GHOSTSHOW_BROWSER_APP if that's set, the browser-app folder next to the program in an installed copy (see
-    /// installer/build.cs), or else the one published in this source tree
-    /// (apps/GhostShow.Browser/bin/Release/net10.0-browser/publish/wwwroot), found by looking up from where the app runs.
-    /// Null if there's none: then only the simple remote page is served.
-    /// </summary>
-    static string? FindBrowserApp()
-    {
-        if (Environment.GetEnvironmentVariable("GHOSTSHOW_BROWSER_APP") is { Length: > 0 } set) return set;
-        var installed = Path.Combine(AppContext.BaseDirectory, "browser-app");
-        if (File.Exists(Path.Combine(installed, "index.html"))) return installed;
-        for (var folder = new DirectoryInfo(AppContext.BaseDirectory); folder is not null; folder = folder.Parent)
-        {
-            var published = Path.Combine(folder.FullName, "GhostShow.Browser", "bin", "Release", "net10.0-browser", "publish", "wwwroot");
-            if (File.Exists(Path.Combine(published, "index.html"))) return published;
-        }
-        return null;
-    }
+    public RemoteServer Server => _remote.Server;
 
     /// <summary>Where the full app is, for a device: the first address with /app/ (null if it isn't served).</summary>
-    public string? FullAppAddress => _server.BrowserAppFolder is null ? null : Addresses.FirstOrDefault() is { } first ? first + "app/" : null;
+    public string? FullAppAddress => Server.BrowserAppFolder is null ? null : Addresses.FirstOrDefault() is { } first ? first + "app/" : null;
 
     /// <summary>Whether devices can connect (the web remote is running).</summary>
     [ObservableProperty]
@@ -127,74 +50,54 @@ public sealed partial class RemoteViewModel : ObservableObject, IAsyncDisposable
     [ObservableProperty]
     public partial string Status { get; private set; } = "";
 
-    public string Pin => _server.Pairing.Pin;
+    public string Pin => Server.Pairing.Pin;
 
-    public IReadOnlyList<string> Addresses => _server.Addresses;
+    public IReadOnlyList<string> Addresses => Server.Addresses;
 
     /// <summary>What the QR code holds: the first address (a phone's camera opens it).</summary>
     public string? QrText => Addresses.FirstOrDefault();
 
     public ObservableCollection<RemoteDeviceRow> Devices { get; } = new();
 
-    public int ConnectedCount => _server.Connected.Count;
+    public int ConnectedCount => Server.Connected.Count;
 
     /// <summary>For the menu bar's indicator: "2 devices", "1 device", "On".</summary>
     public string ConnectedLabel => ConnectedCount switch { 0 => "Remote on", 1 => "1 device", var n => $"{n} devices" };
 
     /// <summary>At startup: back on if it was left on.</summary>
-    public Task StartIfEnabledAsync() => _settings.Enabled ? SetEnabledAsync(true) : Task.CompletedTask;
+    public async Task StartIfEnabledAsync() => Failed(await _remote.StartIfEnabledAsync());
 
-    public async Task SetEnabledAsync(bool on)
+    public async Task SetEnabledAsync(bool on) => Failed(await _remote.SetEnabledAsync(on, (int)Math.Clamp(Port, 1024, 65535)));
+
+    /// <summary>It couldn't start: says why, and shows it off.</summary>
+    void Failed(string? problem)
     {
-        if (on)
-        {
-            int port = (int)Math.Clamp(Port, 1024, 65535);
-            try
-            {
-                await _server.StartAsync(port);
-            }
-            catch (Exception e) when (e is IOException or SocketException or InvalidOperationException)
-            {
-                _logger.LogWarning(e, "The web remote couldn't start on port {Port}.", port);
-                Status = $"Couldn't start on port {port}: {Reason(e)} Pick another port and switch it on again.";
-                IsOn = false;
-                OnPropertyChanged(nameof(IsEnabled));
-                return;
-            }
-            _settings.Port = port;
-        }
-        else
-        {
-            await _server.StopAsync();
-        }
-        _settings.Enabled = on;
-        IsOn = on;
-        OnPropertyChanged(nameof(IsEnabled));
+        if (problem is null) return;
         Refresh();
-        await _saveSettings();
+        Status = problem;
+        OnPropertyChanged(nameof(IsEnabled));
     }
-
-    static string Reason(Exception e) => e.InnerException is SocketException { SocketErrorCode: SocketError.AddressAlreadyInUse } || e is SocketException { SocketErrorCode: SocketError.AddressAlreadyInUse }
-        ? "something else is using it." : e.Message;
 
     [RelayCommand]
     void NewPin()
     {
-        _server.Pairing.NewPin();
+        _remote.NewPin();
         OnPropertyChanged(nameof(Pin));
     }
 
     /// <summary>Another show was opened (on the UI thread): every device gets it.</summary>
-    public void ShowReplaced() => _server.ShowReplaced();
+    public void ShowReplaced() => _remote.ShowReplaced();
 
-    internal void Remove(RemoteDeviceRow row) => _server.Remove(row.Id);
+    internal void Remove(RemoteDeviceRow row) => _remote.Remove(row.Id);
 
-    internal void SetRole(RemoteDeviceRow row, RemoteRole role) => _server.Pairing.SetRole(row.Id, role);
+    internal void SetRole(RemoteDeviceRow row, RemoteRole role) => _remote.SetRole(row.Id, role);
 
     void Refresh()
     {
-        var connected = _server.Connected;
-        var rows = _server.Pairing.Devices.OrderBy(d => d.Name, StringComparer.CurrentCultureIgnoreCase)
+        IsOn = _remote.IsOn;
+        OnPropertyChanged(nameof(IsEnabled));
+        var connected = Server.Connected;
+        var rows = Server.Pairing.Devices.OrderBy(d => d.Name, StringComparer.CurrentCultureIgnoreCase)
             .Select(d => new RemoteDeviceRow(d, connected.FirstOrDefault(c => c.Id == d.Id), this)).ToList();
         Devices.Clear();
         foreach (var row in rows) Devices.Add(row);
@@ -209,7 +112,7 @@ public sealed partial class RemoteViewModel : ObservableObject, IAsyncDisposable
         OnPropertyChanged(nameof(ConnectedLabel));
     }
 
-    public async ValueTask DisposeAsync() => await _server.DisposeAsync();
+    public async ValueTask DisposeAsync() => await _remote.DisposeAsync();
 }
 
 /// <summary>A paired device, in Remote Access.</summary>

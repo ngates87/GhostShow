@@ -42,7 +42,8 @@ public sealed partial class MainViewModel : ShellViewModel
     readonly DispatcherTimer _tick;
     readonly ShowFiles _files;
     readonly ShowControl _control;
-    int _tickCount;
+    readonly ServerTick _serverTick;
+    readonly ShowRemote _remote;
 
     public MainViewModel(ShowServices services, IStorageProvider storage, ISaveChangesPrompt savePrompt, ILogger<MainViewModel> logger)
         : this(services, storage, savePrompt, logger, LocalServices.For(services, logger))
@@ -97,9 +98,11 @@ public sealed partial class MainViewModel : ShellViewModel
         });
         _serial.StatusChanged += _ => Dispatcher.UIThread.Post(_inputSetup.Refresh);
         _audioSetup = new LocalAudioSetup(services.Audio, session, settings, SaveSettingsAsync, services.Thread);
-        Remote = new RemoteViewModel(new AppRemoteHost(session, ShowPlayback, Playback, _control, () => WarningsSnapshot, AudioDevices, () => IsDirty, () => _session.FilePath is null || _session.IsSingleFileShow, local.Library, _outputSetup, local.Levels,
-                                                       _triggers, _inputSetup, _audioSetup, _diagnostics, _load),
-                                     settings.Remote, SaveSettingsAsync, logger);
+        _serverTick = new ServerTick(services, _triggers, _load, _outputSetup, _inputSetup, _diagnostics, _audioSetup);
+        var host = new ShowRemoteHost(services, ShowPlayback, _control, _files, _serverTick, AudioDevices.Outputs, local.Library, _outputSetup,
+                                      local.Levels, _triggers, _inputSetup, _audioSetup, _diagnostics, _load);
+        _remote = new ShowRemote(host, settings.Remote, SaveSettingsAsync, services.Thread, logger, ShowRemote.FindBrowserApp());
+        Remote = new RemoteViewModel(_remote);
         Audio = new AudioViewModel(_audioSetup, AudioDevices);
         _ = AudioDevices.RefreshAsync();
         Guide = new SetupGuideViewModel(session, settings, page => CurrentPage = page, () =>
@@ -117,7 +120,7 @@ public sealed partial class MainViewModel : ShellViewModel
         };
         _files.Saved += Timeline.RefreshTitles;
         _files.RecentChanged += RefreshRecentShows;
-        _files.Renamed += Remote.ShowReplaced;   // devices show the new name
+        _files.Renamed += _remote.ShowReplaced;   // devices show the new name
         _files.Status += message => StatusMessage = message;
         _files.Problem += ReportError;
 
@@ -138,7 +141,7 @@ public sealed partial class MainViewModel : ShellViewModel
             var library = new LocalFixtureLibrary(services.Session, services.Paths, services.Settings, logger);
             var playback = new ShowPlayback(services.Session, services.Playback, services.Audio, logger);
             var triggers = new ShowTriggers(services.Session, playback, () => Blackout(services));
-            var shell = new ShellServices(playback, library, outputSetup, levels, new AudioDeviceList(services.Audio), new LocalTriggers(triggers));
+            var shell = new ShellServices(playback, library, outputSetup, levels, new AudioDeviceList(new AudioOutputs(services.Audio)), new LocalTriggers(triggers));
             return new(shell, playback, outputSetup, levels, library, saver, triggers);
         }
     }
@@ -319,6 +322,7 @@ public sealed partial class MainViewModel : ShellViewModel
     public async Task ShutdownAsync()
     {
         _tick.Stop();
+        _serverTick.Dispose();
         await Remote.DisposeAsync();   // devices are told it's going
         // Order matters: stop the show (audio stops, timeline releases the lights), stop the playback thread, close
         // audio, then stop DMX outputs, which send their blackout last.
@@ -500,25 +504,18 @@ public sealed partial class MainViewModel : ShellViewModel
     /// <summary>Screens refresh only while visible; slow-changing status refreshes once a second.</summary>
     protected override void Tick()
     {
-        _triggers.Tick();   // re-arming, and firing again while held (the server's, run from here while the desktop hosts it)
+        _serverTick.Tick();   // the server's: triggers, the load meter, outputs, inputs, warnings (run from here while the desktop hosts it)
         base.Tick();
 
-        _tickCount++;
-        if (_tickCount % 15 == 0) Performance.Show(_load.Measure());   // twice a second, so the meter moves like one (devices get it in the status)
-        if (_tickCount % 30 != 0) return;
-        _outputSetup.Tick();
-        _inputSetup.Tick();
+        int count = _serverTick.Count;
+        if (count % (ServerTick.PerSecond / 2) == 0) Performance.Show(_load.Reading);   // twice a second, just measured
+        if (count % ServerTick.PerSecond != 0) return;
         Inputs.Tick();
-        if (CurrentPage == Page.Diagnostics || _diagnostics.IsWatched) _diagnostics.Refresh();   // here, or on a device
-        if (CurrentPage == Page.Audio || _audioSetup.IsWatched) _audioSetup.Refresh();   // here, or on a device
-        // Open the devices audio tracks are routed to before they're needed (cheap when nothing changed).
-        _services.Audio.UseOutputs(_session.Project.Timelines.SelectMany(t => t.Tracks)
-            .Where(t => t.Kind == TrackKind.Audio && !string.IsNullOrWhiteSpace(t.AudioDevice)).Select(t => t.AudioDevice!));
-        RefreshWarnings();
+        if (CurrentPage == Page.Diagnostics && !_diagnostics.IsWatched) _diagnostics.Refresh();   // a device's keeps it up to date otherwise
+        if (CurrentPage == Page.Audio && !_audioSetup.IsWatched) _audioSetup.Refresh();
+        ShowWarnings(_serverTick.Warnings);
         Guide.Refresh();
     }
-
-    void RefreshWarnings() => ShowWarnings(GhostShow.Server.ShowWarnings.Collect(_services, _inputSetup));
 }
 
 /// <summary>The Home page's place in the main view (HomeView shows it, on the show computer only).</summary>

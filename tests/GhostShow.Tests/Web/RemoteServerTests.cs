@@ -25,7 +25,7 @@ using static GhostShow.Tests.Timelines.TimelineTestKit;
 namespace GhostShow.Tests.Web;
 
 /// <summary>The web remote's server, for real: listening on a free port, with an HTTP client and WebSockets as a device's browser.</summary>
-public sealed class RemoteServerTests : IAsyncLifetime
+public sealed partial class RemoteServerTests : IAsyncLifetime
 {
     /// <summary>The desktop app, for the server: the show's thread is a lock here (tests change the show inside it too).</summary>
     /// <summary>The desktop's controls, for the server: records what it was asked to do.</summary>

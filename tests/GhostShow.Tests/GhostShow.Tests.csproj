@@ -21,6 +21,7 @@
     <ProjectReference Include="..\..\libs\GhostShow.Core\GhostShow.Core.csproj" />
     <ProjectReference Include="..\..\libs\GhostShow.Dmx\GhostShow.Dmx.csproj" />
     <ProjectReference Include="..\..\libs\GhostShow.Inputs\GhostShow.Inputs.csproj" />
+    <ProjectReference Include="..\..\libs\GhostShow.Server\GhostShow.Server.csproj" />
     <ProjectReference Include="..\..\libs\GhostShow.Web\GhostShow.Web.csproj" />
   </ItemGroup>
 </Project>
