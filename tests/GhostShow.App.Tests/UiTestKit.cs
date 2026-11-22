@@ -64,7 +64,9 @@ sealed class WindowRig : IDisposable
                                        new PlaybackLoop(Manager, NullLogger.Instance), Audio, settings ?? new MachineSettings(),
                                        new AppPaths(_config), new RecentEventsLog(), _probe, UiShowThread.Instance, new NoAdapters(), serialInputs);
         Window = new MainWindow { Width = 1400, Height = 820 };
-        ViewModel = new MainViewModel(services, Window.StorageProvider, new Dialogs.SaveChangesDialogPrompt(Window), NullLogger<MainViewModel>.Instance);
+        // GHOSTSHOW_WINDOW=connected runs every UI test with the window over its connection (docs/plan-remote.md, step 5).
+        ViewModel = new MainViewModel(services, Window.StorageProvider, new Dialogs.SaveChangesDialogPrompt(Window), NullLogger<MainViewModel>.Instance,
+                                      MainViewModel.OverTheConnectionRequested);
         Window.DataContext = ViewModel;
         Window.Show();
         var start = ViewModel.StartAsync(null);

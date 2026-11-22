@@ -3,6 +3,8 @@ using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using GhostShow.App.Client;
+using GhostShow.Core.Inputs;
 using GhostShow.Core.Diagnostics;
 using GhostShow.Core.Editing;
 using GhostShow.Core.Engine;
@@ -42,16 +44,34 @@ public sealed partial class MainViewModel : ShellViewModel
     readonly ShowControl _control;
     readonly ServerTick _serverTick;
     readonly ShowRemote _remote;
+    readonly RemoteShow? _window;   // the window's own connection, when it works the show over it
+    readonly CancellationTokenSource _windowStop = new();
 
-    public MainViewModel(ShowServices services, IStorageProvider storage, ISaveChangesPrompt savePrompt, ILogger<MainViewModel> logger)
-        : this(new ShowServer(services, logger), storage, savePrompt, logger)
+    /// <summary>Whether the window works the show over the connection, as a device does (GHOSTSHOW_WINDOW=connected; docs/plan-remote.md, step 5).</summary>
+    public static bool OverTheConnectionRequested => Environment.GetEnvironmentVariable("GHOSTSHOW_WINDOW") == "connected";
+
+    /// <param name="overTheConnection">
+    /// The screens work a copy of the show kept in step over the window's own connection to the server, as a device's
+    /// do (see <see cref="RemoteShow"/>), rather than the server's show directly. What only the show computer does
+    /// (Home, its file dialogs, Remote Access, the close warning, the server's refresh) still calls the server here.
+    /// </param>
+    public MainViewModel(ShowServices services, IStorageProvider storage, ISaveChangesPrompt savePrompt, ILogger<MainViewModel> logger,
+                         bool overTheConnection = false)
+        : this(new ShowServer(services, logger), storage, savePrompt, logger, overTheConnection)
     {
     }
 
-    MainViewModel(ShowServer server, IStorageProvider storage, ISaveChangesPrompt savePrompt, ILogger logger)
-        : base(server.Services.Session, ShellServicesOf(server))
+    MainViewModel(ShowServer server, IStorageProvider storage, ISaveChangesPrompt savePrompt, ILogger logger, bool overTheConnection)
+        : this(server, storage, savePrompt, logger,
+               overTheConnection ? new RemoteShow(WindowConnection.To(server.Remote), FixtureProfileLoader.LoadBuiltIn()) : null)
+    {
+    }
+
+    MainViewModel(ShowServer server, IStorageProvider storage, ISaveChangesPrompt savePrompt, ILogger logger, RemoteShow? window)
+        : base(window?.Session ?? server.Services.Session, window?.Services ?? ShellServicesOf(server))
     {
         _server = server;
+        _window = window;
         var (session, settings, paths) = (server.Services.Session, server.Services.Settings, server.Services.Paths);
         _session = session;
         _settings = settings;
@@ -63,7 +83,7 @@ public sealed partial class MainViewModel : ShellViewModel
 
         ShowPlayback = server.Playback;
         _diagnostics = server.Diagnostics;
-        Diagnostics = new DiagnosticsViewModel(_diagnostics);
+        Diagnostics = new DiagnosticsViewModel(window?.Diagnostics ?? (IDiagnostics)_diagnostics);
         _load = server.Load;
         _triggers = server.Triggers;
         _files = server.Files;
@@ -73,18 +93,18 @@ public sealed partial class MainViewModel : ShellViewModel
         // A device opened a timeline: the editor shows it, and the transport works it.
         _control.OpenRequested += id =>
         {
-            if (_session.Project.Timelines.FirstOrDefault(t => t.Id == id) is not { } timeline) return;
+            if (Session.Project.Timelines.FirstOrDefault(t => t.Id == id) is not { } timeline) return;
             Timeline.OpenTimeline(timeline);
             Timeline.Tree.Reveal(timeline);
         };
         _inputSetup = server.Inputs;
-        Inputs = new InputsViewModel(session, _inputSetup, Buttons);
+        Inputs = new InputsViewModel(Session, window?.Inputs ?? (IInputSetup)_inputSetup, Buttons);
         BottomWorkspace = new BottomWorkspaceViewModel(Playback, Inputs.Monitor, Lighting, Diagnostics, settings.Panels, offersPlaying: false);
         _audioSetup = server.Audio;
         _serverTick = server.Tick;
         _remote = server.Remote;
         Remote = new RemoteViewModel(_remote);
-        Audio = new AudioViewModel(_audioSetup, AudioDevices);
+        Audio = new AudioViewModel(window?.Audio ?? (IAudioSetup)_audioSetup, AudioDevices);
         _ = AudioDevices.RefreshAsync();
         Guide = new SetupGuideViewModel(session, settings, page => CurrentPage = page, () =>
         {
@@ -92,6 +112,7 @@ public sealed partial class MainViewModel : ShellViewModel
             if (Timeline.Tracks.FirstOrDefault(t => t.IsLighting) is { } lighting) Timeline.EditChannels(lighting);
         });
         server.ScreensFollowShow = ScreensFollowShow;
+        if (window is not null) FollowTheConnection(window);
         _files.Changed += () =>
         {
             IsDirty = _files.IsDirty;
@@ -106,6 +127,45 @@ public sealed partial class MainViewModel : ShellViewModel
         _unsavedChanges = new UnsavedChangesGuard(() => _files.IsDirty, () => ShowName, SaveShowAsync, savePrompt);
         _tick = new DispatcherTimer(TickInterval, DispatcherPriority.Background, (_, _) => Tick());
         FollowPanelWidths();
+    }
+
+    /// <summary>
+    /// The screens on the copy of the show that comes over the connection: rebuilt on it whenever it arrives whole (on
+    /// connecting, on a resync, or another show), keeping the timelines open; the triggers and inputs as the server says.
+    /// </summary>
+    void FollowTheConnection(RemoteShow window)
+    {
+        List<Guid> openTabs = [];
+        Guid? showing = null;
+        window.Arriving += () =>
+        {
+            openTabs = Timeline.Tabs.Select(t => t.Timeline.Id).ToList();
+            showing = Timeline.SelectedTimeline?.Id;
+            Playback.Reset();
+        };
+        window.Arrived += _ =>
+        {
+            Lighting.Reload();
+            Timeline.Reload();
+            Buttons.Reload();
+            Inputs.Reload();
+            var opened = Timeline.Tabs.FirstOrDefault();   // Reload opens the tree's first timeline
+            foreach (var id in openTabs)
+                if (Session.Project.Timelines.FirstOrDefault(t => t.Id == id) is { } timeline) Timeline.OpenTimeline(timeline);
+            if (Session.Project.Timelines.FirstOrDefault(t => t.Id == showing) is { } shown)
+            {
+                Timeline.OpenTimeline(shown);
+                Timeline.Tree.Reveal(shown);
+            }
+            if (opened is not null && !openTabs.Contains(opened.Timeline.Id) && openTabs.Count > 0 && Timeline.Tabs.Count > 1) Timeline.CloseTabCommand.Execute(opened);
+            Lighting.Fixtures.Sync();
+            Lighting.Outputs.Reload();
+            Guide.Refresh();
+        };
+        window.StatusArrived += _ => Playback.Tick();   // the screens show it at once
+        window.TriggersChanged += Buttons.ShowStates;
+        window.InputArrived += m => RemoteTriggers.OnInput(Buttons, m);
+        window.Edits.Notice += message => StatusMessage = message;
     }
 
     /// <summary>The server's own services, for the screens on this computer.</summary>
@@ -242,6 +302,10 @@ public sealed partial class MainViewModel : ShellViewModel
             _ = Audio.RefreshDevicesCommand.ExecuteAsync(null);
             _audioSetup.Refresh();
         }
+        // Over the connection, the server keeps a screen up to date while it says it's watching.
+        _window?.Audio.SetWatching(CurrentPage == Page.Audio);
+        _window?.Diagnostics.SetWatching(CurrentPage == Page.Diagnostics);
+        if (_window is not null && CurrentPage is >= Page.DmxSetup and <= Page.Monitor) _ = _window.Library.LoadAsync();
         _outputSetup.Refresh();
         if (CurrentPage == Page.Diagnostics) _diagnostics.Refresh();
         if (CurrentPage == Page.InputMonitor) Inputs.RefreshPortsCommand.Execute(null);   // a cable may have been plugged in
@@ -257,12 +321,14 @@ public sealed partial class MainViewModel : ShellViewModel
         if (settingsError is not null) ReportError(settingsError);
         RefreshRecentShows();
         await _server.StartAsync(_tick.Start);
+        if (_window is not null) _ = _window.RunAsync(_windowStop.Token);
     }
 
     /// <summary>Stops output (each universe sends its blackout first) within the outputs' stop timeout.</summary>
     public async Task ShutdownAsync()
     {
         _tick.Stop();
+        _windowStop.Cancel();
         bool clean = await _server.ShutdownAsync();   // devices are told it's going; outputs send their blackout last
         _logger.LogInformation(clean ? "Shut down cleanly." : "Shut down; an output didn't stop in time.");
     }
@@ -393,6 +459,14 @@ public sealed partial class MainViewModel : ShellViewModel
     /// <summary>Another show is open: the screens follow it (the server's part is in <see cref="ShowServer"/>).</summary>
     Task ScreensFollowShow()
     {
+        if (_window is not null)   // the copy arrives over the connection (FollowTheConnection)
+        {
+            Guide.Reset();
+            ShowEditor();
+            OnPropertyChanged(nameof(Title));
+            OnPropertyChanged(nameof(ShowFile));
+            return Task.CompletedTask;
+        }
         Lighting.Reload();
         Playback.Reset();    // the old show's timelines stop at once
         Timeline.Reload();   // focuses the new show's first timeline
@@ -429,8 +503,8 @@ public sealed partial class MainViewModel : ShellViewModel
         if (count % (ServerTick.PerSecond / 2) == 0) Performance.Show(_load.Reading);   // twice a second, just measured
         if (count % ServerTick.PerSecond != 0) return;
         Inputs.Tick();
-        if (CurrentPage == Page.Diagnostics && !_diagnostics.IsWatched) _diagnostics.Refresh();   // a device's keeps it up to date otherwise
-        if (CurrentPage == Page.Audio && !_audioSetup.IsWatched) _audioSetup.Refresh();
+        if (_window is null && CurrentPage == Page.Diagnostics && !_diagnostics.IsWatched) _diagnostics.Refresh();   // a device's keeps it up to date otherwise
+        if (_window is null && CurrentPage == Page.Audio && !_audioSetup.IsWatched) _audioSetup.Refresh();
         ShowWarnings(_serverTick.Warnings);
         Guide.Refresh();
     }

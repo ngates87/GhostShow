@@ -53,7 +53,7 @@ public partial class App : Application
         var (services, settingsError) = await ShowServices.StartAsync(_loggerFactory, AppPaths.Default, _recentEvents, UiShowThread.Instance);
         _services = services;
         var viewModel = new MainViewModel(services, window.StorageProvider, new Dialogs.SaveChangesDialogPrompt(window),
-                                          _loggerFactory.CreateLogger<MainViewModel>());
+                                          _loggerFactory.CreateLogger<MainViewModel>(), MainViewModel.OverTheConnectionRequested);
         window.DataContext = viewModel;
         await viewModel.StartAsync(settingsError);
 

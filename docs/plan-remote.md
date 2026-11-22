@@ -358,7 +358,19 @@ Small steps; each one leaves the app working.
          its status loops now run while anything is connected, not only while the network side is on. The client
          connects through it (`RemoteEndpoint.Connect`) and takes the fixture library straight from the server
          (`FetchLibrary`, no HTTP). `WindowConnection` makes the window's endpoint.
-      4. **The window on it,** behind a switch, then the UI tests over it.
+      4. **The window on it, behind a switch (started 2026-11-22):** `GHOSTSHOW_WINDOW=connected` (the app, and the
+         UI tests' `WindowRig`) builds `MainViewModel` on a `RemoteShow` over the window's own connection: the
+         screens work its copy, rebuilt whenever the show arrives whole (keeping the open tabs), with the triggers and
+         inputs as the server says; Home, the file dialogs, Remote Access, the close warning and the server's refresh
+         still call the server directly. All 303 UI tests pass as before; **over the connection, 270 pass and 33
+         fail** (all in `UiTests`). Nearly all are the tests' way of working, not the product: they reach into the
+         server's show (`rig.Session`, `rig.Lighting`) where the screens now have a copy, so they hand the window
+         the server's objects ("the TimelineTrack isn't in the show", `Assert.Same`), change the server's objects
+         without the document so the copy never hears ("no matching element", "The Envelope Editor didn't open"), or
+         check the server the moment after a UI action, before the edit's round trip ("Values differ"). To look at
+         as possibly real: keys and the input monitor, the DMX setup screen keeping its row after an edit, and a
+         timeline's length following its last clip. Next: the rig gives tests the window's copy, those 33 are
+         reworked, any real difference is fixed, and then the switch flips.
 6. **Move the other screens, one at a time** (proposed 2026-11-07 to be done through one shared main view, ahead of
    steps 4 and 5: [plan-shared-view.md](plan-shared-view.md)):
    - Audio, with its settings as commands to the show computer;
