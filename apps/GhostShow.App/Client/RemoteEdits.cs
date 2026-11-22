@@ -1,7 +1,7 @@
 using System.Text.Json.Nodes;
 using GhostShow.Core.Editing;
 
-namespace GhostShow.Browser.Remote;
+namespace GhostShow.App.Client;
 
 /// <summary>
 /// Editing from the browser. The show computer has the final say (see libs/GhostShow.Web/RemoteServer.Edits.cs):

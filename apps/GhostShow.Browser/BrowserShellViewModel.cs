@@ -1,7 +1,7 @@
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using GhostShow.App.ViewModels;
-using GhostShow.Browser.Remote;
+using GhostShow.App.Client;
 using GhostShow.Core.Diagnostics;
 using GhostShow.Core.Engine;
 using GhostShow.Core.Inputs;

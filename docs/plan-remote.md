@@ -326,9 +326,13 @@ Small steps; each one leaves the app working.
       2 ms (200 handles: 1.5-3 ms) and reaches another device as quickly. A drag of handles is one edit, sent when it's
       let go (only its preview follows the mouse), so it doesn't stream. The playhead doesn't: the browser draws it
       where each status puts it, 20 times a second, so the window needs it smoothed (part 3).
-   2. **The client side shared:** the browser's connection and its services (`RemoteLink`, `RemoteEdits`,
-      `RemotePlayback` and the other `Remote*` classes) move into the desktop's project, compiled for both, with the
-      address and token passed in; the browser keeps only what needs JavaScript.
+   2. **The client side shared (done 2026-11-22):** the browser's connection and its services (`RemoteLink`,
+      `RemoteEdits`, `RemotePlayback` and the other `Remote*` classes) are in the desktop's project
+      (`apps/GhostShow.App/Client`), compiled for both. `RemoteLink` is given the show computer's address and the
+      device's token (`RemoteEndpoint`); the browser's `BrowserPage` reads them from the page. It can be stopped, and
+      the commands waiting for an answer are locked, since natively the answers arrive on another thread. One
+      `AudioDeviceList` serves both (`LocalAudioDevices` makes the show computer's). `NativeClientTests` runs it
+      natively against the desktop's own web remote: the show arrives, and edits go both ways.
    3. **A smooth playhead** between status messages, in the browser too.
    4. **The window over the connection:** it builds its `ShellViewModel` on the client services, connected over
       loopback to the server in the same process (paired as this computer, without a PIN). What only the show

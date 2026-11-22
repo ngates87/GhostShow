@@ -4,7 +4,7 @@ using GhostShow.Core.Engine;
 using GhostShow.Core.Fixtures;
 using GhostShow.Core.Storage;
 
-namespace GhostShow.Browser.Remote;
+namespace GhostShow.App.Client;
 
 /// <summary>
 /// The fixture library in the browser: it's on the show computer (see libs/GhostShow.Web/RemoteServer.Library.cs).
@@ -90,7 +90,7 @@ sealed class RemoteFixtureLibrary(ShowSession session, RemoteLink link, IReadOnl
         _fetching = true;
         try
         {
-            using var response = await Http.GetAsync($"{RemoteLink.Origin}/api/library?token={Uri.EscapeDataString(RemoteLink.Token ?? "")}");
+            using var response = await Http.GetAsync($"{link.Origin}/api/library?token={Uri.EscapeDataString(link.Token ?? "")}");
             response.EnsureSuccessStatusCode();
             long version = long.Parse(response.Headers.GetValues("X-Library-Version").Single());
             string lines = await response.Content.ReadAsStringAsync();

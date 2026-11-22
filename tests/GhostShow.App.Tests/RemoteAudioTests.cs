@@ -44,7 +44,7 @@ public class RemoteAudioTests : IDisposable
 
     public void Dispose() => _audio.Dispose();
 
-    AudioViewModel Screen() => new(_showComputer, new AudioDeviceList(_audio));
+    AudioViewModel Screen() => new(_showComputer, LocalAudioDevices.For(_audio));
 
     [Fact]
     public void The_screen_shows_the_show_computer_s_sound_without_sending_it_back()

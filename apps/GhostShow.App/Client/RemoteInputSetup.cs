@@ -2,7 +2,7 @@ using System.Text.Json.Nodes;
 using GhostShow.Core.Inputs;
 using GhostShow.Core.Storage;
 
-namespace GhostShow.Browser.Remote;
+namespace GhostShow.App.Client;
 
 /// <summary>
 /// The show computer's serial ports, from a device's Inputs screen: its state arrives as "inputs" messages (sent while

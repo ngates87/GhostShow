@@ -2,7 +2,7 @@ using System.Text.Json.Nodes;
 using GhostShow.Core.Playback;
 using GhostShow.Core.Timeline;
 
-namespace GhostShow.Browser.Remote;
+namespace GhostShow.App.Client;
 
 /// <summary>
 /// Playback, as the browser sees it: nothing plays here (the DMX adapters and speakers are on the show computer), so

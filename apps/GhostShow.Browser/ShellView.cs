@@ -7,7 +7,7 @@ using Avalonia.Threading;
 using GhostShow.App.ViewModels;
 using Page = GhostShow.App.ViewModels.Page;
 using GhostShow.App.Views;
-using GhostShow.Browser.Remote;
+using GhostShow.App.Client;
 using GhostShow.Core.Diagnostics;
 using GhostShow.Core.Editing;
 using GhostShow.Core.Engine;
@@ -29,7 +29,7 @@ sealed class ShellView : Border
 
     readonly TextBlock _message = new() { Foreground = Brushes.Gray, FontSize = 18, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap, Margin = new(24) };
     readonly ShowSession _session = new(new ShowEngine(), new FixtureProfileLibrary(BuiltInProfiles), NullLogger<ShowSession>.Instance);
-    readonly RemoteLink _link = new();
+    readonly RemoteLink _link = new(BrowserPage.Endpoint());
     readonly RemotePlayback _remote;
     readonly AudioDeviceList _audioDevices;
     readonly RemoteEdits _edits;
@@ -50,7 +50,11 @@ sealed class ShellView : Border
         Child = _message;
         _message.Text = "Connecting to the show computer…";
         _remote = new RemotePlayback(_link);
-        _audioDevices = new AudioDeviceList(_link);
+        _audioDevices = new AudioDeviceList((device, side) =>   // the tone plays on the show computer
+        {
+            _link.Send("testSound", ("device", device), ("side", side.ToString()));
+            return true;
+        });
         _edits = new RemoteEdits(_session.Document, _link);
         _edits.Notice += ShowNotice;
         _fileMenu = new FileMenu(_link, ShowNotice, () => _session.Project.Name);
@@ -71,7 +75,7 @@ sealed class ShellView : Border
         _link.Patch += m => Dispatcher.UIThread.Post(() => OnPatch(m));
         _link.Manual += m => Dispatcher.UIThread.Post(() => OnManualLevels(m));
         _link.Audio += m => Dispatcher.UIThread.Post(() => _remote.OnAudio(m));
-        _link.AudioDevices += m => Dispatcher.UIThread.Post(() => _audioDevices.Update(m["devices"] as JsonArray));
+        _link.AudioDevices += m => Dispatcher.UIThread.Post(() => _audioDevices.Update(Names(m["devices"] as JsonArray)));
         _link.Result += m => Dispatcher.UIThread.Post(() => _edits.OnResult(m));
         _link.History += m => Dispatcher.UIThread.Post(() => _edits.OnHistory(m));
         _link.Library += m => Dispatcher.UIThread.Post(() => _library.OnStatus(m));
@@ -119,7 +123,7 @@ sealed class ShellView : Border
         _inputSetup.OnHello();
         _audioSetup.OnHello();
         _diagnostics.OnHello();
-        _audioDevices.Update(message["audioDevices"] as JsonArray);
+        _audioDevices.Update(Names(message["audioDevices"] as JsonArray));
         if (_shell is null)
         {
             _shell = new BrowserShellViewModel(_session, new ShellServices(_remote, _library, _outputSetup, _levels, _audioDevices, _triggers, _edits), _inputSetup, _audioSetup, _diagnostics, _link, _fileMenu);
@@ -151,6 +155,8 @@ sealed class ShellView : Border
         ShowDevice(message["device"]);
         ShowTitle();
     }
+
+    static string[] Names(JsonArray? devices) => [.. (devices ?? []).Select(d => d!.GetValue<string>())];
 
     /// <summary>Who this device is paired as (in the hello, and again when its role is changed on the show computer).</summary>
     void ShowDevice(JsonNode? device)

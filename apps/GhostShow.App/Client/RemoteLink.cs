@@ -1,22 +1,28 @@
 using System.Net.WebSockets;
-using System.Runtime.InteropServices.JavaScript;
 using System.Text;
 using System.Text.Json.Nodes;
 using System.Threading.Channels;
 using GhostShow.Core.Editing;
 
-namespace GhostShow.Browser.Remote;
+namespace GhostShow.App.Client;
+
+/// <summary>Where the show computer is, and how this device proves it's paired with it.</summary>
+/// <param name="Origin">The web remote's address, e.g. http://192.168.1.20:7700 (no trailing slash).</param>
+/// <param name="Token">The token this device got when it paired; null if it hasn't paired.</param>
+/// <param name="NotPaired">What to say while it isn't paired.</param>
+/// <param name="NoLongerPaired">What to say when the show computer says it isn't paired any more.</param>
+sealed record RemoteEndpoint(string Origin, Func<string?> Token, string NotPaired, string NoLongerPaired);
 
 /// <summary>
-/// The connection to the show computer (the web remote's <c>/api/live</c>, see libs/GhostShow.Web/RemoteServer.cs), with
-/// the token the web remote's page saved when this browser paired (same address, so same storage). Reconnects by
-/// itself.
+/// The connection to the show computer (the web remote's <c>/api/live</c>, see libs/GhostShow.Web/RemoteServer.cs), as
+/// a paired device (<see cref="RemoteEndpoint"/>: in a browser, the token the web remote's page saved when it paired).
+/// Reconnects by itself.
 /// </summary>
-sealed partial class RemoteLink
+sealed class RemoteLink(RemoteEndpoint endpoint)
 {
     ClientWebSocket? _socket;
     Channel<string>? _outgoing;   // what's waiting to be sent; there's one per connection
-    int _nextId = 1;
+    int _nextId;
     bool _resyncing;   // the connection is being dropped on purpose (see Resync): not worth telling the user
 
     // One event per kind of message from the show computer (see docs/remote.md for what each holds). They're raised on
@@ -28,7 +34,7 @@ sealed partial class RemoteLink
     /// <summary>A change: its description and operations.</summary>
     public event Action<string, IReadOnlyList<EditOp>>? Changed;
 
-    /// <summary>Commands someone is waiting on (see <see cref="RequestAsync"/>), by number.</summary>
+    /// <summary>Commands someone is waiting on (see <see cref="RequestAsync"/>), by number. Locked: answers arrive on the connection's thread.</summary>
     readonly Dictionary<int, TaskCompletionSource<string?>> _waiting = [];
 
     public event Action<JsonObject>? Status;
@@ -90,34 +96,35 @@ sealed partial class RemoteLink
     /// <summary>Why it isn't connected (shown until the show arrives).</summary>
     public event Action<string>? Problem;
 
-    [JSImport("globalThis.localStorage.getItem")]
-    private static partial string? GetItem(string key);
+    /// <summary>The token this device got when it paired; null if it hasn't.</summary>
+    public string? Token => endpoint.Token();
 
-    /// <summary>The token this browser got when it paired; null if it hasn't.</summary>
-    public static string? Token => GetItem("ghostshow.token");
+    /// <summary>The show computer's address (the web remote's), e.g. http://192.168.1.20:7700.</summary>
+    public string Origin => endpoint.Origin;
 
-    /// <summary>The show computer's address, as the page was loaded from it.</summary>
-    public static string Origin => JSHost.GlobalThis.GetPropertyAsJSObject("location")!.GetPropertyAsString("origin")!;
+    /// <summary>The connection's address: the origin's, as a WebSocket.</summary>
+    string LiveAddress(string token) =>
+        (Origin.StartsWith("https:", StringComparison.OrdinalIgnoreCase) ? "wss:" + Origin[6..] : "ws:" + Origin[(Origin.IndexOf(':') + 1)..])
+        + $"/api/live?token={Uri.EscapeDataString(token)}";
 
-    static string Host => JSHost.GlobalThis.GetPropertyAsJSObject("location")!.GetPropertyAsString("host")!;
-    static bool Secure => JSHost.GlobalThis.GetPropertyAsJSObject("location")!.GetPropertyAsString("protocol") == "https:";
-
-    public async Task RunAsync()
+    /// <summary>Connects, and connects again whenever the connection drops, until <paramref name="stop"/> (the page or window closed).</summary>
+    public async Task RunAsync(CancellationToken stop = default)
     {
+        using var stopping = stop.Register(() => _socket?.Abort());
         int retry = 0;
-        while (true)
+        while (!stop.IsCancellationRequested)
         {
-            var token = GetItem("ghostshow.token");
+            var token = Token;
             if (string.IsNullOrEmpty(token))
             {
-                Problem?.Invoke("This browser isn't paired yet. Open the address without /app/ first and pair with the PIN, then come back.");
-                await Task.Delay(3000);
+                Problem?.Invoke(endpoint.NotPaired);
+                if (!await Wait(TimeSpan.FromSeconds(3), stop)) return;
                 continue;
             }
             var socket = _socket = new ClientWebSocket();
             try
             {
-                await socket.ConnectAsync(new Uri($"{(Secure ? "wss" : "ws")}://{Host}/api/live?token={Uri.EscapeDataString(token)}"), CancellationToken.None);
+                await socket.ConnectAsync(new Uri(LiveAddress(token)), stop);
                 retry = 0;
                 var outgoing = _outgoing = Channel.CreateUnbounded<string>();
                 _ = SendAsync(socket, outgoing);
@@ -125,19 +132,39 @@ sealed partial class RemoteLink
             }
             catch (Exception e) when (e is WebSocketException or OperationCanceledException or ObjectDisposedException)
             {
-                Problem?.Invoke($"Can't reach the show computer ({e.Message}). Trying again…");
+                if (!stop.IsCancellationRequested) Problem?.Invoke($"Can't reach the show computer ({e.Message}). Trying again…");
             }
             _outgoing?.Writer.TryComplete();
             _outgoing = null;
-            foreach (var answer in _waiting.Values) answer.SetResult("Lost the connection to the show computer.");
-            _waiting.Clear();
+            List<TaskCompletionSource<string?>> unanswered;
+            lock (_waiting)
+            {
+                unanswered = [.. _waiting.Values];
+                _waiting.Clear();
+            }
+            foreach (var answer in unanswered) answer.SetResult("Lost the connection to the show computer.");
+            if (stop.IsCancellationRequested) return;
             if (!_resyncing) Disconnected?.Invoke();
             _resyncing = false;
             if (socket.CloseStatus is { } status && (int)status == 4401)
             {
-                Problem?.Invoke("This browser isn't paired any more. Open the address without /app/ and pair again.");
+                Problem?.Invoke(endpoint.NoLongerPaired);
             }
-            await Task.Delay(Math.Min(5000, 500 << Math.Min(retry++, 4)));
+            if (!await Wait(TimeSpan.FromMilliseconds(Math.Min(5000, 500 << Math.Min(retry++, 4))), stop)) return;
+        }
+    }
+
+    /// <summary>Waits; false if stopped meanwhile.</summary>
+    static async Task<bool> Wait(TimeSpan time, CancellationToken stop)
+    {
+        try
+        {
+            await Task.Delay(time, stop);
+            return true;
+        }
+        catch (OperationCanceledException)
+        {
+            return false;
         }
     }
 
@@ -183,7 +210,10 @@ sealed partial class RemoteLink
                     Shows?.Invoke(json);
                     break;
                 case "result":
-                    if (json["id"]?.GetValue<int>() is { } id && _waiting.Remove(id, out var answer))
+                    TaskCompletionSource<string?>? answer = null;
+                    if (json["id"]?.GetValue<int>() is { } id)
+                        lock (_waiting) _waiting.Remove(id, out answer);
+                    if (answer is not null)
                         answer.SetResult(json["ok"]?.GetValue<bool>() == true ? null : json["error"]?.GetValue<string>() ?? "The show computer refused that.");
                     else Result?.Invoke(json);
                     break;
@@ -228,19 +258,30 @@ sealed partial class RemoteLink
     /// </summary>
     public int? Send(string action, params (string Name, JsonNode? Value)[] fields)
     {
-        if (_outgoing is not { } outgoing) return null;
-        int id = _nextId++;
+        int id = Interlocked.Increment(ref _nextId);
+        return Send(id, action, fields) ? id : null;
+    }
+
+    bool Send(int id, string action, (string Name, JsonNode? Value)[] fields)
+    {
+        if (_outgoing is not { } outgoing) return false;
         var json = new JsonObject { ["type"] = "command", ["id"] = id, ["action"] = action };
         foreach (var (name, value) in fields) json[name] = value;
-        return outgoing.Writer.TryWrite(json.ToJsonString()) ? id : null;
+        return outgoing.Writer.TryWrite(json.ToJsonString());
     }
 
     /// <summary>Sends a command and waits for its answer. Returns why it couldn't be done, or null if it was.</summary>
     public Task<string?> RequestAsync(string action, params (string Name, JsonNode? Value)[] fields)
     {
-        if (Send(action, fields) is not { } id) return Task.FromResult<string?>("Not connected to the show computer.");
-        var answer = new TaskCompletionSource<string?>();
-        _waiting[id] = answer;
+        // Registered before it's sent, so an answer can't arrive first.
+        var answer = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        int id = Interlocked.Increment(ref _nextId);
+        lock (_waiting) _waiting[id] = answer;
+        if (!Send(id, action, fields))
+        {
+            lock (_waiting) _waiting.Remove(id);
+            return Task.FromResult<string?>("Not connected to the show computer.");
+        }
         return answer.Task;
     }
 

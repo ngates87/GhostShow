@@ -24,6 +24,7 @@
     <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="10.0.14" />
   </ItemGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="GhostShow.App.Tests" />
     <ProjectReference Include="..\..\libs\GhostShow.Audio\GhostShow.Audio.csproj" />
     <ProjectReference Include="..\..\libs\GhostShow.Core\GhostShow.Core.csproj" />
     <ProjectReference Include="..\..\libs\GhostShow.Dmx\GhostShow.Dmx.csproj" />

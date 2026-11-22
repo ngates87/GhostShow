@@ -1,6 +1,4 @@
-using GhostShow.Audio;
 using GhostShow.Core.Timeline;
-using GhostShow.Server;
 
 namespace GhostShow.App.ViewModels;
 
@@ -11,36 +9,35 @@ public sealed record AudioDeviceChoice(string Label, string? Name)
 }
 
 /// <summary>
-/// The output devices this computer has (the server's <see cref="AudioOutputs"/>), shared by the Audio screen and the
-/// output pickers on audio tracks, and refreshed when either is opened (so a USB interface plugged in since shows up).
-/// The browser build has its own, which asks the show computer.
+/// The show computer's sound output devices, shared by the Audio screen and the output pickers on audio tracks. On the
+/// show computer they're its own (<see cref="LocalAudioDevices"/>), refreshed when either screen opens (so a USB
+/// interface plugged in since shows up); over the connection the show computer sends them when they change.
 /// </summary>
-public sealed class AudioDeviceList(AudioOutputs outputs)
+/// <param name="testSound">Plays a short tone on a device (null: the default output); false if that device isn't open.</param>
+/// <param name="refresh">Looks again for devices; null where the show computer says when they change.</param>
+public sealed class AudioDeviceList(Func<string?, AudioSide, bool> testSound, Func<Task>? refresh = null)
 {
-    public AudioDeviceList(AudioService audio) : this(new AudioOutputs(audio))
-    {
-    }
-
-    /// <summary>The server's list, which devices are sent too.</summary>
-    public AudioOutputs Outputs => outputs;
-
-    public IReadOnlyList<string> Names => outputs.Names;
+    public IReadOnlyList<string> Names { get; private set; } = [];
 
     /// <summary>Raised on the UI thread when <see cref="Names"/> changes.</summary>
-    public event Action? Changed
+    public event Action? Changed;
+
+    public Task RefreshAsync() => refresh?.Invoke() ?? Task.CompletedTask;
+
+    /// <summary>A short tone on a track's output (null: the default output), on the show computer. False if that device isn't open.</summary>
+    public bool PlayTestSound(string? device, AudioSide side = AudioSide.Stereo) => testSound(device, side);
+
+    /// <summary>The devices there are now (on the UI thread).</summary>
+    public void Update(IReadOnlyList<string> names)
     {
-        add => outputs.Changed += value;
-        remove => outputs.Changed -= value;
+        if (names.SequenceEqual(Names)) return;
+        Names = [.. names];
+        Changed?.Invoke();
     }
-
-    public Task RefreshAsync() => outputs.RefreshAsync();
-
-    /// <summary>A short tone on a track's output (null: the default output). False if that device isn't open.</summary>
-    public bool PlayTestSound(string? device, AudioSide side = AudioSide.Stereo) => outputs.PlayTestSound(device, side);
 
     /// <summary>
     /// The choices for an audio track's output: the default output, every device, and the track's own device marked
-    /// "not connected" if this computer doesn't have it (it stays chosen, and is used when it's plugged in).
+    /// "not connected" if the show computer doesn't have it (it stays chosen, and is used when it's plugged in).
     /// </summary>
     public static IReadOnlyList<AudioDeviceChoice> TrackChoices(IReadOnlyList<string> names, string? current)
     {

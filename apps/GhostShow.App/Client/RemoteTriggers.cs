@@ -2,7 +2,7 @@ using System.Text.Json.Nodes;
 using GhostShow.App.ViewModels;
 using GhostShow.Core.Inputs;
 
-namespace GhostShow.Browser.Remote;
+namespace GhostShow.App.Client;
 
 /// <summary>
 /// The show computer's triggers, from this device: they run only there (docs/plan-shared-view.md, decision 1). The

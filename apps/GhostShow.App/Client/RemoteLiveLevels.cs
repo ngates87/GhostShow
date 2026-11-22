@@ -2,7 +2,7 @@ using System.Text.Json.Nodes;
 using GhostShow.Core.Engine;
 using GhostShow.Core.Fixtures;
 
-namespace GhostShow.Browser.Remote;
+namespace GhostShow.App.Client;
 
 /// <summary>
 /// Live levels for the Control, Channels and Monitor screens here. The levels are on the show computer: it sends those

@@ -4,7 +4,7 @@ using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
-using GhostShow.Browser.Remote;
+using GhostShow.App.Client;
 
 namespace GhostShow.Browser;
 

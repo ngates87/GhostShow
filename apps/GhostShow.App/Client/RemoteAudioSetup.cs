@@ -2,7 +2,7 @@ using System.Text.Json.Nodes;
 using GhostShow.Core.Playback;
 using GhostShow.Core.Storage;
 
-namespace GhostShow.Browser.Remote;
+namespace GhostShow.App.Client;
 
 /// <summary>
 /// The show computer's sound, from a device's Audio screen: its state arrives as "audioSetup" messages while the screen

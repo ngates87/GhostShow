@@ -2,7 +2,7 @@ using System.Text.Json.Nodes;
 using GhostShow.Core.Diagnostics;
 using GhostShow.Core.Storage;
 
-namespace GhostShow.Browser.Remote;
+namespace GhostShow.App.Client;
 
 /// <summary>
 /// How the show computer is running, for a device's Diagnostics screen: its report arrives as "diagnostics" messages,

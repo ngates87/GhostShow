@@ -162,7 +162,7 @@ Audio shows the show computer's devices and the files used by the show; its sett
   - **Test tone:** `testSound` (`device`, or none for the default output) plays a test tone on the show computer.
   - **Edits:** `edit` (`description`, `ops`, and a `merge` number: edits with one number in quick succession are one
     undo step) changes the show. See `libs/GhostShow.Web/RemoteServer.Edits.cs` for how it works and
-    `apps/GhostShow.Browser/Remote/RemoteEdits.cs` for the browser's side.
+    `apps/GhostShow.App/Client/RemoteEdits.cs` for the browser's side.
   - **Undo, redo, save:** `undo` and `redo` act for the timeline the device watches, or with `show: true`, on the show's
     own edits only (a setup screen, where a timeline's edits can't be seen); `save` saves on the show computer.
   - **File menu:** `listShows`; `newShow` and `openShow` (`name`), with `discardUnsaved: true` once the person agreed to
@@ -197,7 +197,7 @@ Audio shows the show computer's devices and the files used by the show; its sett
     editor-only; an operator may run the show but not change it.
 - **The fixture library:** `GET /api/library?token=…` gives the whole library, one profile per line of JSON, compressed
   with gzip: about 2,000 profiles, half a megabyte. A device fetches it the first time Lighting is opened. See
-  `libs/GhostShow.Web/RemoteServer.Library.cs` and `apps/GhostShow.Browser/Remote/RemoteFixtureLibrary.cs`.
+  `libs/GhostShow.Web/RemoteServer.Library.cs` and `apps/GhostShow.App/Client/RemoteFixtureLibrary.cs`.
 - **Close codes:** a device that isn't paired, or was removed, is closed with code 4401, and the page goes back to
   pairing.
 - **Building the page:** `dotnet build` builds it when Node.js is installed (`npm ci`, then `npm run build`, only

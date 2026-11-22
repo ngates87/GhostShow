@@ -2,7 +2,7 @@ using System.Text.Json.Nodes;
 using GhostShow.Core.Dmx;
 using GhostShow.Core.Storage;
 
-namespace GhostShow.Browser.Remote;
+namespace GhostShow.App.Client;
 
 /// <summary>
 /// The show computer's DMX hardware, for the DMX setup screen here. It's looked for and run over there; this only shows

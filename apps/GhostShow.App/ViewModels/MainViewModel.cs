@@ -99,7 +99,7 @@ public sealed partial class MainViewModel : ShellViewModel
         _serial.StatusChanged += _ => Dispatcher.UIThread.Post(_inputSetup.Refresh);
         _audioSetup = new LocalAudioSetup(services.Audio, session, settings, SaveSettingsAsync, services.Thread);
         _serverTick = new ServerTick(services, _triggers, _load, _outputSetup, _inputSetup, _diagnostics, _audioSetup);
-        var host = new ShowRemoteHost(services, ShowPlayback, _control, _files, _serverTick, AudioDevices.Outputs, local.Library, _outputSetup,
+        var host = new ShowRemoteHost(services, ShowPlayback, _control, _files, _serverTick, local.AudioOutputs, local.Library, _outputSetup,
                                       local.Levels, _triggers, _inputSetup, _audioSetup, _diagnostics, _load);
         _remote = new ShowRemote(host, settings.Remote, SaveSettingsAsync, services.Thread, logger, ShowRemote.FindBrowserApp());
         Remote = new RemoteViewModel(_remote);
@@ -131,7 +131,7 @@ public sealed partial class MainViewModel : ShellViewModel
 
     /// <summary>This computer's own versions of the services the screens use.</summary>
     sealed record LocalServices(ShellServices Shell, ShowPlayback Playback, LocalOutputSetup OutputSetup, LocalLiveLevels Levels,
-                                LocalFixtureLibrary Library, SettingsSaver Saver, ShowTriggers Triggers)
+                                LocalFixtureLibrary Library, SettingsSaver Saver, ShowTriggers Triggers, AudioOutputs AudioOutputs)
     {
         public static LocalServices For(ShowServices services, ILogger logger)
         {
@@ -141,8 +141,9 @@ public sealed partial class MainViewModel : ShellViewModel
             var library = new LocalFixtureLibrary(services.Session, services.Paths, services.Settings, logger);
             var playback = new ShowPlayback(services.Session, services.Playback, services.Audio, logger);
             var triggers = new ShowTriggers(services.Session, playback, () => Blackout(services));
-            var shell = new ShellServices(playback, library, outputSetup, levels, new AudioDeviceList(new AudioOutputs(services.Audio)), new LocalTriggers(triggers));
-            return new(shell, playback, outputSetup, levels, library, saver, triggers);
+            var audioOutputs = new AudioOutputs(services.Audio);
+            var shell = new ShellServices(playback, library, outputSetup, levels, LocalAudioDevices.For(audioOutputs), new LocalTriggers(triggers));
+            return new(shell, playback, outputSetup, levels, library, saver, triggers, audioOutputs);
         }
     }
 

@@ -35,7 +35,7 @@ sealed class UiLoadTest(MainViewModel viewModel, ShowServices services, ILogger 
             StartTimeline();
         }
         else StartChannels();
-        Task.Run(ReportAsync);
+        _ = Task.Run(ReportAsync);   // runs until the window closes
     }
 
     void StartChannels()
