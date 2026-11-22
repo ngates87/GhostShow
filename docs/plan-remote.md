@@ -333,7 +333,9 @@ Small steps; each one leaves the app working.
       the commands waiting for an answer are locked, since natively the answers arrive on another thread. One
       `AudioDeviceList` serves both (`LocalAudioDevices` makes the show computer's). `NativeClientTests` runs it
       natively against the desktop's own web remote: the show arrives, and edits go both ways.
-   3. **A smooth playhead** between status messages, in the browser too.
+   3. **A smooth playhead (done 2026-11-22),** in the browser too: between two status messages, `RemotePlayback`
+      moves a playing timeline's position on by the time since the last one, at most a quarter of a second (so a
+      stalled connection doesn't run on), stopping at the end or going round if it loops.
    4. **The window over the connection:** it builds its `ShellViewModel` on the client services, connected over
       loopback to the server in the same process (paired as this computer, without a PIN). What only the show
       computer does (Home, its file dialogs, Remote Access, the close warning) keeps calling the server in-process.

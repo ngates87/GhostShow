@@ -9,9 +9,20 @@ namespace GhostShow.App.Client;
 /// every request is sent to the show computer (<see cref="RemoteLink"/>), and what it reports back (where each timeline
 /// is, what's running, each timeline's problems) is kept here for the screens to read. Implements the same
 /// <see cref="IPlayback"/> as the show computer's own <see cref="ShowPlayback"/>, so the screens are the same code.
+/// The status comes 20 times a second; between two, a playing timeline's position moves on by the time since the last
+/// one (<see cref="Now"/>), so the playhead moves smoothly rather than in steps.
 /// </summary>
-sealed class RemotePlayback(RemoteLink link) : IPlayback
+/// <param name="time">The clock positions move on by (the system's; tests pass their own).</param>
+sealed class RemotePlayback(RemoteLink link, TimeProvider? time = null) : IPlayback
 {
+    /// <summary>
+    /// How far past the last status a position moves on at most: a few statuses' worth. If they stop coming (the
+    /// connection stalls), the playhead stops here rather than running on, until the next one says where it is.
+    /// </summary>
+    public static readonly TimeSpan MaxAhead = TimeSpan.FromMilliseconds(250);
+
+    readonly TimeProvider _time = time ?? TimeProvider.System;
+    long _statusAt;   // when the last status arrived (a timestamp of _time)
     readonly Dictionary<Guid, PlaybackStatus> _status = [];
     readonly Dictionary<Guid, IReadOnlyList<TimelineIssue>> _issues = [];
     readonly Dictionary<string, (TimeSpan? Length, Waveform? Waveform)> _audioFiles = [];
@@ -71,11 +82,27 @@ sealed class RemotePlayback(RemoteLink link) : IPlayback
 
     public bool IsRunning(Guid timelineId) => _running.Any(r => r.TimelineId == timelineId);
 
-    public PlaybackStatus StatusOf(Guid timelineId) =>
+    public PlaybackStatus StatusOf(Guid timelineId) => Now(
         _status.TryGetValue(timelineId, out var status) ? status
-        : _running.FirstOrDefault(r => r.Id == timelineId)?.Status ?? default;
+        : _running.FirstOrDefault(r => r.Id == timelineId)?.Status ?? default);
 
-    public IReadOnlyList<RunningTimeline> Running => _running;
+    public IReadOnlyList<RunningTimeline> Running =>
+        _running.Any(r => r.Status.State == TransportState.Playing) ? [.. _running.Select(r => r with { Status = Now(r.Status) })] : _running;
+
+    /// <summary>
+    /// A status as it stands now: if it's playing, its position moved on by the time since it arrived (up to
+    /// <see cref="MaxAhead"/>), and kept within the timeline (round to the start if it loops).
+    /// </summary>
+    PlaybackStatus Now(PlaybackStatus status)
+    {
+        if (status.State != TransportState.Playing) return status;
+        var ahead = _time.GetElapsedTime(_statusAt);
+        if (ahead > MaxAhead) ahead = MaxAhead;
+        var position = status.Position + ahead;
+        if (status.Length > TimeSpan.Zero && position > status.Length)
+            position = status.Loop ? TimeSpan.FromTicks(position.Ticks % status.Length.Ticks) : status.Length;
+        return status with { Position = position };
+    }
 
     public IReadOnlyList<TimelineIssue> IssuesOf(Guid timelineId) => _issues.GetValueOrDefault(timelineId) ?? [];
 
@@ -117,6 +144,7 @@ sealed class RemotePlayback(RemoteLink link) : IPlayback
     /// <summary>A "status" message: what's running, and where each watched timeline is.</summary>
     public void OnStatus(JsonObject message)
     {
+        _statusAt = _time.GetTimestamp();
         _running = [.. message["running"]!.AsArray().OfType<JsonObject>().Select(r => new RunningTimeline(
             Guid.Parse(r["id"]!.GetValue<string>()),
             r["name"]!.GetValue<string>(),
