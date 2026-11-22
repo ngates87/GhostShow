@@ -213,8 +213,15 @@ public sealed partial class MainViewModel : ShellViewModel
     /// <summary>The open show's files (in GhostShow.Server): saving, opening, the recent list.</summary>
     public ShowFiles Files => _files;
 
-    /// <summary>Before the window closes: offers to save unsaved changes. False means the user cancelled closing.</summary>
-    public Task<bool> ConfirmCloseAsync() => _unsavedChanges.ConfirmAsync("closing");
+    /// <summary>
+    /// Before the window closes, every time: says what's still live (closing stops it) and offers to save unsaved
+    /// changes. False means the user cancelled closing.
+    /// </summary>
+    public Task<bool> ConfirmCloseAsync() => _unsavedChanges.ConfirmCloseAsync(DescribeClosing());
+
+    /// <summary>What closing now would stop: fixtures not blacked out, timelines running, devices connected.</summary>
+    public CloseWarning DescribeClosing() =>
+        CloseWarning.Of(_session.Engine, ShowPlayback.Running, Remote.ConnectedCount, ShowName, _files.IsDirty);
 
     /// <summary>Playback on this computer (the show computer): what the screens and the web remote ask to play.</summary>
     public ShowPlayback ShowPlayback { get; }

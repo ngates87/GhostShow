@@ -184,6 +184,8 @@ sealed class WindowRig : IDisposable
     public void Dispose()
     {
         Window.Close();
+        // The close warning, shown every time: answered "Close" (without saving), so the window shuts down.
+        foreach (var dialog in Window.OwnedWindows.OfType<Dialogs.CloseDialog>().ToList()) dialog.Close(SaveChoice.DontSave);
         Audio.Dispose();
         _probe.Dispose();
         if (Directory.Exists(_config)) Directory.Delete(_config, recursive: true);

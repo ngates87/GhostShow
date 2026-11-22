@@ -61,7 +61,8 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Closing first offers to save unsaved changes (Cancel keeps the window open), then is held until every output
+    /// Closing first warns what's still live and offers to save unsaved changes (Cancel keeps the window open; see
+    /// <see cref="Dialogs.CloseDialog"/>), then is held until every output
     /// has sent its blackout and released its device, so fixtures don't keep the last look (or a fog machine keep
     /// fogging) after the app is gone.
     /// </summary>

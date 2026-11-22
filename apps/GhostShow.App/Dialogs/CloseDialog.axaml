@@ -1,0 +1,19 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="GhostShow.App.Dialogs.CloseDialog"
+        Title="Close GhostShow"
+        Icon="avares://ghostshow-app/Assets/ghostshow.ico"
+        SizeToContent="WidthAndHeight" CanResize="False" WindowStartupLocation="CenterOwner"
+        MinWidth="420" MaxWidth="560">
+  <StackPanel Margin="24" Spacing="14">
+    <TextBlock x:Name="Question" FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap" />
+    <StackPanel x:Name="Live" Spacing="4" />
+    <TextBlock x:Name="Consequence" TextWrapping="Wrap" Opacity="0.8" />
+    <TextBlock x:Name="Unsaved" TextWrapping="Wrap" Opacity="0.8" />
+    <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" Margin="0,4,0,0">
+      <Button x:Name="SaveButton" Content="Save and close" Click="OnSave" MinWidth="90" HorizontalContentAlignment="Center" />
+      <Button x:Name="CloseButton" Click="OnClose" MinWidth="90" HorizontalContentAlignment="Center" />
+      <Button x:Name="CancelButton" Content="Cancel" IsCancel="True" Click="OnCancel" MinWidth="90" HorizontalContentAlignment="Center" />
+    </StackPanel>
+  </StackPanel>
+</Window>

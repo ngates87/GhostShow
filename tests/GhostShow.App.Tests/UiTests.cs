@@ -888,6 +888,78 @@ public class UiTests
     });
 
     [Fact]
+    public Task Closing_says_what_is_still_live() => Ui.Run(() =>
+    {
+        using var rig = new WindowRig();
+        var warning = rig.ViewModel.DescribeClosing();
+        Assert.False(warning.IsLive);
+        Assert.False(warning.HasUnsavedChanges);
+
+        rig.Session.Engine.SetChannel(1, 10, 200);    // the fog machine
+        rig.Session.Engine.SetChannel(1, 300, 5);     // no fixture there
+        var main = rig.Editor.SelectedTimeline!;
+        rig.ViewModel.Playback.Launch(main);
+        rig.ViewModel.Files.MarkDirty();
+        WindowRig.Pump(200);
+        warning = rig.ViewModel.DescribeClosing();
+        Assert.Equal(["Fog"], warning.LitFixtures);
+        Assert.Equal(1, warning.OtherLitChannels);
+        Assert.Equal(["Main"], warning.Playing);
+        Assert.True(warning.HasUnsavedChanges);
+
+        rig.ViewModel.Playback.Show.Pause(main.Id);
+        WindowRig.Pump(200);
+        warning = rig.ViewModel.DescribeClosing();
+        Assert.Empty(warning.Playing);
+        Assert.Equal(["Main"], warning.Paused);
+    });
+
+    [Fact]
+    public Task Closing_while_the_show_is_live_asks_first_and_Enter_keeps_it_open() => Ui.Run(() =>
+    {
+        using var rig = new WindowRig();
+        var main = rig.Editor.SelectedTimeline!;
+        rig.ViewModel.Playback.Launch(main);
+        rig.Session.Engine.SetChannel(1, 10, 200);
+        WindowRig.Pump(200);
+
+        rig.Window.Close();
+        var dialog = Assert.Single(rig.Window.OwnedWindows.OfType<Dialogs.CloseDialog>());
+        WindowRig.Pump(50);
+        var text = string.Join("\n", dialog.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text));
+        Assert.Contains("The show is still live", text);
+        Assert.Contains("Not blacked out: Fog", text);
+        Assert.Contains("Playing: Main", text);
+        var buttons = dialog.GetVisualDescendants().OfType<Button>().Where(b => b.IsVisible).ToList();
+        Assert.Equal(["Close anyway", "Cancel"], buttons.Select(b => b.Content as string));
+        Assert.True(buttons[1].IsDefault);
+
+        dialog.KeyPress(Key.Enter, RawInputModifiers.None, PhysicalKey.Enter, null);   // a stray Enter
+        WindowRig.Pump(200);
+        Assert.False(dialog.IsVisible);
+        Assert.True(rig.Window.IsVisible);
+        Assert.True(rig.ViewModel.Playback.IsRunning(main.Id));   // still playing
+    });
+
+    [Fact]
+    public Task The_close_warning_offers_to_save_and_otherwise_defaults_to_closing() => Ui.Run(() =>
+    {
+        static List<Button> Buttons(CloseWarning warning) =>
+            new Dialogs.CloseDialog(warning).GetLogicalDescendants().OfType<Button>().Where(b => b.IsVisible).ToList();
+
+        var quiet = Buttons(new CloseWarning("haunt", false, [], 0, [], [], 0));
+        Assert.Equal(["Close", "Cancel"], quiet.Select(b => b.Content as string));
+        Assert.True(quiet[0].IsDefault);
+
+        var unsaved = Buttons(new CloseWarning("haunt", true, [], 0, [], [], 0));
+        Assert.Equal(["Save and close", "Close without saving", "Cancel"], unsaved.Select(b => b.Content as string));
+        Assert.True(unsaved[0].IsDefault);
+
+        var live = Buttons(new CloseWarning("haunt", true, ["Fog"], 0, [], [], 0));
+        Assert.True(live[2].IsDefault);   // live: Enter is Cancel
+    });
+
+    [Fact]
     public Task The_timeline_tree_marks_what_is_playing() => Ui.Run(() =>
     {
         using var rig = new WindowRig();

@@ -18,9 +18,12 @@ public partial class SaveChangesDialog : Window
     void OnCancel(object? sender, RoutedEventArgs e) => Close(SaveChoice.Cancel);
 }
 
-/// <summary>Shows <see cref="SaveChangesDialog"/> over the main window.</summary>
+/// <summary>Shows <see cref="SaveChangesDialog"/> (or, before closing, <see cref="CloseDialog"/>) over the main window.</summary>
 public sealed class SaveChangesDialogPrompt(Window owner) : ISaveChangesPrompt
 {
     public async Task<SaveChoice> AskAsync(string showName, string action) =>
         await new SaveChangesDialog(showName, action).ShowDialog<SaveChoice?>(owner) ?? SaveChoice.Cancel;
+
+    public async Task<SaveChoice> AskCloseAsync(CloseWarning warning) =>
+        await new CloseDialog(warning).ShowDialog<SaveChoice?>(owner) ?? SaveChoice.Cancel;
 }
