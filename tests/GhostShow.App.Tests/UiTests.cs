@@ -414,7 +414,7 @@ public class UiTests
     {
         using var rig = new WindowRig();
         var scare = new ShowTimeline { Name = "Scare", Length = S(10) };
-        rig.Session.Project.Timelines.Add(scare);
+        rig.Change(() => rig.Shown.Project.Timelines.Add(scare), rig.Shown.Project);
         rig.ViewModel.Buttons.AddCommand.Execute(null);
         var button = rig.ViewModel.Buttons.Buttons.Single();
         button.AddActionCommand.Execute("run");
@@ -455,7 +455,7 @@ public class UiTests
     {
         using var rig = new WindowRig();
         var scare = new ShowTimeline { Name = "Scare", Length = S(10) };
-        rig.Session.Project.Timelines.Add(scare);
+        rig.Change(() => rig.Shown.Project.Timelines.Add(scare), rig.Shown.Project);
         var buttons = rig.ViewModel.Buttons;
         buttons.AddCommand.Execute(null);
         var button = buttons.Buttons.Single();
@@ -496,7 +496,7 @@ public class UiTests
         using var rig = new WindowRig();
         var buttons = rig.ViewModel.Buttons;
         var scare = new ShowTimeline { Name = "Scare", Length = S(10) };
-        rig.Session.Project.Timelines.Add(scare);
+        rig.Change(() => rig.Shown.Project.Timelines.Add(scare), rig.Shown.Project);
         buttons.AddCommand.Execute(null);
         var button = buttons.Buttons.Single();
         button.AddActionCommand.Execute("run");
@@ -559,7 +559,7 @@ public class UiTests
         using var rig = new WindowRig();
         var buttons = rig.ViewModel.Buttons;
         var scare = new ShowTimeline { Name = "Scare", Length = S(10) };
-        rig.Session.Project.Timelines.Add(scare);
+        rig.Change(() => rig.Shown.Project.Timelines.Add(scare), rig.Shown.Project);
         buttons.AddCommand.Execute(null);
         buttons.CancelLearningKey();
         var button = buttons.Buttons.Single();
@@ -717,7 +717,7 @@ public class UiTests
     {
         using var rig = new WindowRig();
         var scare = new ShowTimeline { Name = "Scare", Length = S(10) };
-        rig.Session.Project.Timelines.Add(scare);
+        rig.Change(() => rig.Shown.Project.Timelines.Add(scare), rig.Shown.Project);
         rig.ViewModel.Buttons.AddCommand.Execute(null);
         var button = rig.ViewModel.Buttons.Buttons.Single();
         button.AddActionCommand.Execute("run");
@@ -744,7 +744,7 @@ public class UiTests
         var main = rig.Editor.SelectedTimeline!;
         rig.Editor.Tree.NewTimelineCommand.Execute(null);   // a second timeline in the tree
         WindowRig.Pump();
-        var room = rig.Session.Project.Timelines.Single(t => t != main);
+        var room = rig.Shown.Project.Timelines.Single(t => t != main);
         rig.Editor.OpenTimeline(main);
         WindowRig.Pump();
         var node = rig.Editor.Tree.AllNodes().OfType<TimelineNode>().Single(n => n.Timeline == room);
@@ -770,7 +770,7 @@ public class UiTests
         var main = rig.Editor.SelectedTimeline!;
         rig.Editor.Tree.NewTimelineCommand.Execute(null);
         WindowRig.Pump();
-        var room = rig.Session.Project.Timelines.Single(t => t != main);
+        var room = rig.Shown.Project.Timelines.Single(t => t != main);
         rig.Editor.OpenTimeline(main);
         WindowRig.Pump();
         var data = new DataTransfer();
@@ -837,9 +837,9 @@ public class UiTests
         }
         var main = rig.Editor.SelectedTimeline!;
         var room = new ShowTimeline { Name = "Room", Length = TimeSpan.FromSeconds(30) };
-        rig.Session.Project.Timelines.Add(room);
+        rig.Change(() => rig.Shown.Project.Timelines.Add(room), rig.Shown.Project);
         rig.Editor.Tree.Rebuild();
-        rig.Session.Project.Buttons.Add(new Core.Model.ShowButton { Name = "Scare", Actions = [new Core.Model.RunTimelineAction { TimelineId = room.Id }] });
+        rig.Change(() => rig.Shown.Project.Buttons.Add(new Core.Model.ShowButton { Name = "Scare", Actions = [new Core.Model.RunTimelineAction { TimelineId = room.Id }] }), rig.Shown.Project);
         rig.ViewModel.Buttons.Reload();
         var remote = rig.ViewModel.Remote;
         remote.Port = 20000 + Random.Shared.Next(20000);
@@ -1689,7 +1689,7 @@ public class UiTests
         var main = rig.Editor.SelectedTimeline!;
         rig.Editor.Tree.NewTimelineCommand.Execute(null);
         WindowRig.Pump();
-        var other = rig.Session.Project.Timelines.Single(t => t != main);
+        var other = rig.Shown.Project.Timelines.Single(t => t != main);
         rig.Editor.Priority = 10;
         rig.Editor.OpenTimeline(main);
         WindowRig.Pump();
