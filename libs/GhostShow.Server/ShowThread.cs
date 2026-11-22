@@ -102,3 +102,63 @@ public sealed class Debouncer(IShowThread thread, TimeSpan delay, Action action)
         lock (_lock) _timer?.Dispose();
     }
 }
+
+/// <summary>
+/// A thread of its own for the show, for a server with no window (where the desktop app uses its UI thread): runs what's
+/// posted, in order, and an await on it carries on on it, as on a UI thread. A posted action that throws is reported
+/// (<see cref="Unhandled"/>) and the thread carries on.
+/// </summary>
+public sealed class DedicatedShowThread : IShowThread, IDisposable
+{
+    readonly System.Collections.Concurrent.BlockingCollection<Action> _queue = new();
+    readonly Thread _thread;
+
+    public DedicatedShowThread(string name = "show")
+    {
+        _thread = new Thread(Run) { Name = name, IsBackground = true };
+        _thread.Start();
+    }
+
+    /// <summary>A posted action threw.</summary>
+    public event Action<Exception>? Unhandled;
+
+    /// <summary>Whether this is the show's thread.</summary>
+    public bool IsCurrent => Thread.CurrentThread == _thread;
+
+    public void Post(Action action)
+    {
+        try
+        {
+            _queue.Add(action);
+        }
+        catch (InvalidOperationException)
+        {
+            // Stopped: nothing runs any more.
+        }
+    }
+
+    void Run()
+    {
+        SynchronizationContext.SetSynchronizationContext(new Context(this));
+        foreach (var action in _queue.GetConsumingEnumerable())
+        {
+            try
+            {
+                action();
+            }
+            catch (Exception e)
+            {
+                Unhandled?.Invoke(e);
+            }
+        }
+    }
+
+    /// <summary>Stops once what's already posted has run.</summary>
+    public void Dispose() => _queue.CompleteAdding();
+
+    sealed class Context(DedicatedShowThread thread) : SynchronizationContext
+    {
+        public override void Post(SendOrPostCallback callback, object? state) => thread.Post(() => callback(state));
+        public override SynchronizationContext CreateCopy() => this;
+    }
+}

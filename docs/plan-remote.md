@@ -340,6 +340,13 @@ Small steps; each one leaves the app working.
       loopback to the server in the same process (paired as this computer, without a PIN). What only the show
       computer does (Home, its file dialogs, Remote Access, the close warning) keeps calling the server in-process.
       Behind a switch at first; the UI tests run over the connection, and pass, before the switch flips.
+      1. **One place builds the server (done 2026-11-22):** `ShowServer` (GhostShow.Server) builds the server's
+         pieces from `ShowServices` and connects them: serial commands to the triggers, edits to unsaved changes and
+         auto-save, a show replaced to playback, the triggers, inputs, devices and outputs, settings saved, start-up and
+         shutdown in order. `MainViewModel` builds one and adds the window's screens, telling it the timeline open in
+         the editor and how its screens follow another show. `DedicatedShowThread` is a show thread of its own (awaits
+         come back to it), and `ShowServerTests` runs the whole server on one with no window: it starts, serves a
+         device the show, and ticks itself.
 6. **Move the other screens, one at a time** (proposed 2026-11-07 to be done through one shared main view, ahead of
    steps 4 and 5: [plan-shared-view.md](plan-shared-view.md)):
    - Audio, with its settings as commands to the show computer;
@@ -347,10 +354,8 @@ Small steps; each one leaves the app working.
    - the file menu, with a browser for the show computer's folders (choosing a sound, opening a show, uploading sounds
      from the laptop).
 7. **Run the server on its own:** autostart and packaging (the Windows installer already serves `/app/` with no setup,
-   from the desktop app). First, one place in the server builds it: today the desktop's `MainViewModel` constructor
-   (and its `LocalServices`) creates the server's pieces and connects some of them (serial commands to the triggers,
-   a show replaced to the triggers, inputs and outputs). Then delete the old direct path and what's left of
-   `ShellView.cs`.
+   from the desktop app). One place in the server builds it (`ShowServer`, step 5 part 4.1), and it runs on its own
+   show thread (`DedicatedShowThread`). Then delete the old direct path and what's left of `ShellView.cs`.
 8. **Browser polish:**
    - A symbol font (▾ and ⚙ show as boxes).
    - Checking which keyboard shortcuts the browser takes first (Ctrl+W can't be taken back), and whether plain `http://`

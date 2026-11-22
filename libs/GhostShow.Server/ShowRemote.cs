@@ -43,6 +43,9 @@ public sealed class ShowRemote : IAsyncDisposable
     /// <summary>Whether devices can connect (the web remote is running).</summary>
     public bool IsOn { get; private set; }
 
+    /// <summary>Why it couldn't start, the last time it was switched on (null once it's on, or switched off).</summary>
+    public string? Problem { get; private set; }
+
     /// <summary>The port it's on, or starts on.</summary>
     public int Port => _settings.Port;
 
@@ -66,7 +69,9 @@ public sealed class ShowRemote : IAsyncDisposable
             {
                 _logger.LogWarning(e, "The web remote couldn't start on port {Port}.", port);
                 IsOn = false;
-                return $"Couldn't start on port {port}: {Reason(e)} Pick another port and switch it on again.";
+                Problem = $"Couldn't start on port {port}: {Reason(e)} Pick another port and switch it on again.";
+                Changed?.Invoke();
+                return Problem;
             }
             _settings.Port = port;
         }
@@ -76,6 +81,7 @@ public sealed class ShowRemote : IAsyncDisposable
         }
         _settings.Enabled = on;
         IsOn = on;
+        Problem = null;
         Changed?.Invoke();
         await _saveSettings();
         return null;

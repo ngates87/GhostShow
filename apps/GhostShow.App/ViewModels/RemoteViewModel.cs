@@ -64,19 +64,8 @@ public sealed partial class RemoteViewModel : ObservableObject, IAsyncDisposable
     /// <summary>For the menu bar's indicator: "2 devices", "1 device", "On".</summary>
     public string ConnectedLabel => ConnectedCount switch { 0 => "Remote on", 1 => "1 device", var n => $"{n} devices" };
 
-    /// <summary>At startup: back on if it was left on.</summary>
-    public async Task StartIfEnabledAsync() => Failed(await _remote.StartIfEnabledAsync());
-
-    public async Task SetEnabledAsync(bool on) => Failed(await _remote.SetEnabledAsync(on, (int)Math.Clamp(Port, 1024, 65535)));
-
-    /// <summary>It couldn't start: says why, and shows it off.</summary>
-    void Failed(string? problem)
-    {
-        if (problem is null) return;
-        Refresh();
-        Status = problem;
-        OnPropertyChanged(nameof(IsEnabled));
-    }
+    /// <summary>Switches it on or off; if it can't start, <see cref="Status"/> says why.</summary>
+    public Task SetEnabledAsync(bool on) => _remote.SetEnabledAsync(on, (int)Math.Clamp(Port, 1024, 65535));
 
     [RelayCommand]
     void NewPin()
@@ -101,7 +90,7 @@ public sealed partial class RemoteViewModel : ObservableObject, IAsyncDisposable
             .Select(d => new RemoteDeviceRow(d, connected.FirstOrDefault(c => c.Id == d.Id), this)).ToList();
         Devices.Clear();
         foreach (var row in rows) Devices.Add(row);
-        Status = !IsOn ? "Off: nothing on the network can reach GhostShow."
+        Status = !IsOn ? _remote.Problem ?? "Off: nothing on the network can reach GhostShow."
                : Addresses.Count == 0 ? "On, but this computer isn't on a network devices could reach it on."
                : "On: on a device on this network, open the address below, then enter the PIN.";
         OnPropertyChanged(nameof(Pin));

@@ -30,15 +30,13 @@ public sealed partial class MainViewModel : ShellViewModel
     static readonly FilePickerFileType AudioFiles = new("Audio (WAV, MP3)") { Patterns = ["*.wav", "*.mp3", "*.WAV", "*.MP3"] };
     static readonly TimeSpan TickInterval = TimeSpan.FromMilliseconds(33);
 
-    readonly ShowServices _services;
+    readonly ShowServer _server;
     readonly ShowSession _session;
-    readonly OutputManager _outputs;
     readonly MachineSettings _settings;
     readonly AppPaths _paths;
     readonly IStorageProvider _storage;
     readonly ILogger _logger;
     readonly LocalOutputSetup _outputSetup;
-    readonly SettingsSaver _settingsSaver;
     readonly DispatcherTimer _tick;
     readonly ShowFiles _files;
     readonly ShowControl _control;
@@ -46,35 +44,32 @@ public sealed partial class MainViewModel : ShellViewModel
     readonly ShowRemote _remote;
 
     public MainViewModel(ShowServices services, IStorageProvider storage, ISaveChangesPrompt savePrompt, ILogger<MainViewModel> logger)
-        : this(services, storage, savePrompt, logger, LocalServices.For(services, logger))
+        : this(new ShowServer(services, logger), storage, savePrompt, logger)
     {
     }
 
-    MainViewModel(ShowServices services, IStorageProvider storage, ISaveChangesPrompt savePrompt, ILogger logger, LocalServices local)
-        : base(services.Session, local.Shell)
+    MainViewModel(ShowServer server, IStorageProvider storage, ISaveChangesPrompt savePrompt, ILogger logger)
+        : base(server.Services.Session, ShellServicesOf(server))
     {
-        _services = services;
-        var (session, outputs, settings, paths) = (services.Session, services.Outputs, services.Settings, services.Paths);
+        _server = server;
+        var (session, settings, paths) = (server.Services.Session, server.Services.Settings, server.Services.Paths);
         _session = session;
-        _outputs = outputs;
         _settings = settings;
         _paths = paths;
         _storage = storage;
         _logger = logger;
-        _outputSetup = local.OutputSetup;
-        _settingsSaver = local.Saver;
-        _settingsSaver.Problem = ReportError;
+        _outputSetup = server.Outputs;
+        server.Problem += ReportError;
 
-        ShowPlayback = local.Playback;
-        // A sound's length was measured (on a worker thread): timelines using it are compiled again, on this thread.
-        services.Audio.LengthMeasured += path => Dispatcher.UIThread.Post(() => ShowPlayback.OnAudioMeasured(path));
-        _diagnostics = new LocalDiagnostics(services, () => Playback.Timeline);
+        ShowPlayback = server.Playback;
+        _diagnostics = server.Diagnostics;
         Diagnostics = new DiagnosticsViewModel(_diagnostics);
-        _load = new ShowLoad(services);
-        _triggers = local.Triggers;
-        _files = new ShowFiles(session, settings, paths, SaveSettingsAsync, services.Thread);
-        _control = new ShowControl(session, local.Playback, _triggers, _files, () => Playback.FocusedId, () => BlackoutCommand.Execute(null),
-                                   (device, side) => AudioDevices.PlayTestSound(device, side));
+        _load = server.Load;
+        _triggers = server.Triggers;
+        _files = server.Files;
+        _control = server.Control;
+        server.FocusedTimeline = () => Playback.FocusedId;   // the transport works the timeline open in the editor
+        server.DeviceBlackout += () => StatusMessage = BlackoutDone;
         // A device opened a timeline: the editor shows it, and the transport works it.
         _control.OpenRequested += id =>
         {
@@ -82,26 +77,12 @@ public sealed partial class MainViewModel : ShellViewModel
             Timeline.OpenTimeline(timeline);
             Timeline.Tree.Reveal(timeline);
         };
-        _serial = services.SerialInputs ?? new SerialInputs(logger);
-        _inputSetup = new LocalInputSetup(session, _serial, settings, SaveSettingsAsync,
-            // Only adapters that have their port open: one that's missing keeps the name of the port it was last on, and
-            // another device may have that name now (the DMX output checks the adapter's serial number, so it won't take it).
-            () => outputs.Services.Where(s => s.Status == DmxOutputStatus.Connected && s.Device.Port is not null).Select(s => (s.Universe, s.Device.Port!)));
+        _inputSetup = server.Inputs;
         Inputs = new InputsViewModel(session, _inputSetup, Buttons);
-        _inputSetup.Changed += () => _triggers.SerialListening = _inputSetup.State.Devices.Any(d => d.IsListening);
         BottomWorkspace = new BottomWorkspaceViewModel(Playback, Inputs.Monitor, Lighting, Diagnostics, settings.Panels, offersPlaying: false);
-        // Both come on a port's reading thread, and are handled on this one. A command is an input like a key.
-        _serial.CommandReceived += (device, command) => Dispatcher.UIThread.Post(() =>
-        {
-            _inputSetup.OnCommand(device, command, DateTimeOffset.Now);   // shown on its card
-            _triggers.Command(device, command);
-        });
-        _serial.StatusChanged += _ => Dispatcher.UIThread.Post(_inputSetup.Refresh);
-        _audioSetup = new LocalAudioSetup(services.Audio, session, settings, SaveSettingsAsync, services.Thread);
-        _serverTick = new ServerTick(services, _triggers, _load, _outputSetup, _inputSetup, _diagnostics, _audioSetup);
-        var host = new ShowRemoteHost(services, ShowPlayback, _control, _files, _serverTick, local.AudioOutputs, local.Library, _outputSetup,
-                                      local.Levels, _triggers, _inputSetup, _audioSetup, _diagnostics, _load);
-        _remote = new ShowRemote(host, settings.Remote, SaveSettingsAsync, services.Thread, logger, ShowRemote.FindBrowserApp());
+        _audioSetup = server.Audio;
+        _serverTick = server.Tick;
+        _remote = server.Remote;
         Remote = new RemoteViewModel(_remote);
         Audio = new AudioViewModel(_audioSetup, AudioDevices);
         _ = AudioDevices.RefreshAsync();
@@ -110,8 +91,7 @@ public sealed partial class MainViewModel : ShellViewModel
             CurrentPage = Page.Timeline;
             if (Timeline.Tracks.FirstOrDefault(t => t.IsLighting) is { } lighting) Timeline.EditChannels(lighting);
         });
-        _session.Document.Changed += OnDocumentChanged;
-        _files.AfterShowReplaced = AfterShowReplacedAsync;
+        server.ScreensFollowShow = ScreensFollowShow;
         _files.Changed += () =>
         {
             IsDirty = _files.IsDirty;
@@ -120,7 +100,6 @@ public sealed partial class MainViewModel : ShellViewModel
         };
         _files.Saved += Timeline.RefreshTitles;
         _files.RecentChanged += RefreshRecentShows;
-        _files.Renamed += _remote.ShowReplaced;   // devices show the new name
         _files.Status += message => StatusMessage = message;
         _files.Problem += ReportError;
 
@@ -129,41 +108,9 @@ public sealed partial class MainViewModel : ShellViewModel
         FollowPanelWidths();
     }
 
-    /// <summary>This computer's own versions of the services the screens use.</summary>
-    sealed record LocalServices(ShellServices Shell, ShowPlayback Playback, LocalOutputSetup OutputSetup, LocalLiveLevels Levels,
-                                LocalFixtureLibrary Library, SettingsSaver Saver, ShowTriggers Triggers, AudioOutputs AudioOutputs)
-    {
-        public static LocalServices For(ShowServices services, ILogger logger)
-        {
-            var saver = new SettingsSaver(services.Settings, services.Paths);
-            var outputSetup = new LocalOutputSetup(services.Session, services.Outputs, services.Settings, saver.SaveAsync, services.AdapterFinder);
-            var levels = new LocalLiveLevels(services.Session.Engine, services.Outputs.Find);
-            var library = new LocalFixtureLibrary(services.Session, services.Paths, services.Settings, logger);
-            var playback = new ShowPlayback(services.Session, services.Playback, services.Audio, logger);
-            var triggers = new ShowTriggers(services.Session, playback, () => Blackout(services));
-            var audioOutputs = new AudioOutputs(services.Audio);
-            var shell = new ShellServices(playback, library, outputSetup, levels, LocalAudioDevices.For(audioOutputs), new LocalTriggers(triggers));
-            return new(shell, playback, outputSetup, levels, library, saver, triggers, audioOutputs);
-        }
-    }
-
-    /// <summary>Saves this computer's settings. A problem is reported in the status bar.</summary>
-    sealed class SettingsSaver(MachineSettings settings, AppPaths paths)
-    {
-        public Action<string>? Problem { get; set; }
-
-        public async Task SaveAsync()
-        {
-            try
-            {
-                await MachineSettingsStore.SaveAsync(settings, paths);
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                Problem?.Invoke($"Couldn't save machine settings: {ex.Message}");
-            }
-        }
-    }
+    /// <summary>The server's own services, for the screens on this computer.</summary>
+    static ShellServices ShellServicesOf(ShowServer server) =>
+        new(server.Playback, server.Library, server.Outputs, server.Levels, LocalAudioDevices.For(server.AudioOutputs), new LocalTriggers(server.Triggers));
 
     // ---- the side panels' widths: this computer's, as last dragged ----
 
@@ -235,7 +182,6 @@ public sealed partial class MainViewModel : ShellViewModel
     public SetupGuideViewModel Guide { get; }
     public DiagnosticsViewModel Diagnostics { get; }
     public InputsViewModel Inputs { get; }
-    readonly SerialInputs _serial;
     readonly LocalInputSetup _inputSetup;
     readonly ShowTriggers _triggers;
     readonly LocalAudioSetup _audioSetup;
@@ -310,43 +256,23 @@ public sealed partial class MainViewModel : ShellViewModel
     {
         if (settingsError is not null) ReportError(settingsError);
         RefreshRecentShows();
-        await _outputSetup.ApplyAsync();
-        Inputs.RefreshPortsCommand.Execute(null);
-        _inputSetup.Apply();   // after the DMX outputs, so a port they use isn't taken
-        _tick.Start();
-        if (RecentShows.FirstOrDefault() is { Exists: true } last) await OpenPathAsync(last.Path);
-        await Remote.StartIfEnabledAsync();
-        await Library.LoadAsync();
+        await _server.StartAsync(_tick.Start);
     }
 
     /// <summary>Stops output (each universe sends its blackout first) within the outputs' stop timeout.</summary>
     public async Task ShutdownAsync()
     {
         _tick.Stop();
-        _serverTick.Dispose();
-        await Remote.DisposeAsync();   // devices are told it's going
-        // Order matters: stop the show (audio stops, timeline releases the lights), stop the playback thread, close
-        // audio, then stop DMX outputs, which send their blackout last.
-        _services.Playback.StopAllNow();
-        await Task.Delay(PlaybackLoop.Interval * 3);
-        _services.PlaybackLoop.Stop(TimeSpan.FromSeconds(2));
-        _services.Audio.Dispose();
-        _serial.Dispose();
-        bool clean = await _outputs.StopAllAsync();
+        bool clean = await _server.ShutdownAsync();   // devices are told it's going; outputs send their blackout last
         _logger.LogInformation(clean ? "Shut down cleanly." : "Shut down; an output didn't stop in time.");
     }
 
-    /// <summary>Stops playback and sets every manual level to 0 (Blackout, or a button's Blackout action).</summary>
-    static void Blackout(ShowServices services)
-    {
-        services.Playback.StopAllNow();   // otherwise the timelines would put their levels straight back
-        services.Session.Engine.Blackout();
-    }
+    const string BlackoutDone = "Blackout: playback stopped and every manual level set to 0.";
 
     protected override void BlackoutShow()
     {
-        Blackout(_services);
-        StatusMessage = "Blackout: playback stopped and every manual level set to 0.";
+        _server.Blackout();
+        StatusMessage = BlackoutDone;
     }
 
     protected override async Task NewShowAsync()
@@ -462,30 +388,21 @@ public sealed partial class MainViewModel : ShellViewModel
     /// <summary>Save, asked for by a device (see <see cref="ShowFiles.SaveForDeviceAsync"/>).</summary>
     internal Task<string?> SaveForDeviceAsync() => _files.SaveForDeviceAsync();
 
-    Task SaveSettingsAsync() => _settingsSaver.SaveAsync();
+    Task SaveSettingsAsync() => _server.SaveSettingsAsync();
 
-    async Task AfterShowReplacedAsync()
+    /// <summary>Another show is open: the screens follow it (the server's part is in <see cref="ShowServer"/>).</summary>
+    Task ScreensFollowShow()
     {
         Lighting.Reload();
         Playback.Reset();    // the old show's timelines stop at once
         Timeline.Reload();   // focuses the new show's first timeline
-        _triggers.Reload();   // every trigger ready, and armed
         Buttons.Reload();
-        _inputSetup.Reload();   // the new show's input devices, on this computer's ports
         Inputs.Reload();
-        Remote.ShowReplaced();
         Guide.Reset();
         ShowEditor();   // (closing the show goes back to Home after this)
-        await _outputSetup.ApplyAsync();
         OnPropertyChanged(nameof(Title));
         OnPropertyChanged(nameof(ShowFile));
-
-    }
-
-    /// <summary>A remote edit changed the patch: validate it again, refresh setup screens and apply universe outputs.</summary>
-    void OnDocumentChanged(GhostShow.Core.Editing.ShowChange change)
-    {
-        MarkDirty();
+        return Task.CompletedTask;
     }
 
     protected override void MarkDirty() => _files.MarkDirty();

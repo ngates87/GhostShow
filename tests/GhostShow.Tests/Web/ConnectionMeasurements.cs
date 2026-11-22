@@ -186,7 +186,7 @@ public sealed partial class RemoteServerTests
     }
 
     /// <summary>The next message of a type, as received (skipping others).</summary>
-    static async Task<string> NextRawAsync(ClientWebSocket socket, string type)
+    internal static async Task<string> NextRawAsync(ClientWebSocket socket, string type)
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
         var buffer = new byte[1 << 16];
