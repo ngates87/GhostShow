@@ -238,6 +238,9 @@ public sealed partial class MainViewModel : ShellViewModel
     public ShowPlayback ShowPlayback { get; }
 
     public RemoteViewModel Remote { get; }
+
+    /// <summary>The show the screens work on: the server's, or over the connection the window's copy of it.</summary>
+    internal ShowSession ScreenSession => Session;
     public AudioViewModel Audio { get; }
     public SetupGuideViewModel Guide { get; }
     public DiagnosticsViewModel Diagnostics { get; }

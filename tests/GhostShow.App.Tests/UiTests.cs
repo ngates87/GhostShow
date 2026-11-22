@@ -1424,7 +1424,7 @@ public class UiTests
         var clip = new LightingClip { Start = S(start), Length = S(length) };
         if (handles.Length > 0)
             clip.Lanes.Add(new ChannelLane { Target = rig.Lighting.Channels[0].Target, Points = handles.Select(p => new CurvePoint { Time = S(p.At), Value = p.Level }).ToList() });
-        rig.Lighting.Events.Add(clip);
+        rig.Change(() => rig.Lighting.Events.Add(clip), rig.Lighting);
         rig.Editor.Relayout();
         WindowRig.Pump();
         return clip;

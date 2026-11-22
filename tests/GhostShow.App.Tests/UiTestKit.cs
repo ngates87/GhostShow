@@ -86,7 +86,23 @@ sealed class WindowRig : IDisposable
     public MainWindow Window { get; }
     public MainViewModel ViewModel { get; }
     public TimelineEditorViewModel Editor => ViewModel.Timeline;
-    public TimelineTrack Lighting => Session.Project.Timelines[0].Tracks[0];
+    public TimelineTrack Lighting => Shown.Project.Timelines[0].Tracks[0];
+
+    /// <summary>
+    /// The show the screens work on: the server's (<see cref="Session"/>), or with GHOSTSHOW_WINDOW=connected the
+    /// window's copy of it, kept in step over its connection.
+    /// </summary>
+    public ShowSession Shown => ViewModel.ScreenSession;
+
+    /// <summary>
+    /// Changes the show as a screen does, through the document of the show the screens work on, so over the connection
+    /// the server has it too; then lets it get there.
+    /// </summary>
+    public void Change(Action change, params object[] roots)
+    {
+        Shown.Document.Record("Set up the test", change, roots);
+        Pump(50);
+    }
 
     /// <summary>Lets the UI thread catch up: layout, bindings, posted work.</summary>
     public static void Pump(int milliseconds = 100)
