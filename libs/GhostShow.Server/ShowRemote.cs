@@ -96,6 +96,33 @@ public sealed class ShowRemote : IAsyncDisposable
         return e.Message;
     }
 
+    /// <summary>
+    /// The show computer's own window connecting, in memory (<see cref="LocalConnection"/>): served as devices are, until
+    /// <paramref name="stop"/>, with Remote Access on or off. Returns the window's end.
+    /// </summary>
+    public System.Net.WebSockets.WebSocket ConnectWindow(CancellationToken stop)
+    {
+        var (window, served) = LocalConnection.Create();
+        _ = ServeWindowAsync(served, stop);
+        return window;
+    }
+
+    async Task ServeWindowAsync(System.Net.WebSockets.WebSocket socket, CancellationToken stop)
+    {
+        try
+        {
+            await _server.RunLocalAsync(socket, stop);
+        }
+        catch (Exception e) when (e is System.Net.WebSockets.WebSocketException or OperationCanceledException or ObjectDisposedException)
+        {
+            // The window closed its end, or stopped: it connects again if it's still open.
+        }
+        finally
+        {
+            socket.Dispose();
+        }
+    }
+
     /// <summary>A new PIN: devices not paired yet need it; paired ones keep working.</summary>
     public void NewPin() => _server.Pairing.NewPin();
 

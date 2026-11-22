@@ -11,7 +11,14 @@ namespace GhostShow.App.Client;
 /// <param name="Token">The token this device got when it paired; null if it hasn't paired.</param>
 /// <param name="NotPaired">What to say while it isn't paired.</param>
 /// <param name="NoLongerPaired">What to say when the show computer says it isn't paired any more.</param>
-sealed record RemoteEndpoint(string Origin, Func<string?> Token, string NotPaired, string NoLongerPaired);
+/// <param name="Connect">
+/// Opens the connection, where it isn't a WebSocket to <paramref name="Origin"/>: the show computer's own window has an
+/// in-memory one (see GhostShow.Web's LocalConnection).
+/// </param>
+/// <param name="FetchLibrary">Gets the whole fixture library (its version, one profile per line), where it isn't fetched from /api/library.</param>
+sealed record RemoteEndpoint(string Origin, Func<string?> Token, string NotPaired, string NoLongerPaired,
+                             Func<CancellationToken, Task<WebSocket>>? Connect = null,
+                             Func<Task<(long Version, string Lines)>>? FetchLibrary = null);
 
 /// <summary>
 /// The connection to the show computer (the web remote's <c>/api/live</c>, see libs/GhostShow.Web/RemoteServer.cs), as
@@ -20,7 +27,7 @@ sealed record RemoteEndpoint(string Origin, Func<string?> Token, string NotPaire
 /// </summary>
 sealed class RemoteLink(RemoteEndpoint endpoint)
 {
-    ClientWebSocket? _socket;
+    WebSocket? _socket;
     Channel<string>? _outgoing;   // what's waiting to be sent; there's one per connection
     int _nextId;
     bool _resyncing;   // the connection is being dropped on purpose (see Resync): not worth telling the user
@@ -102,6 +109,9 @@ sealed class RemoteLink(RemoteEndpoint endpoint)
     /// <summary>The show computer's address (the web remote's), e.g. http://192.168.1.20:7700.</summary>
     public string Origin => endpoint.Origin;
 
+    /// <summary>Gets the whole fixture library, where it isn't fetched from /api/library (null: it is).</summary>
+    public Func<Task<(long Version, string Lines)>>? FetchLibrary => endpoint.FetchLibrary;
+
     /// <summary>The connection's address: the origin's, as a WebSocket.</summary>
     string LiveAddress(string token) =>
         (Origin.StartsWith("https:", StringComparison.OrdinalIgnoreCase) ? "wss:" + Origin[6..] : "ws:" + Origin[(Origin.IndexOf(':') + 1)..])
@@ -121,10 +131,16 @@ sealed class RemoteLink(RemoteEndpoint endpoint)
                 if (!await Wait(TimeSpan.FromSeconds(3), stop)) return;
                 continue;
             }
-            var socket = _socket = new ClientWebSocket();
+            WebSocket? socket = null;
             try
             {
-                await socket.ConnectAsync(new Uri(LiveAddress(token)), stop);
+                if (endpoint.Connect is { } connect) socket = _socket = await connect(stop);
+                else
+                {
+                    var client = new ClientWebSocket();
+                    socket = _socket = client;
+                    await client.ConnectAsync(new Uri(LiveAddress(token)), stop);
+                }
                 retry = 0;
                 var outgoing = _outgoing = Channel.CreateUnbounded<string>();
                 _ = SendAsync(socket, outgoing);
@@ -146,7 +162,7 @@ sealed class RemoteLink(RemoteEndpoint endpoint)
             if (stop.IsCancellationRequested) return;
             if (!_resyncing) Disconnected?.Invoke();
             _resyncing = false;
-            if (socket.CloseStatus is { } status && (int)status == 4401)
+            if (socket?.CloseStatus is { } status && (int)status == 4401)
             {
                 Problem?.Invoke(endpoint.NoLongerPaired);
             }
@@ -168,7 +184,7 @@ sealed class RemoteLink(RemoteEndpoint endpoint)
         }
     }
 
-    async Task ReceiveAsync(ClientWebSocket socket)
+    async Task ReceiveAsync(WebSocket socket)
     {
         var buffer = new byte[64 * 1024];
         using var message = new MemoryStream();
@@ -286,7 +302,7 @@ sealed class RemoteLink(RemoteEndpoint endpoint)
     }
 
     /// <summary>Sends what's queued, one message at a time (a WebSocket can't send two at once).</summary>
-    static async Task SendAsync(ClientWebSocket socket, Channel<string> outgoing)
+    static async Task SendAsync(WebSocket socket, Channel<string> outgoing)
     {
         try
         {

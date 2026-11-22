@@ -84,16 +84,20 @@ sealed class RemoteFixtureLibrary(ShowSession session, RemoteLink link, IReadOnl
 
     public Task LoadAsync() => _fetched is null ? FetchAsync() : Task.CompletedTask;
 
+    async Task<(long Version, string Lines)> GetOverHttpAsync()
+    {
+        using var response = await Http.GetAsync($"{link.Origin}/api/library?token={Uri.EscapeDataString(link.Token ?? "")}");
+        response.EnsureSuccessStatusCode();
+        return (long.Parse(response.Headers.GetValues("X-Library-Version").Single()), await response.Content.ReadAsStringAsync());
+    }
+
     async Task FetchAsync()
     {
         if (_fetching) return;
         _fetching = true;
         try
         {
-            using var response = await Http.GetAsync($"{link.Origin}/api/library?token={Uri.EscapeDataString(link.Token ?? "")}");
-            response.EnsureSuccessStatusCode();
-            long version = long.Parse(response.Headers.GetValues("X-Library-Version").Single());
-            string lines = await response.Content.ReadAsStringAsync();
+            var (version, lines) = link.FetchLibrary is { } fetch ? await fetch() : await GetOverHttpAsync();
 
             var profiles = new List<FixtureProfile>();
             foreach (var line in lines.Split('\n', StringSplitOptions.RemoveEmptyEntries))

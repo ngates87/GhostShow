@@ -351,6 +351,14 @@ Small steps; each one leaves the app working.
          show kept in step over the connection, the services over it, and every message's handling; the browser's
          page only decides what its screens do when the show arrives (its tabs, title, who it's paired as).
          `NativeClientTests` runs it natively: the show arrives, edits go both ways, playing shows.
+      3. **The window's own connection (done 2026-11-22):** in memory rather than over loopback (`LocalConnection`:
+         two WebSockets joined by pipes), so it needs no port or token and works with Remote Access off; a real
+         loopback port waits for step 7, if the window ever runs as a separate program. The web server serves it as
+         "This computer" (`RemoteServer.RunLocalAsync`): an editor, not paired, not counted among connected devices;
+         its status loops now run while anything is connected, not only while the network side is on. The client
+         connects through it (`RemoteEndpoint.Connect`) and takes the fixture library straight from the server
+         (`FetchLibrary`, no HTTP). `WindowConnection` makes the window's endpoint.
+      4. **The window on it,** behind a switch, then the UI tests over it.
 6. **Move the other screens, one at a time** (proposed 2026-11-07 to be done through one shared main view, ahead of
    steps 4 and 5: [plan-shared-view.md](plan-shared-view.md)):
    - Audio, with its settings as commands to the show computer;

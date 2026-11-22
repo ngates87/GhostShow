@@ -29,6 +29,9 @@ sealed class RemoteConnection(PairedDevice device, WebSocket socket, string addr
     /// <summary>Where it connected from (its IP address).</summary>
     public string Address { get; } = address;
 
+    /// <summary>The show computer's own window (an in-memory connection), not a device on the network.</summary>
+    public bool IsLocal { get; init; }
+
     public DateTimeOffset Connected { get; } = DateTimeOffset.UtcNow;
 
     /// <summary>The timeline the device shows (it said so with a "watch" command): it gets that timeline's status and problems.</summary>

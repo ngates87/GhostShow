@@ -48,7 +48,8 @@ public sealed partial class RemoteServer : IAsyncDisposable
     readonly Lock _lock = new();
     readonly List<RemoteConnection> _connections = [];
     WebApplication? _app;
-    CancellationTokenSource? _stopping;
+    CancellationTokenSource? _stopping;   // while the network side is on
+    CancellationTokenSource? _loopsStopping;   // while anything is connected or could connect: the status and levels loops
     Task? _statusLoop;
     Task? _levelsLoop;
     string _status = "";
@@ -102,7 +103,7 @@ public sealed partial class RemoteServer : IAsyncDisposable
     {
         get
         {
-            lock (_lock) return [.. _connections.Select(c => new ConnectedDevice(c.Device.Id, c.Device.Name, c.Device.Role, c.Address, c.Connected))];
+            lock (_lock) return [.. _connections.Where(c => !c.IsLocal).Select(c => new ConnectedDevice(c.Device.Id, c.Device.Name, c.Device.Role, c.Address, c.Connected))];
         }
     }
 
@@ -128,8 +129,7 @@ public sealed partial class RemoteServer : IAsyncDisposable
         Port = app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses
             .Select(a => new Uri(a.Replace("+", "localhost").Replace("[::]", "localhost")).Port).First();
         _stopping = new CancellationTokenSource();
-        _statusLoop = Task.Run(() => StatusLoopAsync(_stopping.Token));
-        _levelsLoop = Task.Run(() => LevelsLoopAsync(_stopping.Token));
+        StartLoops();
         _logger.LogInformation("Web remote listening on port {Port}{Built}.", Port, WebAssets.IsBuilt ? "" : " (its page isn't built: Node.js wasn't found when GhostShow was built)");
     }
 
@@ -140,30 +140,42 @@ public sealed partial class RemoteServer : IAsyncDisposable
         // Each connection told why first: cancelling first would close them without a reason.
         List<RemoteConnection> connections;
         lock (_lock) connections = [.. _connections];
-        foreach (var connection in connections) connection.Close(WebSocketCloseStatus.EndpointUnavailable, "The show computer stopped the web remote.");
+        foreach (var connection in connections.Where(c => !c.IsLocal)) connection.Close(WebSocketCloseStatus.EndpointUnavailable, "The show computer stopped the web remote.");
         await _stopping!.CancelAsync();
-        try
-        {
-            await _statusLoop!;
-        }
-        catch (OperationCanceledException)
-        {
-        }
-        try
-        {
-            await _levelsLoop!;
-        }
-        catch (OperationCanceledException)
-        {
-        }
+        if (!connections.Any(c => c.IsLocal)) await StopLoopsAsync();
         await app.StopAsync();
         await app.DisposeAsync();
         _logger.LogInformation("Web remote stopped.");
     }
 
+    void StartLoops()
+    {
+        if (_loopsStopping is not null) return;
+        _loopsStopping = new CancellationTokenSource();
+        var stopping = _loopsStopping.Token;
+        _statusLoop = Task.Run(() => StatusLoopAsync(stopping));
+        _levelsLoop = Task.Run(() => LevelsLoopAsync(stopping));
+    }
+
+    async Task StopLoopsAsync()
+    {
+        if (_loopsStopping is not { } loops) return;
+        _loopsStopping = null;
+        await loops.CancelAsync();
+        foreach (var loop in new[] { _statusLoop, _levelsLoop })
+            try
+            {
+                await loop!;
+            }
+            catch (OperationCanceledException)
+            {
+            }
+    }
+
     public async ValueTask DisposeAsync()
     {
         await StopAsync();
+        await StopLoopsAsync();
         _host.Session.Document.Changed -= OnChanged;
         _host.Playback.Compiled -= OnCompiled;
         _host.Triggers.InputReceived -= OnInputReceived;
@@ -231,12 +243,38 @@ public sealed partial class RemoteServer : IAsyncDisposable
         }
         Pairing.Seen(device);
         var ip = context.Connection.RemoteIpAddress;
-        var connection = new RemoteConnection(device, socket, (ip is { IsIPv4MappedToIPv6: true } ? ip.MapToIPv4() : ip)?.ToString() ?? "?", ReceivedAsync);
+        await RunConnectionAsync(new RemoteConnection(device, socket, (ip is { IsIPv4MappedToIPv6: true } ? ip.MapToIPv4() : ip)?.ToString() ?? "?", ReceivedAsync), stopping.Token);
+    }
+
+    /// <summary>The show computer's own window, as a device: an editor, not paired, and not among <see cref="Connected"/>.</summary>
+    public static readonly PairedDevice ThisComputer = new() { Id = Guid.Empty, Name = "This computer", Role = RemoteRole.Editor };
+
+    /// <summary>
+    /// Serves the show computer's own window over an in-memory connection (<see cref="LocalConnection"/>), as it serves
+    /// devices, whether or not the network side is on, until <paramref name="stop"/> or the window closes it.
+    /// </summary>
+    public async Task RunLocalAsync(WebSocket socket, CancellationToken stop)
+    {
+        StartLoops();
+        try
+        {
+            await RunConnectionAsync(new RemoteConnection(ThisComputer, socket, "this computer", ReceivedAsync) { IsLocal = true }, stop);
+        }
+        finally
+        {
+            bool idle;
+            lock (_lock) idle = _app is null && !_connections.Any(c => c.IsLocal);
+            if (idle) await StopLoopsAsync();
+        }
+    }
+
+    async Task RunConnectionAsync(RemoteConnection connection, CancellationToken stop)
+    {
         // On the show's thread: the show as it is now, and from then on every change, in order.
         await _host.InvokeAsync(() =>
         {
             lock (_lock) _connections.Add(connection);
-            connection.Send(Hello(device));
+            connection.Send(Hello(connection.Device));
             SendManualLevels(connection);
             return true;
         });
@@ -244,7 +282,7 @@ public sealed partial class RemoteServer : IAsyncDisposable
         ConnectionsChanged?.Invoke();
         try
         {
-            await connection.RunAsync(stopping.Token);
+            await connection.RunAsync(stop);
         }
         finally
         {

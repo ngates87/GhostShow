@@ -88,4 +88,35 @@ public class NativeClientTests
         stop.Cancel();
         Until(() => running.IsCompleted, "the connection stopped");
     });
+
+    [Fact]
+    public Task The_window_s_own_connection_works_with_Remote_Access_off_and_isn_t_a_device() => Ui.Run(() =>
+    {
+        using var rig = new WindowRig();
+        var remote = rig.ViewModel.Remote;
+        Assert.False(remote.IsOn);
+        var show = new RemoteShow(WindowConnection.To(remote.Show), FixtureProfileLoader.LoadBuiltIn());
+        int arrived = 0;
+        show.Arrived += _ => arrived++;
+        using var stop = new CancellationTokenSource();
+        var running = show.RunAsync(stop.Token);
+
+        Until(() => arrived == 1, "the show arrived");
+        Assert.Equal(rig.Session.Project.Timelines.Select(t => t.Id), show.Session.Project.Timelines.Select(t => t.Id));
+        Assert.Equal(0, remote.ConnectedCount);   // the window isn't a device
+
+        var timeline = show.Session.Project.Timelines[0];
+        show.Session.Document.Record("Rename timeline", () => timeline.Name = "Renamed in the window", timeline);
+        Until(() => rig.Session.Project.Timelines[0].Name == "Renamed in the window", "the show computer has the edit");
+        var track = rig.Session.Project.Timelines[0].Tracks[0];
+        rig.Session.Document.Record("Rename track", () => track.Name = "Renamed on the show computer", track);
+        Until(() => show.Session.Project.Timelines[0].Tracks[0].Name == "Renamed on the show computer", "the window has the show computer's edit");
+
+        var loading = show.Library.LoadAsync();
+        Until(() => loading.IsCompleted, "the library loaded");
+        Assert.Equal(rig.Session.Profiles.Profiles.Count, show.Session.Profiles.Profiles.Count);
+
+        stop.Cancel();
+        Until(() => running.IsCompleted, "the connection stopped");
+    });
 }

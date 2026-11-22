@@ -82,6 +82,13 @@ public sealed partial class RemoteServer
         await context.Response.Body.WriteAsync(file.Gzipped, context.RequestAborted);
     }
 
+    /// <summary>The whole library for the show computer's own window (as /api/library serves devices): its version, and every profile, one JSON object per line.</summary>
+    public async Task<(long Version, string Lines)> LibraryLinesAsync()
+    {
+        var (version, profiles) = await _host.InvokeAsync(() => (Interlocked.Read(ref _libraryVersion), _host.Session.Profiles.Profiles));
+        return (version, await Task.Run(() => string.Join('\n', profiles.Select(FixtureProfileLoader.ToJsonLine))));
+    }
+
     static byte[] Pack(IReadOnlyList<FixtureProfile> profiles)
     {
         using var packed = new MemoryStream();

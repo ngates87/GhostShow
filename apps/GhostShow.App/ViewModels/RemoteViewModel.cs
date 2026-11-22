@@ -25,6 +25,9 @@ public sealed partial class RemoteViewModel : ObservableObject, IAsyncDisposable
         Refresh();
     }
 
+    /// <summary>Remote Access itself, in the server.</summary>
+    internal ShowRemote Show => _remote;
+
     public RemoteServer Server => _remote.Server;
 
     /// <summary>Where the full app is, for a device: the first address with /app/ (null if it isn't served).</summary>
