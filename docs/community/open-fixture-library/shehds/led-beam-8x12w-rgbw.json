@@ -1,0 +1,302 @@
+{
+  "$schema": "https://raw.githubusercontent.com/OpenLightingProject/open-fixture-library/master/schemas/fixture.json",
+  "name": "LED Beam 8x12W RGBW",
+  "categories": ["Pixel Bar", "Color Changer"],
+  "meta": {
+    "authors": ["TODO: your name", "René Bütikofer", "R. Wenner", "grayplex"],
+    "createDate": "2026-11-21",
+    "lastModifyDate": "2026-11-21"
+  },
+  "comment": "A bar of eight RGBW beams that tilts (no pan). The manual calls the tilt channels 'Horizontal operation' and 'Horizontal speed'.",
+  "links": {
+    "manual": [
+      "https://drive.google.com/file/d/18VPPdB7BcrinPOCefGrjRmks_8AuFio1/view"
+    ],
+    "productPage": [
+      "https://shehds.com/products/led-8x12w-bar-beam-moving-head-light-rgbw-perfect-for-dj-party-nightclub-disco-light-christmas-sound-active-dmx-disco-1"
+    ]
+  },
+  "physical": {
+    "dimensions": [1070, 130, 80],
+    "weight": 7.5,
+    "power": 96,
+    "DMXconnector": "3-pin",
+    "bulb": {
+      "type": "8 × 12W RGBW LED"
+    },
+    "lens": {
+      "degreesMinMax": [8, 8]
+    }
+  },
+  "matrix": {
+    "pixelKeys": [
+      [
+        ["1", "2", "3", "4", "5", "6", "7", "8"]
+      ]
+    ]
+  },
+  "availableChannels": {
+    "Tilt": {
+      "defaultValue": 128,
+      "capability": {
+        "type": "Tilt",
+        "angleStart": "0deg",
+        "angleEnd": "180deg",
+        "helpWanted": "How far does it tilt? The manual doesn't say; earlier submissions said 180° (used here) and 270°."
+      }
+    },
+    "Tilt Speed": {
+      "capability": {
+        "type": "PanTiltSpeed",
+        "speedStart": "slow",
+        "speedEnd": "fast",
+        "helpWanted": "Is 0 the slowest or the fastest? The manual only says 0-255."
+      }
+    },
+    "Built-in Effects": {
+      "capabilities": [
+        {
+          "dmxRange": [0, 10],
+          "type": "NoFunction"
+        },
+        {
+          "dmxRange": [11, 20],
+          "type": "Effect",
+          "effectName": "Built-in effect 1"
+        },
+        {
+          "dmxRange": [21, 31],
+          "type": "Effect",
+          "effectName": "Built-in effect 2"
+        },
+        {
+          "dmxRange": [32, 42],
+          "type": "Effect",
+          "effectName": "Built-in effect 3"
+        },
+        {
+          "dmxRange": [43, 53],
+          "type": "Effect",
+          "effectName": "Built-in effect 4"
+        },
+        {
+          "dmxRange": [54, 64],
+          "type": "Effect",
+          "effectName": "Built-in effect 5"
+        },
+        {
+          "dmxRange": [65, 75],
+          "type": "Effect",
+          "effectName": "Built-in effect 6"
+        },
+        {
+          "dmxRange": [76, 86],
+          "type": "Effect",
+          "effectName": "Built-in effect 7"
+        },
+        {
+          "dmxRange": [87, 97],
+          "type": "Effect",
+          "effectName": "Built-in effect 8"
+        },
+        {
+          "dmxRange": [98, 108],
+          "type": "Effect",
+          "effectName": "Built-in effect 9"
+        },
+        {
+          "dmxRange": [109, 119],
+          "type": "Effect",
+          "effectName": "Built-in effect 10"
+        },
+        {
+          "dmxRange": [120, 130],
+          "type": "Effect",
+          "effectName": "Built-in effect 11"
+        },
+        {
+          "dmxRange": [131, 141],
+          "type": "Effect",
+          "effectName": "Built-in effect 12"
+        },
+        {
+          "dmxRange": [142, 152],
+          "type": "Effect",
+          "effectName": "Built-in effect 13"
+        },
+        {
+          "dmxRange": [153, 163],
+          "type": "Effect",
+          "effectName": "Built-in effect 14"
+        },
+        {
+          "dmxRange": [164, 174],
+          "type": "Effect",
+          "effectName": "Built-in effect 15"
+        },
+        {
+          "dmxRange": [175, 185],
+          "type": "Effect",
+          "effectName": "Built-in effect 16"
+        },
+        {
+          "dmxRange": [186, 196],
+          "type": "Effect",
+          "effectName": "Built-in effect 17"
+        },
+        {
+          "dmxRange": [197, 207],
+          "type": "Effect",
+          "effectName": "Built-in effect 18"
+        },
+        {
+          "dmxRange": [208, 218],
+          "type": "Effect",
+          "effectName": "Built-in effect 19"
+        },
+        {
+          "dmxRange": [219, 229],
+          "type": "Effect",
+          "effectName": "Built-in effect 20"
+        },
+        {
+          "dmxRange": [230, 240],
+          "type": "Effect",
+          "effectName": "Built-in effect 21"
+        },
+        {
+          "dmxRange": [241, 250],
+          "type": "Effect",
+          "effectName": "Built-in effect 22"
+        },
+        {
+          "dmxRange": [251, 255],
+          "type": "Effect",
+          "effectName": "Sound-controlled effect",
+          "soundControlled": true
+        }
+      ]
+    },
+    "Effect Speed": {
+      "capability": {
+        "type": "EffectSpeed",
+        "speedStart": "slow",
+        "speedEnd": "fast",
+        "helpWanted": "Is 0 the slowest or the fastest? The manual only says 0-255."
+      }
+    },
+    "Dimmer": {
+      "capability": {
+        "type": "Intensity"
+      }
+    },
+    "Strobe": {
+      "capabilities": [
+        {
+          "dmxRange": [0, 0],
+          "type": "ShutterStrobe",
+          "shutterEffect": "Open",
+          "helpWanted": "The manual only says 0-255 is strobe, 0-10 Hz. Is 0 steady light, or closed (an earlier submission said closed)?"
+        },
+        {
+          "dmxRange": [1, 255],
+          "type": "ShutterStrobe",
+          "shutterEffect": "Strobe",
+          "speedStart": "slow",
+          "speedEnd": "fast",
+          "comment": "Up to 10 Hz"
+        }
+      ]
+    },
+    "Red": {
+      "capability": {
+        "type": "ColorIntensity",
+        "color": "Red"
+      }
+    },
+    "Green": {
+      "capability": {
+        "type": "ColorIntensity",
+        "color": "Green"
+      }
+    },
+    "Blue": {
+      "capability": {
+        "type": "ColorIntensity",
+        "color": "Blue"
+      }
+    },
+    "White": {
+      "capability": {
+        "type": "ColorIntensity",
+        "color": "White"
+      }
+    }
+  },
+  "templateChannels": {
+    "Red $pixelKey": {
+      "capability": {
+        "type": "ColorIntensity",
+        "color": "Red"
+      }
+    },
+    "Green $pixelKey": {
+      "capability": {
+        "type": "ColorIntensity",
+        "color": "Green"
+      }
+    },
+    "Blue $pixelKey": {
+      "capability": {
+        "type": "ColorIntensity",
+        "color": "Blue"
+      }
+    },
+    "White $pixelKey": {
+      "capability": {
+        "type": "ColorIntensity",
+        "color": "White"
+      }
+    }
+  },
+  "modes": [
+    {
+      "name": "9-channel",
+      "shortName": "9ch",
+      "channels": [
+        "Tilt",
+        "Tilt Speed",
+        "Built-in Effects",
+        "Effect Speed",
+        "Dimmer",
+        "Red",
+        "Green",
+        "Blue",
+        "White"
+      ]
+    },
+    {
+      "name": "38-channel",
+      "shortName": "38ch",
+      "channels": [
+        "Tilt",
+        "Tilt Speed",
+        "Built-in Effects",
+        "Effect Speed",
+        "Dimmer",
+        "Strobe",
+        {
+          "insert": "matrixChannels",
+          "repeatFor": "eachPixelABC",
+          "channelOrder": "perPixel",
+          "templateChannels": [
+            "Red $pixelKey",
+            "Green $pixelKey",
+            "Blue $pixelKey",
+            "White $pixelKey"
+          ]
+        }
+      ]
+    }
+  ]
+}

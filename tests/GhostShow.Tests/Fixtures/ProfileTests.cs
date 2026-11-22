@@ -28,7 +28,21 @@ public class BuiltInProfileTests
         Assert.Equal(11, full.Channels.Count(c => c.Function == ChannelFunction.Red));   // the bar's, then each module's
     }
 
-        [Fact]
+    [Fact]
+    public void The_SHEHDS_8x12W_beam_bar_has_both_modes_its_manual_lists_starting_mid_tilt()
+    {
+        var bar = FixtureProfileLoader.LoadBuiltIn().Single(p => p.Id == "shehds/led-beam-bar-8x12w-rgbw");
+
+        Assert.Equal(FixtureCategory.MovingHead, bar.EffectiveCategory);
+        Assert.Equal([9, 38], bar.Modes.Select(m => m.Channels.Count));
+        Assert.All(bar.Modes, m => Assert.Equal((ChannelFunction.Tilt, 128), (m.Channels[0].Function, m.Channels[0].DefaultValue)));
+        Assert.All(bar.Modes, m => Assert.Equal(("Total dimming", ChannelFunction.Intensity), (m.Channels[4].Name, m.Channels[4].Function)));
+        var full = bar.Modes.Single(m => m.Name == "38 channel");
+        Assert.Equal(["Strobe", "Red 1", "White 8"], new[] { full.Channels[5].Name, full.Channels[6].Name, full.Channels[37].Name });
+        Assert.Equal(8, full.Channels.Count(c => c.Function == ChannelFunction.Red));   // one per module; the first is the bar's Red
+    }
+
+    [Fact]
     public void Profile_json_round_trips()
     {
         var original = TestProfiles.Spot;

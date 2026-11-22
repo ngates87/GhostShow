@@ -1,0 +1,71 @@
+// SHEHDS "LED Beam 8x12W RGBW": a bar of eight 12 W RGBW beams that tilts (no pan; the manual calls it "horizontal
+// operation"). From the manufacturer's user manual (8眼光束灯.pdf). In the 38-channel mode each of the eight modules
+// has its own red, green, blue and white; the first module's are the bar's logical colour controls. Tilt starts
+// mid-travel. The manual doesn't give the tilt range, so it's left out.
+{
+  "schemaVersion": 1,
+  "id": "shehds/led-beam-bar-8x12w-rgbw",
+  "manufacturer": "SHEHDS",
+  "model": "LED Beam Bar 8x12W RGBW",
+  "type": "Moving Head",
+  "category": "MovingHead",
+  "modes": [
+    {
+      "name": "9 channel",
+      "channels": [
+        { "name": "Tilt", "function": "Tilt", "defaultValue": 128 },
+        { "name": "Tilt speed", "function": "Speed" },
+        { "name": "Built-in effects", "function": "Effect" },
+        { "name": "Effect speed", "function": "Speed" },
+        { "name": "Total dimming", "function": "Intensity" },
+        { "name": "Red", "function": "Red" },
+        { "name": "Green", "function": "Green" },
+        { "name": "Blue", "function": "Blue" },
+        { "name": "White", "function": "White" }
+      ]
+    },
+    {
+      "name": "38 channel",
+      "channels": [
+        { "name": "Tilt", "function": "Tilt", "defaultValue": 128 },
+        { "name": "Tilt speed", "function": "Speed" },
+        { "name": "Built-in effects", "function": "Effect" },
+        { "name": "Effect speed", "function": "Speed" },
+        { "name": "Total dimming", "function": "Intensity" },
+        { "name": "Strobe", "function": "Strobe" },
+        { "name": "Red 1", "function": "Red" },
+        { "name": "Green 1", "function": "Green" },
+        { "name": "Blue 1", "function": "Blue" },
+        { "name": "White 1", "function": "White" },
+        { "name": "Red 2", "function": "Red" },
+        { "name": "Green 2", "function": "Green" },
+        { "name": "Blue 2", "function": "Blue" },
+        { "name": "White 2", "function": "White" },
+        { "name": "Red 3", "function": "Red" },
+        { "name": "Green 3", "function": "Green" },
+        { "name": "Blue 3", "function": "Blue" },
+        { "name": "White 3", "function": "White" },
+        { "name": "Red 4", "function": "Red" },
+        { "name": "Green 4", "function": "Green" },
+        { "name": "Blue 4", "function": "Blue" },
+        { "name": "White 4", "function": "White" },
+        { "name": "Red 5", "function": "Red" },
+        { "name": "Green 5", "function": "Green" },
+        { "name": "Blue 5", "function": "Blue" },
+        { "name": "White 5", "function": "White" },
+        { "name": "Red 6", "function": "Red" },
+        { "name": "Green 6", "function": "Green" },
+        { "name": "Blue 6", "function": "Blue" },
+        { "name": "White 6", "function": "White" },
+        { "name": "Red 7", "function": "Red" },
+        { "name": "Green 7", "function": "Green" },
+        { "name": "Blue 7", "function": "Blue" },
+        { "name": "White 7", "function": "White" },
+        { "name": "Red 8", "function": "Red" },
+        { "name": "Green 8", "function": "Green" },
+        { "name": "Blue 8", "function": "Blue" },
+        { "name": "White 8", "function": "White" }
+      ]
+    }
+  ]
+}
